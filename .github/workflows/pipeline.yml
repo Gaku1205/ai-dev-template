@@ -1,0 +1,78 @@
+# 全自動の進行役：CI・レビューAI・修正AIが終わるたびに、次の一手を決める。
+#   CI 通過     → レビューAIを動かす
+#   CI 失敗     → AIに直させる（2回まで。超えたら ai:stuck を付けて人間に通知）
+#   レビュー指摘なし → 自動でマージ（ai:hold が付いていたら人間に通知）
+#   レビュー指摘あり → AIに直させる（同じく2回まで）
+#   直す依頼のあと変更が入らなかった → 人間に回す
+# workflow_run は main にあるこのファイルで動くので、PRの中身でこの判断を書き換えられない。
+# 次のワークフローを動かすために、ラベル・コメント・マージはオーナーのトークン（PIPELINE_TOKEN）で行う。
+name: Pipeline
+
+on:
+  workflow_run:
+    workflows: [CI, Claude Review, Claude Mention]
+    types: [completed]
+
+jobs:
+  after-ci:
+    if: >-
+      github.event.workflow_run.name == 'CI' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      contains(fromJSON('["success", "failure"]'), github.event.workflow_run.conclusion)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: pipeline-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: .github/scripts/after-ci.sh
+
+  after-review:
+    if: >-
+      github.event.workflow_run.name == 'Claude Review' &&
+      contains(fromJSON('["success", "failure"]'), github.event.workflow_run.conclusion)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: pipeline-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_STARTED: ${{ github.event.workflow_run.run_started_at }}
+        run: .github/scripts/after-review.sh
+
+  after-mention:
+    if: >-
+      github.event.workflow_run.name == 'Claude Mention' &&
+      contains(fromJSON('["success", "failure"]'), github.event.workflow_run.conclusion)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
+          RUN_STARTED: ${{ github.event.workflow_run.run_started_at }}
+        run: .github/scripts/after-mention.sh

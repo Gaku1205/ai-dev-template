@@ -1,0 +1,59 @@
+# 実装AI：Issueに「ai:implement」ラベルを付けると、Claudeがブランチを切って実装する。
+# 終わるとIssueにコメントが付き、PRを自動で作る（PIPELINE_TOKEN が無ければ人間がPRを作る）。
+# そのあとは pipeline.yml が CI → レビュー → マージ と進める。
+#
+# モデルはIssueのサイズラベルで切り替える（ラベルは ai:implement より先に付ける）
+#   size:S → haiku（文言修正など小さい作業）
+#   なし   → sonnet（普段の作業）
+#   size:L → opus（設計が絡む大きい作業）
+# ターン上限もサイズで変える（S:25 / 無印:50 / L:80）。上限は暴走止めなので、普通の作業は上限より手前で終わる
+name: Claude Implement
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  implement:
+    if: github.event.label.name == 'ai:implement'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: claude-implement-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    env:
+      MODEL: ${{ contains(github.event.issue.labels.*.name, 'size:S') && 'haiku' || (contains(github.event.issue.labels.*.name, 'size:L') && 'opus' || 'sonnet') }}
+      MAX_TURNS: ${{ contains(github.event.issue.labels.*.name, 'size:S') && '25' || (contains(github.event.issue.labels.*.name, 'size:L') && '80' || '50') }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: anthropics/claude-code-action@v1
+        id: claude
+        continue-on-error: true
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          label_trigger: "ai:implement"
+          claude_args: "--model ${{ env.MODEL }} --max-turns ${{ env.MAX_TURNS }} --allowedTools \"Bash(npm run typecheck),Bash(npm run lint),Bash(npm run test),Bash(npm run build)\""
+      # 作業回数の上限で止まっても、変更があればPRにしてCIで確かめる
+      - name: PRを作る
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
+          ISSUE: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          AI_OUTCOME: ${{ steps.claude.outcome }}
+        run: .github/scripts/open-pr.sh

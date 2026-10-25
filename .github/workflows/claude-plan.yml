@@ -1,0 +1,73 @@
+# 企画AI：Issueに「ai:plan」ラベルを付けると、短いメモを実装AIが作業できるIssueに清書する。
+# 清書できたら ai:implement を付けて実装に回す（全自動）。意図が読み取れなければ質問して止まる。
+name: Claude Plan
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  plan:
+    if: github.event.label.name == 'ai:plan'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: claude-plan-${{ github.event.issue.number }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: anthropics/claude-code-action@v1
+        id: claude
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            あなたはこのリポジトリ（${{ github.repository }}）の企画担当です。
+            Issue #${{ github.event.issue.number }} は、オーナーがスマホで書いた短いメモです。これを、実装AIがそのまま作業できるIssueに清書してください。
+
+            手順：
+            1. `gh issue view ${{ github.event.issue.number }} --comments` でメモとコメントを読む
+            2. CLAUDE.md と、あれば docs/ 以下の仕様書を読み、関係するコードを確認する
+            3. タイトルと本文を書き直し、`gh issue edit ${{ github.event.issue.number }} --title "..." --body-file <ファイル>` で更新する
+            4. 最後に、作業フォルダ直下のファイル `plan-result.txt` に、次のどれか1行だけを書く
+               - `READY size:S`：文言や見た目の小さい修正
+               - `READY`：普通の大きさ
+               - `READY size:L`：設計が絡む大きい作業
+               - `QUESTION`：意図が読み取れない、または1つのPRに収まらない。このときは本文を書き直さず、`gh issue comment` で質問か分け方の案を書く
+
+            本文の形（日本語）：
+            ### 背景
+            （なぜやるか。オーナーのメモの意図）
+            ### やること
+            （箇条書き。触るファイルや関数の見当があれば書く）
+            ### 受け入れ条件
+            - [ ] （確かめられる条件を箇条書き）
+            - [ ] 型チェック・リント・テスト・ビルドが通る
+            ### やらないこと
+            （紛らわしい周辺の作業）
+            > 元のメモ：（オーナーのメモをそのまま）
+
+            守ること：
+            - メモの意図を変えない。メモに無い機能を足さない。1つのPRで終わる大きさにする
+            - 仕様書と食い違うときは、背景に「docs/○○ の△△と違う」と書く（仕様書そのものは書き換えない）
+            - コードは変更しない。Issueの更新とコメントだけをする
+          claude_args: '--model sonnet --max-turns 30 --allowedTools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Read,Glob,Grep,Write"'
+      - name: 次へ進める（実装を依頼する／質問で止まる）
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          GITHUB_TOKEN_FOR_LABELS: ${{ github.token }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
+          ISSUE: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          PLAN_OUTCOME: ${{ steps.claude.outcome }}
+        run: .github/scripts/after-plan.sh
