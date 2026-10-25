@@ -61,3 +61,5 @@ fi
 
 gh pr merge "$pr" -R "$REPO" --merge --match-head-commit "$HEAD_SHA"
 echo "PR #$pr：自動でマージしました"
+
+# 次の順番待ちは、Issueが閉じたときに queue.yml が始める

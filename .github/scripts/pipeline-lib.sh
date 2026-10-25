@@ -82,3 +82,24 @@ request_fix_or_stop() {
 ${AUTO_FIX_MARK}
 <!-- auto-fix-sha: ${sha} -->" > /dev/null
 }
+
+# 順番待ち（ai:queue）のIssueのうち、番号がいちばん小さい物を実装に回す。
+# マージのあとに呼ぶ。止まっている物（ai:stuck）や実装中の物があれば、何もしない
+start_next_in_queue() {
+  local busy
+  busy=$(gh issue list -R "$REPO" --state open --label "ai:implement" --json number -q 'length')
+  local stuck
+  stuck=$(gh issue list -R "$REPO" --state open --label "ai:stuck" --json number -q 'length')
+  local prs
+  prs=$(gh pr list -R "$REPO" --state open --json number -q 'length')
+  if [ "$busy" -gt 0 ] || [ "$stuck" -gt 0 ] || [ "$prs" -gt 0 ]; then
+    echo "進行中・停止中の物があるので、順番待ちは進めません"
+    return
+  fi
+  local next
+  next=$(gh issue list -R "$REPO" --state open --label "ai:queue" --json number -q 'map(.number) | min // empty')
+  [ -z "$next" ] && return
+  gh issue edit "$next" -R "$REPO" --remove-label "ai:queue" > /dev/null
+  gh issue edit "$next" -R "$REPO" --add-label "ai:implement" > /dev/null
+  echo "順番待ちの #$next を実装に回しました"
+}

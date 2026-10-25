@@ -1,0 +1,32 @@
+# 順番待ち（ai:queue）：進行中・停止中の物が無くなったら、番号の小さいIssueから実装を始める。
+# きっかけ：ai:queue を付けた／Issueが閉じた（PRがマージされた）／ai:stuck を外した
+name: Queue
+
+on:
+  issues:
+    types: [labeled, unlabeled, closed]
+  pull_request:
+    types: [closed, unlabeled]
+
+concurrency:
+  group: queue
+  cancel-in-progress: false
+
+jobs:
+  next:
+    if: >-
+      (github.event.action == 'labeled' && github.event.label.name == 'ai:queue') ||
+      (github.event.action == 'unlabeled' && github.event.label.name == 'ai:stuck') ||
+      github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+        run: |
+          # Issueが閉じた直後は、まだ一覧に反映されていないことがあるので少し待つ
+          sleep 5
+          .github/scripts/queue-next.sh

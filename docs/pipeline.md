@@ -11,6 +11,7 @@
   → 指摘なし：自動でマージ → Vercelが本番に公開      pipeline.yml
      指摘あり／CI失敗：AIが直す（@claude）→ CIから   pipeline.yml → claude-mention.yml
   → 公開されたらスマホに通知                        deploy-notify.yml
+  → 順番待ち（ai:queue）があれば次を始める           queue.yml
 ```
 
 ## ラベル
@@ -21,6 +22,7 @@
 | `ai:implement` | 人間か企画AI | 実装AIが作業を始める |
 | `size:S` / `size:L` | 人間か企画AI | 実装AIのモデルと作業回数の上限を変える（S：haiku・25回、無印：sonnet・50回、L：opus・80回） |
 | `ai:review` | パイプライン（人間も可） | レビューAIが確認する |
+| `ai:queue` | 人間 | 順番待ち。前のPRが自動でマージされ、進行中・停止中の物が無くなったら、番号の小さい順に実装が始まる。まとめて頼んで寝ておける |
 | `ai:hold` | 人間 | 最後のマージだけ人間が押す（大事な変更用） |
 | `ai:stuck` | パイプライン | 自動で進められず止まった。人間が確認して外す |
 
