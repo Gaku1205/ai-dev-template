@@ -43,6 +43,7 @@
 - 進行役（pipeline.yml）は `workflow_run` で main にある版が動くので、PRの中身で判断を書き換えられない
 - AIは `.github/`・`docs/`・`CLAUDE.md`・依存パッケージを触らない（CLAUDE.md）
 - 自動の修正は2回まで。無限に回らない
+- AI（claude[bot]）のpushでCIが「承認待ち」になったら、進行役がオーナーのトークンで空のコミットを足してCIを動かし直す
 - 公開後に壊れていたら、Vercelの画面から前の版にすぐ戻せる
 
 ## 必要な設定（リポジトリの Settings → Secrets and variables → Actions）

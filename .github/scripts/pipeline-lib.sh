@@ -145,3 +145,30 @@ start_next_in_queue() {
   add_label "$next" "ai:implement" || return 1
   echo "順番待ちの #$next を実装に回しました"
 }
+
+# AI（claude[bot]）がpushしたコミットのCIは、GitHubが「承認待ち（action_required）」で止めることがある。
+# そうなっていたら、オーナーのトークンで空のコミットを1つ足して、CIを動かし直す（オーナーのpushなら承認は要らない）。
+# READ_TOKEN（ワークフローのトークン、actions: read）でCIの実行を読む
+rerun_ci_if_waiting_approval() {
+  local pr="$1" sha="$2" branch="$3" runs="[]" attempt
+  for attempt in 1 2 3 4; do
+    runs=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/runs?head_sha=$sha&event=pull_request&per_page=50" \
+      -q '[.workflow_runs[] | select(.name == "CI")]')
+    [ "$(printf '%s' "$runs" | jq 'length')" -gt 0 ] && break
+    sleep 15
+  done
+  local running waiting
+  running=$(printf '%s' "$runs" | jq '[.[] | select(.conclusion != "action_required")] | length')
+  waiting=$(printf '%s' "$runs" | jq '[.[] | select(.conclusion == "action_required")] | length')
+  if [ "$running" -gt 0 ]; then
+    echo "PR #$pr：CIはふつうに動いています"
+    return 0
+  fi
+  echo "PR #$pr：CIが承認待ち（${waiting} 件）か、始まっていないので、空のコミットで動かし直します"
+  local tree new
+  tree=$(gh api "repos/$REPO/git/commits/$sha" -q .tree.sha)
+  new=$(gh api "repos/$REPO/git/commits" -f message="CIを動かし直す（AIのpushでCIが承認待ちになったため）" \
+    -f tree="$tree" -f "parents[]=$sha" -q .sha)
+  gh api -X PATCH "repos/$REPO/git/refs/heads/$branch" -f sha="$new" > /dev/null
+  echo "PR #$pr：$new を足しました"
+}

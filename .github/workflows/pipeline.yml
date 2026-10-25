@@ -4,6 +4,7 @@
 #   レビュー指摘なし → 自動でマージ（ai:hold が付いていたら人間に通知）
 #   レビュー指摘あり → AIに直させる（同じく2回まで）
 #   直す依頼のあと変更が入らなかった → 人間に回す
+#   AIのpushでCIが承認待ちになった → 空のコミットでCIを動かし直す
 # workflow_run は main にあるこのファイルで動くので、PRの中身でこの判断を書き換えられない。
 # 次のワークフローを動かすために、ラベル・コメント・マージはオーナーのトークン（PIPELINE_TOKEN）で行う。
 name: Pipeline
@@ -69,6 +70,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      actions: read
     steps:
       - uses: actions/checkout@v6
       - env:
@@ -76,4 +78,5 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
           RUN_STARTED: ${{ github.event.workflow_run.run_started_at }}
+          READ_TOKEN: ${{ github.token }}
         run: .github/scripts/after-mention.sh
