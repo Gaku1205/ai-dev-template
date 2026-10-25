@@ -50,7 +50,7 @@ jobs:
                - `READY`：普通の大きさ
                - `READY size:L`：設計が絡む大きい作業
                - `QUESTION`：意図が読み取れない、または1つのPRに収まらない。このときは本文を書き直さず、`gh issue comment` で質問か分け方の案を書く
-               2行目は `PARALLEL` か `WAIT`（進行中の作業が無ければ `PARALLEL`）。WAIT のときは、どの作業とぶつかるかを Issue に `gh issue comment` で1行書く
+               2行目は `PARALLEL` か `WAIT`（進行中の作業が無ければ `PARALLEL`）。WAIT のときは、どの作業とぶつかるかを Issue に `gh issue comment` で1行書く。書き出しは「順番待ちの理由：」にし、「前の作業が終わると自動で始まります」で終える（実装AIへの指示にならないようにする）
 
             本文の形（日本語）：
             ### 背景

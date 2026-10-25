@@ -142,6 +142,8 @@ start_next_in_queue() {
     return 0
   fi
   remove_label "$next" "ai:queue"
+  # 企画AIの「待ち」のコメントを読んだ実装AIが、前の作業が終わったか確かめられずに止まらないよう、先に伝えておく
+  comment "$next" "▶ 順番が来たので実装を始めます。この作業の前に待っていた作業は、すべて終わっています（進行中の作業・openのPRはありません）。上の「待ち」のコメントは気にせず、このIssueの内容を実装してください。" || true
   add_label "$next" "ai:implement" || return 1
   echo "順番待ちの #$next を実装に回しました"
 }
