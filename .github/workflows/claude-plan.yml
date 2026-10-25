@@ -1,5 +1,6 @@
 # 企画AI：Issueに「ai:plan」ラベルを付けると、短いメモを実装AIが作業できるIssueに清書する。
 # 清書できたら ai:implement を付けて実装に回す（全自動）。意図が読み取れなければ質問して止まる。
+# 進行中の作業とぶつかるかも企画AIが判断し、ぶつかるなら順番待ち（ai:queue）、別の場所なら並列で始める。
 name: Claude Plan
 
 on:
@@ -17,6 +18,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: read
       id-token: write
     steps:
       - uses: actions/checkout@v6
@@ -37,11 +39,18 @@ jobs:
             1. `gh issue view ${{ github.event.issue.number }} --comments` でメモとコメントを読む
             2. CLAUDE.md と、あれば docs/ 以下の仕様書を読み、関係するコードを確認する
             3. タイトルと本文を書き直し、`gh issue edit ${{ github.event.issue.number }} --title "..." --body-file <ファイル>` で更新する
-            4. 最後に、作業フォルダ直下のファイル `plan-result.txt` に、次のどれか1行だけを書く
+            4. `gh issue list --state open --label ai:implement` と `gh pr list --state open` で、いま進行中の作業を見る。
+               それぞれのIssue・PRの中身（`gh issue view` / `gh pr diff`）と見比べて、このIssueと同時に作業してよいかを決める
+               - 同じファイルを書き換えそう、同じ機能や画面の同じ場所を触る、前の作業の結果を使う → 待つ（WAIT）
+               - 触る場所がはっきり別で、どちらが先にマージされても困らない → 並列（PARALLEL）
+               - 迷ったら待つ
+            5. 最後に、作業フォルダ直下のファイル `plan-result.txt` に2行だけを書く
+               1行目は次のどれか
                - `READY size:S`：文言や見た目の小さい修正
                - `READY`：普通の大きさ
                - `READY size:L`：設計が絡む大きい作業
                - `QUESTION`：意図が読み取れない、または1つのPRに収まらない。このときは本文を書き直さず、`gh issue comment` で質問か分け方の案を書く
+               2行目は `PARALLEL` か `WAIT`（進行中の作業が無ければ `PARALLEL`）。WAIT のときは、どの作業とぶつかるかを Issue に `gh issue comment` で1行書く
 
             本文の形（日本語）：
             ### 背景
@@ -59,7 +68,7 @@ jobs:
             - メモの意図を変えない。メモに無い機能を足さない。1つのPRで終わる大きさにする
             - 仕様書と食い違うときは、背景に「docs/○○ の△△と違う」と書く（仕様書そのものは書き換えない）
             - コードは変更しない。Issueの更新とコメントだけをする
-          claude_args: '--model sonnet --max-turns 30 --allowedTools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Read,Glob,Grep,Write"'
+          claude_args: '--model sonnet --max-turns 30 --allowedTools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh issue list:*),Bash(gh pr list:*),Bash(gh pr diff:*),Read,Glob,Grep,Write"'
       - name: 次へ進める（実装を依頼する／質問で止まる）
         if: ${{ !cancelled() }}
         env:
