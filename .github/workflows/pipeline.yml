@@ -48,6 +48,7 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: read
+      checks: read
     steps:
       - uses: actions/checkout@v6
       - env:
@@ -57,7 +58,7 @@ jobs:
           CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          RUN_STARTED: ${{ github.event.workflow_run.run_started_at }}
+          READ_TOKEN: ${{ github.token }}
         run: .github/scripts/after-review.sh
 
   after-mention:

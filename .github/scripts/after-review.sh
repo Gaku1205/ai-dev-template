@@ -3,7 +3,7 @@
 #   指摘なし → CIも全部通っていれば自動でマージ（ai:hold が付いていたら、マージは人間に任せて通知）
 #   指摘あり → AIに直させる（上限を超えたら人間に回す）
 #
-# 環境変数：CONCLUSION、HEAD_SHA、HEAD_BRANCH
+# 環境変数：CONCLUSION、HEAD_SHA、HEAD_BRANCH、READ_TOKEN（ワークフローのトークン）
 source "$(dirname "$0")/pipeline-lib.sh"
 set -e
 
@@ -47,7 +47,8 @@ if ! printf '%s' "$review" | grep -q "No issues found"; then
 fi
 
 # CI（レビュー以外のチェック）が全部通っているか、もう一度確かめる
-checks=$(gh api "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" \
+# チェックの読み取りはワークフロー自身のトークン（checks: read）で行う（PIPELINE_TOKEN に Checks の権限は付けていない）
+checks=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" \
   -q '[.check_runs[] | select(.name != "review")]')
 actions_count=$(printf '%s' "$checks" | jq '[.[] | select(.app.slug == "github-actions")] | length')
 not_ok=$(printf '%s' "$checks" | jq '[.[] | select(.status != "completed" or (.conclusion | IN("success", "neutral", "skipped") | not))] | length')
