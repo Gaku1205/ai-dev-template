@@ -3,7 +3,7 @@
 #   指摘なし → CIも全部通っていれば自動でマージ（ai:hold が付いていたら、マージは人間に任せて通知）
 #   指摘あり → AIに直させる（上限を超えたら人間に回す）
 #
-# 環境変数：CONCLUSION、HEAD_SHA、HEAD_BRANCH、RUN_STARTED（レビューが始まった時刻）
+# 環境変数：CONCLUSION、HEAD_SHA、HEAD_BRANCH
 source "$(dirname "$0")/pipeline-lib.sh"
 set -e
 
@@ -28,8 +28,11 @@ if [ "$CONCLUSION" != "success" ]; then
   exit 0
 fi
 
-# このレビューで書かれた結果のコメント（「## Code review」で始まる）を探す
-review=$(all_comments "$pr" | jq -r --arg since "$RUN_STARTED" \
+# いまの先頭コミットのあとに書かれた、最新のレビュー結果（「## Code review」で始まる）を探す。
+# 同じコミットをもう一度レビューすると、レビューAIは新しいコメントを書かないことがあるので、
+# 「この実行で書かれた物」ではなく「先頭コミットより新しい物」を見る
+head_date=$(gh api "repos/$REPO/commits/$HEAD_SHA" -q .commit.committer.date)
+review=$(all_comments "$pr" | jq -r --arg since "$head_date" \
   'map(select(.user.login == "claude[bot]" and (.body | startswith("## Code review")) and .created_at >= $since)) | last | .body // ""')
 
 if [ -z "$review" ]; then
