@@ -7,6 +7,7 @@
   → 企画AIが清書して ai:implement を付ける        claude-plan.yml
   → 実装AIがブランチに実装し、PRを自動で作る        claude-implement.yml
   → CI（型チェック・リント・テスト・ビルド）         ci.yml
+  → main が進んでいたら取り込んでCIをやり直す         pipeline.yml
   → 通ったらレビューAI（ai:review）                 pipeline.yml → claude-review.yml
   → 指摘なし：自動でマージ → Vercelが本番に公開      pipeline.yml
      指摘あり／CI失敗：AIが直す（@claude）→ CIから   pipeline.yml → claude-mention.yml
