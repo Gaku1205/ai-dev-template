@@ -29,11 +29,11 @@ if [ "$CONCLUSION" != "success" ]; then
 fi
 
 # いまの先頭コミットのあとに書かれた、最新のレビュー結果（「## Code review」で始まる）を探す。
-# 同じコミットをもう一度レビューすると、レビューAIは新しいコメントを書かないことがあるので、
+# まとめのコメントは、レビューAIが gh で書くので github-actions[bot] の名前で付く（行への指摘は claude[bot]）。
 # 「この実行で書かれた物」ではなく「先頭コミットより新しい物」を見る
 head_date=$(gh api "repos/$REPO/commits/$HEAD_SHA" -q .commit.committer.date)
 review=$(all_comments "$pr" | jq -r --arg since "$head_date" \
-  'map(select(.user.login == "claude[bot]" and (.body | startswith("## Code review")) and .created_at >= $since)) | last | .body // ""')
+  'map(select((.user.login == "claude[bot]" or .user.login == "github-actions[bot]") and (.body | startswith("## Code review")) and .created_at >= $since)) | last | .body // ""')
 
 # 指摘があるとき、レビューAIはまとめのコメントを書かず、コードの行への指摘（インラインコメント）だけを残すことがある
 inline=$(gh api "repos/$REPO/pulls/$pr/comments?per_page=100" --paginate --slurp \
