@@ -5,6 +5,7 @@
 ```
 メモを書く（ai:plan）
   → 企画AIが清書して ai:implement を付ける        claude-plan.yml
+     （ほかの作業が進行中なら ai:queue で順番待ち）
   → 実装AIがブランチに実装し、PRを自動で作る        claude-implement.yml
   → CI（型チェック・リント・テスト・ビルド）         ci.yml
   → main が進んでいたら取り込んでCIをやり直す         pipeline.yml
