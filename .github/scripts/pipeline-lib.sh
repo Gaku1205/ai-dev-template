@@ -9,7 +9,9 @@
 #   GITHUB_REPOSITORY  ：owner/repo（Actionsが自動で入れる）
 #   NTFY_TOPIC         ：スマホ通知（無ければ鳴らさない）
 
-set -uo pipefail
+set -Euo pipefail
+# 失敗したら、どの行のどのコマンドかをActionsの画面に出す
+trap 'echo "::error file=${BASH_SOURCE[0]},line=${LINENO}::失敗したコマンド: ${BASH_COMMAND}"' ERR
 
 REPO="${GITHUB_REPOSITORY}"
 OWNER="${REPO%%/*}"
