@@ -24,7 +24,20 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v6
-      - env:
+      - name: PIPELINE_TOKEN が登録されているか
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Secret PIPELINE_TOKEN が登録されていません"
+            exit 1
+          fi
+      - name: トークンでIssueを読めるか
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+        run: gh issue list -R "$GITHUB_REPOSITORY" --limit 1 --json number > /dev/null
+      - name: 順番待ちを1つ進める
+        env:
           GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
         run: |
           # Issueが閉じた直後は、まだ一覧に反映されていないことがあるので少し待つ
