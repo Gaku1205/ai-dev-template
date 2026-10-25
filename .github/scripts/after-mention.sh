@@ -4,15 +4,15 @@
 #
 # 環境変数：RUN_STARTED（対応が始まった時刻）
 source "$(dirname "$0")/pipeline-lib.sh"
+set -e
 
 has_pipeline_token || { echo "PIPELINE_TOKEN が無いので何もしません"; exit 0; }
 
 started=$(date -d "$RUN_STARTED" +%s)
 
-for pr in $(gh pr list -R "$REPO" --state open --json number -q '.[].number'); do
-  pr_has_label "$pr" "ai:stuck" && continue
-  last=$(gh api "repos/$REPO/issues/$pr/comments" --paginate --slurp \
-    | jq -c --arg mark "$AUTO_FIX_MARK" 'add | map(select(.body | contains($mark))) | last // empty')
+for pr in $(gh api "repos/$REPO/pulls?state=open&per_page=100" -q '.[].number'); do
+  has_label "$pr" "ai:stuck" && continue
+  last=$(all_comments "$pr" | jq -c --arg mark "$AUTO_FIX_MARK" 'map(select(.body | contains($mark))) | last // empty')
   [ -z "$last" ] && continue
 
   created=$(date -d "$(printf '%s' "$last" | jq -r .created_at)" +%s)
@@ -22,7 +22,7 @@ for pr in $(gh pr list -R "$REPO" --state open --json number -q '.[].number'); d
   fi
 
   asked_sha=$(printf '%s' "$last" | jq -r .body | sed -nE 's/.*auto-fix-sha: ([0-9a-f]+).*/\1/p')
-  head=$(gh pr view "$pr" -R "$REPO" --json headRefOid -q .headRefOid)
+  head=$(gh api "repos/$REPO/pulls/$pr" -q .head.sha)
   if [ -n "$asked_sha" ] && [ "$head" = "$asked_sha" ]; then
     stop_for_human "$pr" "AIに直すよう頼みましたが、変更が入りませんでした（AIのコメントを確認してください）"
   fi

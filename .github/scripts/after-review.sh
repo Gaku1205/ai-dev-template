@@ -5,10 +5,11 @@
 #
 # 環境変数：CONCLUSION、HEAD_SHA、HEAD_BRANCH、RUN_STARTED（レビューが始まった時刻）
 source "$(dirname "$0")/pipeline-lib.sh"
+set -e
 
 has_pipeline_token || { echo "PIPELINE_TOKEN が無いので何もしません"; exit 0; }
 
-read -r pr head < <(find_open_pr "$HEAD_BRANCH")
+read -r pr head < <(find_open_pr "$HEAD_BRANCH") || true
 if [ -z "${pr:-}" ]; then
   echo "openのPRがありません"
   exit 0
@@ -17,7 +18,7 @@ if [ "$head" != "$HEAD_SHA" ]; then
   echo "レビューのあとに新しいコミットが来ているので、何もしません"
   exit 0
 fi
-if pr_has_label "$pr" "ai:stuck"; then
+if has_label "$pr" "ai:stuck"; then
   echo "人間の確認待ち（ai:stuck）なので、何もしません"
   exit 0
 fi
@@ -28,9 +29,8 @@ if [ "$CONCLUSION" != "success" ]; then
 fi
 
 # このレビューで書かれた結果のコメント（「## Code review」で始まる）を探す
-review=$(gh api "repos/$REPO/issues/$pr/comments" --paginate --slurp \
-  | jq -r --arg since "$RUN_STARTED" \
-    'add | map(select(.user.login == "claude[bot]" and (.body | startswith("## Code review")) and .created_at >= $since)) | last | .body // ""')
+review=$(all_comments "$pr" | jq -r --arg since "$RUN_STARTED" \
+  'map(select(.user.login == "claude[bot]" and (.body | startswith("## Code review")) and .created_at >= $since)) | last | .body // ""')
 
 if [ -z "$review" ]; then
   stop_for_human "$pr" "レビューAIの結果のコメントが見つかりませんでした"
@@ -53,13 +53,11 @@ if [ "$actions_count" -eq 0 ] || [ "$not_ok" -gt 0 ]; then
   exit 0
 fi
 
-title=$(gh pr view "$pr" -R "$REPO" --json title -q .title)
-if pr_has_label "$pr" "ai:hold"; then
+title=$(issue_title "$pr")
+if has_label "$pr" "ai:hold"; then
   notify "マージできます" "PR #${pr} ${title}：CIもレビューもOK。ai:hold なのでマージはあなたが押してください" 4
   exit 0
 fi
 
-gh pr merge "$pr" -R "$REPO" --merge --match-head-commit "$HEAD_SHA"
-echo "PR #$pr：自動でマージしました"
-
-# 次の順番待ちは、Issueが閉じたときに queue.yml が始める
+gh api -X PUT "repos/$REPO/pulls/$pr/merge" -f merge_method=merge -f sha="$HEAD_SHA" > /dev/null
+echo "PR #$pr：自動でマージしました（次の順番待ちは、Issueが閉じたときに queue.yml が始める）"

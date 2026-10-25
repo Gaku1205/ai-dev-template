@@ -4,6 +4,7 @@
 #
 # 環境変数：ISSUE（番号）、ISSUE_TITLE、AI_OUTCOME（実装AIの結果 success/failure）
 source "$(dirname "$0")/pipeline-lib.sh"
+set -e
 
 if ! has_pipeline_token; then
   # トークンが無い間は、今までどおり人間がPRを作る
@@ -27,27 +28,26 @@ for b in $(gh api "repos/$REPO/branches?per_page=100" --paginate -q ".[].name | 
 done
 
 if [ -z "$branch" ]; then
-  gh issue edit "$ISSUE" -R "$REPO" --add-label "ai:stuck" > /dev/null || true
+  add_label "$ISSUE" "ai:stuck" || true
   notify "AIが止まりました" "#${ISSUE} ${ISSUE_TITLE}：変更が作られませんでした。Issueのコメントを確認してください" 4
   exit 0
 fi
 
 ahead=$(gh api "repos/$REPO/compare/main...$branch" -q .ahead_by)
 if [ "${ahead:-0}" -eq 0 ]; then
-  gh issue edit "$ISSUE" -R "$REPO" --add-label "ai:stuck" > /dev/null || true
+  add_label "$ISSUE" "ai:stuck" || true
   notify "AIが止まりました" "#${ISSUE} ${ISSUE_TITLE}：ブランチに変更がありません" 4
   exit 0
 fi
 
-existing=$(find_open_pr "$branch")
+existing=$(find_open_pr "$branch" || true)
 if [ -n "$existing" ]; then
   echo "PRはもうあります：$existing"
   exit 0
 fi
 
 # 実装AIの最後のコメントの「Create PR」リンクから、本文を取り出す
-comment=$(gh api "repos/$REPO/issues/$ISSUE/comments" --paginate --slurp \
-  | jq -r 'add | map(select(.user.login == "claude[bot]")) | last | .body // ""')
+comment=$(all_comments "$ISSUE" | jq -r 'map(select(.user.login == "claude[bot]")) | last | .body // ""')
 body=$(printf '%s' "$comment" | python3 -c '
 import re, sys, urllib.parse
 text = sys.stdin.read()
@@ -66,8 +66,8 @@ body="${body}
 ---
 _実装AIの作業が終わったので、自動で作ったPRです。CIが通るとレビューAIが確認し、問題がなければ自動でマージします。_"
 
-printf '%s' "$body" > /tmp/pr-body.md
-gh pr create -R "$REPO" --base main --head "$branch" --title "$ISSUE_TITLE" --body-file /tmp/pr-body.md
+created=$(gh api "repos/$REPO/pulls" -f title="$ISSUE_TITLE" -f head="$branch" -f base=main -f body="$body" -q .html_url)
+echo "PRを作りました：$created"
 
 if [ "$AI_OUTCOME" != "success" ]; then
   echo "実装AIは途中で止まりましたが（作業回数の上限など）、変更があるのでPRにしました。CIで確かめます"
