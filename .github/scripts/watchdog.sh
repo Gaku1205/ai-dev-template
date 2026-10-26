@@ -3,7 +3,8 @@
 #   1. ai:retry が付いた物（使用量の上限・AIのエラーで止まった物）を、待ち時間が過ぎていたらやり直す
 #   2. 失敗の知らせも無いまま止まっている物（時間切れなど）を見つけて、ai:retry を付ける
 #   3. CIが「承認待ち」で止まっている物を動かし直す
-#   4. 順番待ち（ai:queue）を進める
+#   4. ラベルが無いまま放置されたIssueを企画（ai:plan）に回す
+#   5. 順番待ち（ai:queue）を進める
 # 人間の確認待ち（ai:stuck）の物は触らない。
 #
 # 環境変数：READ_TOKEN（ワークフローのトークン、actions: read）
@@ -142,6 +143,16 @@ for pr in $(printf '%s' "$open_prs" | jq -r '.[].number'); do
       mark_for_retry "$pr" review "レビューAIの結果が出ないまま${m}分たちました"
     fi
   fi
+done
+
+# ---- 3.5 ラベルが無いまま放置されたIssueを、企画に回す（受付 intake.yml が動かなかったとき・ai:skip を外したとき） ----
+for n in $(gh api "repos/$REPO/issues?state=open&per_page=100" -q '.[] | select(.pull_request | not) | .number'); do
+  case "$handled" in *" $n "*) continue ;; esac
+  m=$(idle_min "$(gh api "repos/$REPO/issues/$n" -q .updated_at)")
+  [ "$m" -lt "${IDLE_INTAKE_MIN:-10}" ] && continue
+  needs_intake "$n" || continue
+  add_label "$n" "ai:plan"
+  echo "#$n：ラベルが無いまま${m}分たったので、企画に回しました"
 done
 
 # ---- 4. 順番待ちを進める ----

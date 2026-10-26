@@ -96,6 +96,13 @@ linked_issue() {
   printf '%s' "$n"
 }
 
+# まだパイプラインに乗っていないIssueか（ai: で始まるラベルが1つも無い。ai:skip も ai: なので「まだ動かさない」になる）
+needs_intake() {
+  local labels
+  labels=$(gh api "repos/$REPO/issues/$1/labels" -q '.[].name') || return 1
+  ! printf '%s\n' "$labels" | grep -q '^ai:'
+}
+
 # ---- 判断 ----
 
 # 人間に回す：PRと紐づくIssueに ai:stuck を付けて、理由をコメントし、スマホに通知

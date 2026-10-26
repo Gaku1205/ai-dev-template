@@ -3,7 +3,7 @@
 人間がやるのは「何を作るか決める」ことだけ。あとはAIとGitHub Actionsが進め、人間の判断が要るときだけ止まって知らせる。
 
 ```
-メモを書く（ai:plan）
+Issueを作る（メモ）。ラベルが無ければ自動で ai:plan が付く   intake.yml（見落としは watchdog.yml が拾う）
   → 企画AIが清書して ai:implement を付ける        claude-plan.yml
      （進行中の作業とぶつかると企画AIが判断したら ai:queue で順番待ち。別の場所なら最大2つまで並列）
   → 実装AIがブランチに実装し、PRを自動で作る        claude-implement.yml
@@ -24,7 +24,8 @@
 
 | ラベル | 付けるのは | 意味 |
 | --- | --- | --- |
-| `ai:plan` | 人間（「メモ」で書くと自動で付く） | 企画AIが清書して、実装に回す |
+| `ai:plan` | 受付（intake.yml）。人間が付けてもよい | 企画AIが清書して、実装に回す |
+| `ai:skip` | 人間 | まだ自動で動かさない。Issueを作るとき付けておく。外すと企画に回る（人間の下準備が先に要る物用） |
 | `ai:implement` | 人間か企画AI | 実装AIが作業を始める |
 | `size:S` / `size:L` | 人間か企画AI | 実装AIのモデルと作業回数の上限を変える（S：haiku・25回、無印：sonnet・50回、L：opus・80回） |
 | `ai:review` | パイプライン（人間も可） | レビューAIが確認する |
