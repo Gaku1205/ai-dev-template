@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# 見張り役（watchdog.yml が30分ごとに動かす）：パイプラインが止まったまま動かなくなっていないか見て、自動で再開させる。
+#   1. ai:retry が付いた物（使用量の上限・AIのエラーで止まった物）を、待ち時間が過ぎていたらやり直す
+#   2. 失敗の知らせも無いまま止まっている物（時間切れなど）を見つけて、ai:retry を付ける
+#   3. CIが「承認待ち」で止まっている物を動かし直す
+#   4. 順番待ち（ai:queue）を進める
+# 人間の確認待ち（ai:stuck）の物は触らない。
+#
+# 環境変数：READ_TOKEN（ワークフローのトークン、actions: read）
+source "$(dirname "$0")/pipeline-lib.sh"
+
+has_pipeline_token || { echo "PIPELINE_TOKEN が無いので何もしません"; exit 0; }
+
+# これだけ何の動きも無ければ「止まっている」とみなす（分）
+IDLE_PLAN_MIN="${IDLE_PLAN_MIN:-30}"
+IDLE_IMPLEMENT_MIN="${IDLE_IMPLEMENT_MIN:-45}"
+IDLE_REVIEW_MIN="${IDLE_REVIEW_MIN:-30}"
+IDLE_CI_MIN="${IDLE_CI_MIN:-5}"
+
+now=$(date +%s)
+idle_min() {
+  echo $(( (now - $(date -d "$1" +%s)) / 60 ))
+}
+
+open_prs=$(gh api "repos/$REPO/pulls?state=open&per_page=100")
+# 実装AIのブランチ（claude/issue-N-...）のPRがopenであるか
+has_open_pr_for_issue() {
+  printf '%s' "$open_prs" | jq -e --arg p "claude/issue-$1-" 'any(.[]; .head.ref | startswith($p))' > /dev/null
+}
+
+# ---- 1. ai:retry が付いた物をやり直す ----
+handled=" "   # この実行でやり直した番号（同じ実行で、すぐ次の確認に引っかからないように）
+for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry" -q '.[].number'); do
+  if has_label "$n" "ai:stuck"; then
+    remove_label "$n" "ai:retry"
+    continue
+  fi
+  retry_due "$n" || { echo "#$n：やり直すにはまだ早いです"; continue; }
+
+  record=$(retry_comment "$n")
+  body=$(printf '%s' "$record" | jq -r .body)
+  kind=$(printf '%s' "$body" | sed -nE 's/.*kind=([a-z]+).*/\1/p' | tail -1)
+  reason=$(printf '%s' "$body" | sed -nE 's/^理由：(.*)$/\1/p' | head -1)
+  count=$(retry_count "$n")
+  next=$((count + 1))
+  echo "#$n：${kind} をやり直します（${next}/${MAX_RETRY}回目）"
+  handled="${handled}${n} "
+
+  case "$kind" in
+    plan)
+      write_retry_record "$n" "$next" "$kind" "$reason"
+      remove_label "$n" "ai:retry"
+      remove_label "$n" "ai:plan"
+      add_label "$n" "ai:plan"
+      ;;
+    implement)
+      write_retry_record "$n" "$next" "$kind" "$reason"
+      remove_label "$n" "ai:retry"
+      if has_open_pr_for_issue "$n"; then
+        echo "#$n：PRができているので、実装はやり直しません"
+      else
+        remove_label "$n" "ai:implement"
+        add_label "$n" "ai:implement"
+      fi
+      ;;
+    review)
+      write_retry_record "$n" "$next" "$kind" "$reason"
+      remove_label "$n" "ai:retry"
+      remove_label "$n" "ai:review"
+      add_label "$n" "ai:review"
+      ;;
+    mention)
+      pr_json=$(gh api "repos/$REPO/pulls/$n")
+      head=$(printf '%s' "$pr_json" | jq -r .head.sha)
+      # 前回の依頼の文を、そのままもう一度出す（印のコメント行は除く）
+      request=$(all_comments "$n" | jq -r 'map(select(.body | test("<!-- auto-fix(-retry)? -->"))) | last | .body // ""' | sed -e '/^<!--/d' -e '/^（前回は応答がなかったので/d')
+      write_retry_record "$n" "$next" "$kind" "$reason"
+      remove_label "$n" "ai:retry"
+      comment "$n" "${request}
+
+（前回は応答がなかったので、同じ依頼をもう一度出します。自動のやり直し ${next}/${MAX_RETRY}）
+
+<!-- auto-fix-retry -->
+<!-- auto-fix-sha: ${head} -->"
+      ;;
+    *)
+      echo "#$n：やり直しの種類が分からないので、印だけ外します"
+      remove_label "$n" "ai:retry"
+      ;;
+  esac
+done
+
+# ---- 2. 失敗の知らせも無いまま止まっている物 ----
+# 企画AI：ai:plan が付いたまま動きが無い
+for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aplan" -q '.[] | select(.pull_request | not) | .number'); do
+  case "$handled" in *" $n "*) continue ;; esac
+  has_label "$n" "ai:stuck" && continue
+  has_label "$n" "ai:retry" && continue
+  m=$(idle_min "$(gh api "repos/$REPO/issues/$n" -q .updated_at)")
+  [ "$m" -lt "$IDLE_PLAN_MIN" ] && continue
+  mark_for_retry "$n" plan "企画AIの終了が確認できないまま${m}分たちました"
+done
+
+# 実装AI：ai:implement が付いたまま、PRもできず動きが無い
+for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aimplement" -q '.[] | select(.pull_request | not) | .number'); do
+  case "$handled" in *" $n "*) continue ;; esac
+  has_label "$n" "ai:stuck" && continue
+  has_label "$n" "ai:retry" && continue
+  has_open_pr_for_issue "$n" && continue
+  m=$(idle_min "$(gh api "repos/$REPO/issues/$n" -q .updated_at)")
+  [ "$m" -lt "$IDLE_IMPLEMENT_MIN" ] && continue
+  mark_for_retry "$n" implement "実装AIの終了が確認できないまま${m}分たちました"
+done
+
+# PRごとの確認
+for pr in $(printf '%s' "$open_prs" | jq -r '.[].number'); do
+  case "$handled" in *" $pr "*) continue ;; esac
+  has_label "$pr" "ai:stuck" && continue
+  pr_json=$(printf '%s' "$open_prs" | jq -c --argjson n "$pr" '.[] | select(.number == $n)')
+  head=$(printf '%s' "$pr_json" | jq -r .head.sha)
+  ref=$(printf '%s' "$pr_json" | jq -r .head.ref)
+  m=$(idle_min "$(printf '%s' "$pr_json" | jq -r .updated_at)")
+
+  # ---- 3. CIが承認待ちで止まっている ----
+  if [ "$m" -ge "$IDLE_CI_MIN" ]; then
+    runs=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/runs?head_sha=$head&event=pull_request&per_page=50" \
+      -q '[.workflow_runs[] | select(.name == "CI")]')
+    waiting=$(printf '%s' "$runs" | jq '[.[] | select(.conclusion == "action_required")] | length')
+    running=$(printf '%s' "$runs" | jq '[.[] | select(.conclusion != "action_required")] | length')
+    if [ "$waiting" -gt 0 ] && [ "$running" -eq 0 ]; then
+      rerun_ci_if_waiting_approval "$pr" "$head" "$ref"
+      continue
+    fi
+  fi
+
+  # レビューAI：ai:review を付けたのに結果が出ないまま止まっている
+  if has_label "$pr" "ai:review" && ! has_label "$pr" "ai:retry" && [ "$m" -ge "$IDLE_REVIEW_MIN" ]; then
+    head_date=$(gh api "repos/$REPO/commits/$head" -q .commit.committer.date)
+    reviewed=$(all_comments "$pr" | jq --arg since "$head_date" \
+      '[.[] | select((.user.login == "claude[bot]" or .user.login == "github-actions[bot]") and (.body | startswith("## Code review")) and .created_at >= $since)] | length')
+    if [ "$reviewed" -eq 0 ]; then
+      mark_for_retry "$pr" review "レビューAIの結果が出ないまま${m}分たちました"
+    fi
+  fi
+done
+
+# ---- 4. 順番待ちを進める ----
+start_next_in_queue || echo "順番待ちを進められませんでした"

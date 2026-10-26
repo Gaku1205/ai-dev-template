@@ -10,7 +10,13 @@ source "$(dirname "$0")/pipeline-lib.sh"
 MAX_PARALLEL="${MAX_PARALLEL:-2}"
 
 result=$(head -n 1 plan-result.txt 2> /dev/null | tr -d '\r' || true)
-if [ "$PLAN_OUTCOME" != "success" ] || [ -z "$result" ]; then
+# 企画AIがエラーで終わったとき（使用量の上限など）は、質問扱いにせず、自動でやり直す（watchdog.sh）
+if [ "$PLAN_OUTCOME" != "success" ]; then
+  export GH_TOKEN="$GITHUB_TOKEN_FOR_LABELS"
+  mark_for_retry "$ISSUE" plan "企画AIがエラーで止まりました（使用量の上限などの可能性）"
+  exit 0
+fi
+if [ -z "$result" ]; then
   result="QUESTION"
 fi
 echo "清書の結果：$result"

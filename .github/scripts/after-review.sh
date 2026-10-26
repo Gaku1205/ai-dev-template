@@ -24,7 +24,8 @@ if has_label "$pr" "ai:stuck"; then
 fi
 
 if [ "$CONCLUSION" != "success" ]; then
-  stop_for_human "$pr" "レビューAIがエラーで止まりました"
+  # 使用量の上限などの一時的な失敗かもしれないので、人間に回す前に自動でやり直す（watchdog.sh）
+  mark_for_retry "$pr" review "レビューAIがエラーで止まりました（使用量の上限などの可能性）"
   exit 0
 fi
 

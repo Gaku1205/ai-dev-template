@@ -14,7 +14,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -28,7 +28,29 @@ jobs:
         run: npm run typecheck
       - name: リント
         run: npm run lint
+      # テスト・見た目のテストは、package.json にスクリプトがあるときだけ回す
+      - name: テストがあるか
+        id: unit
+        run: echo "enabled=$(jq -r '.scripts["test"] != null' package.json)" >> "$GITHUB_OUTPUT"
       - name: テスト
+        if: steps.unit.outputs.enabled == 'true'
         run: npm run test
       - name: ビルド
         run: npm run build
+      # 見た目のテスト：画面のスクショを、前の画像と比べる
+      - name: 見た目のテストがあるか
+        id: visual
+        run: echo "enabled=$(jq -r '.scripts["test:visual"] != null' package.json)" >> "$GITHUB_OUTPUT"
+      - name: 見た目のテスト用のブラウザを入れる
+        if: steps.visual.outputs.enabled == 'true'
+        run: npx playwright install --with-deps chromium
+      - name: 見た目のテスト
+        if: steps.visual.outputs.enabled == 'true'
+        run: npm run test:visual
+      - name: 見た目のテストの結果（差分の画像）を残す
+        if: failure() && steps.visual.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-diff
+          path: test-results/
+          retention-days: 7

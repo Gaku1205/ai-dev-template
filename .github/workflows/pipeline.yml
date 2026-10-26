@@ -81,5 +81,6 @@ jobs:
           NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
           RUN_STARTED: ${{ github.event.workflow_run.run_started_at }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           READ_TOKEN: ${{ github.token }}
         run: .github/scripts/after-mention.sh

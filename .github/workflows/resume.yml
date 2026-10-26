@@ -1,0 +1,35 @@
+# 再開：人間が ai:stuck を外すと、止まった所から自動で続ける。
+#   PR    → AIに直させる回数をリセットして、いまのCIの状態から続ける
+#   Issue → PRがまだなら、企画・実装をやり直す
+# pull_request_target なので、PRの中身ではなく main にある版のスクリプトが動く（PRの変更でトークンを使われない）。
+name: Resume
+
+on:
+  issues:
+    types: [unlabeled]
+  pull_request_target:
+    types: [unlabeled]
+
+jobs:
+  resume:
+    if: github.event.label.name == 'ai:stuck'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: resume-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+    steps:
+      - uses: actions/checkout@v6
+      - env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          READ_TOKEN: ${{ github.token }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
+          AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
+          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          IS_PR: ${{ github.event_name == 'pull_request_target' }}
+        run: .github/scripts/resume.sh

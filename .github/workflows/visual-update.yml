@@ -1,0 +1,55 @@
+# 見た目のテストの基準の画像を、CIと同じ環境で撮り直してPRのブランチにコミットする。
+# PRに「visual:update」ラベルを付けると動く（終わるとラベルは外れる）。
+# 文字の描き方はパソコンごとに少し違うので、基準の画像はCIの環境で撮った物にそろえる。
+# 見た目をわざと変えたPRや、初めて基準の画像を作るPRで使う。
+name: Visual Update
+
+on:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  update:
+    if: >-
+      github.event.label.name == 'visual:update' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: visual-update-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+    steps:
+      # オーナーのトークンでpushするので、そのあとCIがもう一度走る
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.PIPELINE_TOKEN }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: 基準の画像を撮り直す
+        run: npm run test:visual -- --update-snapshots
+      - name: 変わった画像をコミットする
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          git config user.name "agent-desk pipeline"
+          git config user.email "noreply@github.com"
+          git add -A tests/visual
+          if git diff --cached --quiet; then
+            echo "基準の画像に変わりはありません"
+          else
+            git commit -m "見た目のテスト：基準の画像をCIの環境で撮り直す"
+            git push origin "HEAD:$BRANCH"
+          fi
+      - name: ラベルを外す
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/$PR/labels/visual%3Aupdate" > /dev/null || true

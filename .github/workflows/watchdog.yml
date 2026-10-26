@@ -1,0 +1,35 @@
+# 見張り役：30分ごとに、パイプラインが止まったまま動かなくなっていないか見て、自動で再開させる。
+#   ・使用量の上限やAIのエラーで止まった物（ai:retry）を、時間をおいてやり直す
+#   ・時間切れなどで、失敗の知らせも無いまま止まっている物を見つけてやり直す
+#   ・CIが承認待ちで止まっている物を動かし直す
+#   ・順番待ち（ai:queue）を進める
+# 人間の確認待ち（ai:stuck）は触らない。やり直しは10回まで（超えたら ai:stuck で人間に回す）。
+# 手で動かすこともできる（Actions → Watchdog → Run workflow）。
+name: Watchdog
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: watchdog
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+      - name: 見張る
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          READ_TOKEN: ${{ github.token }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
+          AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
+        run: .github/scripts/watchdog.sh

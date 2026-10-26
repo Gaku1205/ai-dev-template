@@ -18,6 +18,12 @@ OWNER="${REPO%%/*}"
 # AIに自動で直させる回数の上限（CIの失敗とレビューの指摘を合わせて数える）。超えたら人間に回す
 MAX_AUTO_FIX="${MAX_AUTO_FIX:-2}"
 AUTO_FIX_MARK="<!-- auto-fix -->"
+RESUME_MARK="<!-- auto-resume -->"
+# 自動でやり直す回数の上限と、失敗してからやり直すまでの待ち時間（分）。
+# 使用量の上限で止まったときは、リセットされるまで何度かやり直しながら待つ
+RETRY_MARK="<!-- auto-retry -->"
+MAX_RETRY="${MAX_RETRY:-10}"
+RETRY_COOLDOWN_MIN="${RETRY_COOLDOWN_MIN:-30}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 notify() {
@@ -95,9 +101,10 @@ linked_issue() {
 stop_for_human() {
   local pr="$1" reason="$2"
   add_label "$pr" "ai:stuck" || true
+  remove_label "$pr" "ai:retry"
   comment "$pr" "⏸ 自動で進めるのを止めました：${reason}
 
-確認して、続けるなら \`ai:stuck\` を外してから対応してください（直す・マージする・閉じる）。" || true
+自分で直す・マージする・閉じるときは、そのまま対応してください。AIに続きを任せるなら \`ai:stuck\` を外してください（外すと、止まった所から自動で続けます）。" || true
   local issue
   issue=$(linked_issue "$pr")
   if [ -n "$issue" ]; then
@@ -106,11 +113,29 @@ stop_for_human() {
   notify stuck "確認が必要です" "PR #${pr} $(issue_title "$pr")：${reason}" 4
 }
 
+# Issue（PRではない）を人間に回す
+stop_issue_for_human() {
+  local n="$1" reason="$2"
+  add_label "$n" "ai:stuck" || true
+  remove_label "$n" "ai:retry"
+  comment "$n" "⏸ 自動で進めるのを止めました：${reason}
+
+確認して、続けるなら \`ai:stuck\` を外してください（外すと、止まった所から自動で続けます）。" || true
+  notify stuck "確認が必要です" "#${n} $(issue_title "$n")：${reason}" 4
+}
+
+# 「再開」の記録（人間が ai:stuck を外したとき resume.sh が書く）より後に、AIに自動で直させた回数
+count_auto_fix() {
+  all_comments "$1" | jq --arg mark "$AUTO_FIX_MARK" --arg resume "$RESUME_MARK" '
+    (map(select(.body | contains($resume)) | .created_at) | max // "") as $since
+    | [.[] | select((.body | contains($mark)) and .created_at > $since)] | length'
+}
+
 # AIに直させる。上限を超えていたら人間に回す
 request_fix_or_stop() {
   local pr="$1" sha="$2" message="$3"
   local count
-  count=$(all_comments "$pr" | jq --arg mark "$AUTO_FIX_MARK" '[.[] | select(.body | contains($mark))] | length')
+  count=$(count_auto_fix "$pr")
   if [ "$count" -ge "$MAX_AUTO_FIX" ]; then
     stop_for_human "$pr" "AIが${MAX_AUTO_FIX}回直しても解決しませんでした（最後の理由：${message}）"
     return
@@ -146,6 +171,67 @@ start_next_in_queue() {
   comment "$next" "▶ 順番が来たので実装を始めます。この作業の前に待っていた作業は、すべて終わっています（進行中の作業・openのPRはありません）。上の「待ち」のコメントは気にせず、このIssueの内容を実装してください。" || true
   add_label "$next" "ai:implement" || return 1
   echo "順番待ちの #$next を実装に回しました"
+}
+
+# ---- 自動のやり直し ----
+# 止まったとき、すぐ人間に回さず「あとでやり直す」印（ai:retry）と記録のコメントを付ける。
+# やり直しは watchdog.sh（30分ごと）が、待ち時間（RETRY_COOLDOWN_MIN）が過ぎてから行う。
+# 上限（MAX_RETRY）を超えたら人間に回す。kind：plan / implement（Issue）、review / mention（PR）
+
+retry_comment() {
+  all_comments "$1" | jq -c --arg mark "$RETRY_MARK" 'map(select(.body | contains($mark))) | last // empty'
+}
+
+retry_count() {
+  local c n
+  c=$(retry_comment "$1")
+  if [ -z "$c" ]; then
+    echo 0
+    return
+  fi
+  n=$(printf '%s' "$c" | jq -r .body | sed -nE 's/.*count=([0-9]+) kind=.*/\1/p' | tail -1)
+  echo "${n:-0}"
+}
+
+# 記録のコメントは1つだけ作り、あとは書き換える（コメントが増えないように）。num 回数 kind 理由
+write_retry_record() {
+  local num="$1" count="$2" kind="$3" reason="$4" c id body
+  body=$(printf '🔁 AIが止まったので、時間をおいて自動でやり直します（やり直し %s/%s回）。\n理由：%s\n\n%s\n<!-- count=%s kind=%s -->' \
+    "$count" "$MAX_RETRY" "$reason" "$RETRY_MARK" "$count" "$kind")
+  c=$(retry_comment "$num")
+  if [ -n "$c" ]; then
+    id=$(printf '%s' "$c" | jq -r .id)
+    gh api -X PATCH "repos/$REPO/issues/comments/$id" -f body="$body" > /dev/null
+  else
+    comment "$num" "$body"
+  fi
+}
+
+mark_for_retry() {
+  local num="$1" kind="$2" reason="$3" count
+  count=$(retry_count "$num")
+  if [ "$count" -ge "$MAX_RETRY" ]; then
+    if [ "$kind" = "plan" ]; then
+      remove_label "$num" "ai:plan"
+    fi
+    case "$kind" in
+      plan | implement) stop_issue_for_human "$num" "${reason}。自動でやり直しても${MAX_RETRY}回解決しませんでした" ;;
+      *) stop_for_human "$num" "${reason}。自動でやり直しても${MAX_RETRY}回解決しませんでした" ;;
+    esac
+    return
+  fi
+  write_retry_record "$num" "$count" "$kind" "$reason"
+  add_label "$num" "ai:retry"
+  echo "#$num：${reason}。あとで自動でやり直します（${count}/${MAX_RETRY}回やり直し済み）"
+}
+
+# 記録のコメントが最後に書き換えられてから、待ち時間が過ぎたか
+retry_due() {
+  local c updated
+  c=$(retry_comment "$1")
+  [ -z "$c" ] && return 0
+  updated=$(date -d "$(printf '%s' "$c" | jq -r .updated_at)" +%s)
+  [ $(( $(date +%s) - updated )) -ge $(( RETRY_COOLDOWN_MIN * 60 )) ]
 }
 
 # AI（claude[bot]）がpushしたコミットのCIは、GitHubが「承認待ち（action_required）」で止めることがある。
