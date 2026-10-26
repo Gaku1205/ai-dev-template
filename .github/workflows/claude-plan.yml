@@ -75,6 +75,7 @@ jobs:
           GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
           GITHUB_TOKEN_FOR_LABELS: ${{ github.token }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
           ISSUE: ${{ github.event.issue.number }}
           ISSUE_TITLE: ${{ github.event.issue.title }}

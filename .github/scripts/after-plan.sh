@@ -44,11 +44,11 @@ case "$result" in
         echo "#$ISSUE：実装を依頼しました"
       fi
     else
-      notify "Issueを清書しました" "#${ISSUE} ${title}：ai:implement を付けると実装が始まります" 3
+      notify manual "Issueを清書しました" "#${ISSUE} ${title}：ai:implement を付けると実装が始まります" 3
     fi
     ;;
   *)
     add_label "$ISSUE" "ai:stuck" || true
-    notify "質問があります" "#${ISSUE} ${title}：Issueのコメントを見て答えてください" 4
+    notify question "質問があります" "#${ISSUE} ${title}：Issueのコメントを見て答えてください" 4
     ;;
 esac

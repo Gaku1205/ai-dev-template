@@ -103,7 +103,7 @@ stop_for_human() {
   if [ -n "$issue" ]; then
     add_label "$issue" "ai:stuck" || true
   fi
-  notify "確認が必要です" "PR #${pr} $(issue_title "$pr")：${reason}" 4
+  notify stuck "確認が必要です" "PR #${pr} $(issue_title "$pr")：${reason}" 4
 }
 
 # AIに直させる。上限を超えていたら人間に回す

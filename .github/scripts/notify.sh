@@ -1,8 +1,27 @@
 #!/usr/bin/env bash
-# スマホ通知（ntfy）。使い方：notify.sh "タイトル" "本文" [優先度 1〜5]
+# スマホ通知（ntfy）。使い方：notify.sh 種類 "タイトル" "本文" [優先度 1〜5]
 # 秘密の NTFY_TOPIC（ntfyアプリで購読するトピック名）が無ければ何もしない。
 # 通知に失敗しても、ワークフロー自体は失敗にしない。
+#
+# 種類（どれを鳴らすかは、リポジトリの Actions の Variable「NOTIFY_EVENTS」にカンマ区切りで書く。
+# agent-desk の設定画面から変えられる。無ければ DEFAULT_EVENTS）
+#   stuck         止まった（確認が必要）
+#   question      企画AIから質問がある
+#   hold          ai:hold のPRがマージできる
+#   manual        PIPELINE_TOKEN が無いので、次の操作（PR作成・実装の依頼）を人間がする
+#   deployed      本番に公開された
+#   deploy_failed 公開に失敗した
+#   merged        自動でマージした
+#   ci_failed     CIが失敗した（AIが直す前）
 set -uo pipefail
+DEFAULT_EVENTS="stuck,question,hold,manual,deployed,deploy_failed"
+event="$1"
+shift
+events="${NOTIFY_EVENTS:-$DEFAULT_EVENTS}"
+if ! printf ',%s,' "$events" | tr -d ' ' | grep -q ",${event},"; then
+  echo "通知の種類「${event}」は NOTIFY_EVENTS（${events}）に無いので鳴らしません"
+  exit 0
+fi
 if [ -z "${NTFY_TOPIC:-}" ]; then
   echo "NTFY_TOPIC が設定されていないので通知しません"
   exit 0

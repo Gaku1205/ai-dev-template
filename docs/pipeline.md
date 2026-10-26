@@ -57,5 +57,6 @@
 | `PIPELINE_TOKEN` | Secret | オーナーのFine-grained トークン。ラベル・コメント・PR作成・マージに使う。これで操作すると次のワークフローが動く（Actions標準のトークンだと動かない）。無い間は、PR作成とマージを人間がする |
 | `NTFY_TOPIC` | Secret | スマホ通知（ntfyアプリ）のトピック名。無ければ通知しない |
 | `AGENT_DESK_URL` | Variable | 通知を押したときに開く画面（省略可） |
+| `NOTIFY_EVENTS` | Variable | 鳴らす通知の種類（カンマ区切り）。省略時は `stuck,question,hold,manual,deployed,deploy_failed`。ほかに `merged`・`ci_failed` がある。種類の意味は `.github/scripts/notify.sh` |
 
 ほかに、GitHubの Claude アプリをこのリポジトリに入れる。ラベルは Actions の「Setup Labels」を1回実行すると作られる。

@@ -32,6 +32,7 @@ jobs:
       - env:
           GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
           CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -55,6 +56,7 @@ jobs:
       - env:
           GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
           CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -76,6 +78,7 @@ jobs:
       - env:
           GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
           RUN_STARTED: ${{ github.event.workflow_run.run_started_at }}
           READ_TOKEN: ${{ github.token }}

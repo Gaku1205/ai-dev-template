@@ -63,9 +63,10 @@ fi
 
 title=$(issue_title "$pr")
 if has_label "$pr" "ai:hold"; then
-  notify "マージできます" "PR #${pr} ${title}：CIもレビューもOK。ai:hold なのでマージはあなたが押してください" 4
+  notify hold "マージできます" "PR #${pr} ${title}：CIもレビューもOK。ai:hold なのでマージはあなたが押してください" 4
   exit 0
 fi
 
 gh api -X PUT "repos/$REPO/pulls/$pr/merge" -f merge_method=merge -f sha="$HEAD_SHA" > /dev/null
+notify merged "マージしました" "PR #${pr} ${title}：CIもレビューもOKだったので自動でマージしました" 2
 echo "PR #$pr：自動でマージしました（次の順番待ちは、Issueが閉じたときに queue.yml が始める）"

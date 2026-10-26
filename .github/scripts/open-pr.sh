@@ -9,9 +9,9 @@ set -e
 if ! has_pipeline_token; then
   # トークンが無い間は、今までどおり人間がPRを作る
   if [ "$AI_OUTCOME" = "success" ]; then
-    notify "PRを作れます" "#${ISSUE} ${ISSUE_TITLE}：AIの作業が終わりました" 4
+    notify manual "PRを作れます" "#${ISSUE} ${ISSUE_TITLE}：AIの作業が終わりました" 4
   else
-    notify "AIが止まりました" "#${ISSUE} ${ISSUE_TITLE}：結果を確認してPRを作ってください" 4
+    notify manual "AIが止まりました" "#${ISSUE} ${ISSUE_TITLE}：結果を確認してPRを作ってください" 4
   fi
   exit 0
 fi
@@ -29,14 +29,14 @@ done
 
 if [ -z "$branch" ]; then
   add_label "$ISSUE" "ai:stuck" || true
-  notify "AIが止まりました" "#${ISSUE} ${ISSUE_TITLE}：変更が作られませんでした。Issueのコメントを確認してください" 4
+  notify stuck "AIが止まりました" "#${ISSUE} ${ISSUE_TITLE}：変更が作られませんでした。Issueのコメントを確認してください" 4
   exit 0
 fi
 
 ahead=$(gh api "repos/$REPO/compare/main...$branch" -q .ahead_by)
 if [ "${ahead:-0}" -eq 0 ]; then
   add_label "$ISSUE" "ai:stuck" || true
-  notify "AIが止まりました" "#${ISSUE} ${ISSUE_TITLE}：ブランチに変更がありません" 4
+  notify stuck "AIが止まりました" "#${ISSUE} ${ISSUE_TITLE}：ブランチに変更がありません" 4
   exit 0
 fi
 

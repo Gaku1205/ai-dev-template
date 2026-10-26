@@ -19,6 +19,7 @@ jobs:
       - uses: actions/checkout@v6
       - env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
           STATE: ${{ github.event.state }}
           MESSAGE: ${{ github.event.commit.commit.message }}
@@ -27,7 +28,7 @@ jobs:
           title=$(printf '%s\n' "$MESSAGE" | sed -n '3p')
           [ -z "$title" ] && title=$(printf '%s\n' "$MESSAGE" | head -n 1)
           if [ "$STATE" = "success" ]; then
-            .github/scripts/notify.sh "公開されました" "$title" 3
+            .github/scripts/notify.sh deployed "公開されました" "$title" 3
           else
-            .github/scripts/notify.sh "公開に失敗しました" "$title：Vercelを確認してください" 5
+            .github/scripts/notify.sh deploy_failed "公開に失敗しました" "$title：Vercelを確認してください" 5
           fi

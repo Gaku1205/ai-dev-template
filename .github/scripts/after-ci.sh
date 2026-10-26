@@ -42,6 +42,7 @@ case "$CONCLUSION" in
     echo "PR #$pr：CIが通ったのでレビューを依頼しました"
     ;;
   failure)
+    notify ci_failed "CIが失敗しました" "PR #${pr} $(issue_title "$pr")：AIに直してもらいます" 3
     request_fix_or_stop "$pr" "$HEAD_SHA" "CIが失敗しました。失敗したチェックのログを確認して、原因を直してください。"
     echo "PR #$pr：CIが落ちたので直すよう依頼しました"
     ;;
