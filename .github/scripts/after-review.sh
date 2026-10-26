@@ -65,8 +65,12 @@ fi
 title=$(issue_title "$pr")
 # 仕組みそのもの（.github/・docs/pipeline.md・CLAUDE.md・AGENTS.md）を変えるPRは、AIの判断だけでは自動でマージしない。
 # 普通のIssue（アプリの作業）は今までどおり全自動。これらを触るPRだけ、マージを人間に任せて通知する
-if gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' \
-  | grep -qE '^(\.github/|docs/pipeline\.md$|CLAUDE\.md$|AGENTS\.md$)'; then
+# 変更ファイルの一覧を取れなかったら、マージせずに再試行へ回す（取れないまま「該当なし」と扱って自動でマージしない）
+if ! files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename'); then
+  mark_for_retry "$pr" review "変更ファイルの一覧を取得できませんでした（APIエラーなどの可能性）"
+  exit 0
+fi
+if printf '%s\n' "$files" | grep -qE '^(\.github/|docs/pipeline\.md$|CLAUDE\.md$|AGENTS\.md$)'; then
   notify hold "マージできます" "PR #${pr} ${title}：CIもレビューもOK。パイプライン自体を変えるPRなので、マージはあなたが押してください" 4
   echo "PR #$pr：パイプライン自体を変えるので、自動でマージしません"
   exit 0
