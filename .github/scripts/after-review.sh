@@ -63,6 +63,14 @@ if [ "$actions_count" -eq 0 ] || [ "$not_ok" -gt 0 ]; then
 fi
 
 title=$(issue_title "$pr")
+# 仕組みそのもの（.github/・docs/pipeline.md・CLAUDE.md・AGENTS.md）を変えるPRは、AIの判断だけでは自動でマージしない。
+# 普通のIssue（アプリの作業）は今までどおり全自動。これらを触るPRだけ、マージを人間に任せて通知する
+if gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' \
+  | grep -qE '^(\.github/|docs/pipeline\.md$|CLAUDE\.md$|AGENTS\.md$)'; then
+  notify hold "マージできます" "PR #${pr} ${title}：CIもレビューもOK。パイプライン自体を変えるPRなので、マージはあなたが押してください" 4
+  echo "PR #$pr：パイプライン自体を変えるので、自動でマージしません"
+  exit 0
+fi
 if has_label "$pr" "ai:hold"; then
   notify hold "マージできます" "PR #${pr} ${title}：CIもレビューもOK。ai:hold なのでマージはあなたが押してください" 4
   exit 0
