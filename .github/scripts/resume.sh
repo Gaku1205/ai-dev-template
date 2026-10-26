@@ -4,7 +4,7 @@
 #           （通っていればレビューへ、落ちていれば直す、承認待ちなら動かし直す）
 #   Issue → PRがまだなら、企画・実装をやり直す
 #
-# 環境変数：NUMBER、IS_PR（true/false）、READ_TOKEN（ワークフローのトークン、actions: read / checks: read）
+# 環境変数：NUMBER、IS_PR（true/false）、READ_TOKEN（ワークフローのトークン、actions: read）
 source "$(dirname "$0")/pipeline-lib.sh"
 set -e
 
@@ -43,23 +43,22 @@ if [ "$IS_PR" = "true" ]; then
 
 ${RESUME_MARK}"
 
-  # いまの先頭コミットのCI（レビュー以外）の状態
-  checks=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/commits/$head/check-runs?per_page=100" \
-    -q '[.check_runs[] | select(.name != "review" and .app.slug == "github-actions")]')
-  total=$(printf '%s' "$checks" | jq 'length')
-  unfinished=$(printf '%s' "$checks" | jq '[.[] | select(.status != "completed")] | length')
-  failed=$(printf '%s' "$checks" | jq '[.[] | select(.status == "completed" and (.conclusion | IN("success", "neutral", "skipped") | not))] | length')
+  # いまの先頭コミットの「CI」ワークフロー（このResumeや順番待ちなど、ほかのワークフローは数えない）の状態
+  ci=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/runs?head_sha=$head&event=pull_request&per_page=50" \
+    -q '[.workflow_runs[] | select(.name == "CI")] | sort_by(.created_at) | last // empty')
+  status=$(printf '%s' "$ci" | jq -r '.status // ""')
+  conclusion=$(printf '%s' "$ci" | jq -r '.conclusion // ""')
 
-  if [ "$unfinished" -gt 0 ]; then
-    echo "PR #$NUMBER：CIが実行中です。終われば、そこから自動で続きます"
-  elif [ "$total" -eq 0 ]; then
-    # チェックが1つも無い＝承認待ち（action_required）か、まだ始まっていない。承認待ちなら動かし直す
+  if [ -z "$ci" ] || [ "$conclusion" = "action_required" ]; then
+    # CIが無い／承認待ち。動かし直す
     rerun_ci_if_waiting_approval "$NUMBER" "$head" "$ref"
     echo "PR #$NUMBER：CIが終われば、そこから自動で続きます"
-  elif [ "$failed" -gt 0 ]; then
-    CONCLUSION=failure HEAD_SHA="$head" HEAD_BRANCH="$ref" .github/scripts/after-ci.sh
-  else
+  elif [ "$status" != "completed" ]; then
+    echo "PR #$NUMBER：CIが実行中です。終われば、そこから自動で続きます"
+  elif [ "$conclusion" = "success" ]; then
     CONCLUSION=success HEAD_SHA="$head" HEAD_BRANCH="$ref" .github/scripts/after-ci.sh
+  else
+    CONCLUSION=failure HEAD_SHA="$head" HEAD_BRANCH="$ref" RUN_ID="$(printf '%s' "$ci" | jq -r .id)" .github/scripts/after-ci.sh
   fi
 else
   state=$(gh api "repos/$REPO/issues/$NUMBER" -q .state)
