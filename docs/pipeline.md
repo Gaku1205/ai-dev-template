@@ -61,6 +61,7 @@ AIが正常に終わったのに変更が無いとき（質問した、指摘が
 
 ## 安全のしくみ
 
+- `.github/`・`docs/pipeline.md`・CLAUDE.md・AGENTS.md を変えるPRは、CIとレビューが通っても自動でマージしない（マージを人間に任せて通知する）。仕組みそのものが、AIの判断だけで書き換わらないようにするため。普通のIssueは今までどおり全自動
 - 合否を決めるのはCI。AIの「できました」は信じない
 - 進行役（pipeline.yml）は `workflow_run` で main にある版が動くので、PRの中身で判断を書き換えられない
 - AIは `.github/`・`docs/pipeline.md`・`CLAUDE.md`・依存パッケージを触らない。`docs/spec.md`・`docs/design.md` は、見た目や挙動を決めるIssueのとき、実装の前に更新して同じPRに入れる（CLAUDE.md）。レビューAIが、書いた内容がIssueの範囲かを見る
