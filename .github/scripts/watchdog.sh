@@ -88,7 +88,8 @@ for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry"
 （前回は応答がなかったので、同じ依頼をもう一度出します。自動のやり直し ${next}/${MAX_RETRY}）
 
 <!-- auto-fix-retry -->
-<!-- auto-fix-sha: ${head} -->${model_mark}"
+<!-- auto-fix-sha: ${head} -->
+<!-- auto-fix-body: $(pr_body_hash "$n") -->${model_mark}"
       ;;
     *)
       echo "#$n：やり直しの種類が分からないので、印だけ外します"

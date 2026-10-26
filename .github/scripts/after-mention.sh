@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 「@claude 直して」の対応が終わったあと：コミットが増えていなければ（直さなかった・止まった）、
 # このままだと誰も動かないので人間に回す。コミットが増えていれば、CIが走って続きが進む。
+# コミットは増えていなくても、PRの説明だけを直した（指摘がPRの説明のとき）なら、もう一度レビューに回す。
 #
 # 環境変数：RUN_STARTED（対応が始まった時刻）、CONCLUSION（対応のワークフローの結果）、READ_TOKEN（ワークフローのトークン、actions: read）
 # 直してpushされていれば、そのCIが承認待ちで止まっていないかも確かめる
@@ -24,9 +25,15 @@ for pr in $(gh api "repos/$REPO/pulls?state=open&per_page=100" -q '.[].number');
   fi
 
   asked_sha=$(printf '%s' "$last" | jq -r .body | sed -nE 's/.*auto-fix-sha: ([0-9a-f]+).*/\1/p')
+  asked_body=$(printf '%s' "$last" | jq -r .body | sed -nE 's/.*auto-fix-body: ([0-9a-f]+).*/\1/p')
   head=$(gh api "repos/$REPO/pulls/$pr" -q .head.sha)
   if [ -n "$asked_sha" ] && [ "$head" = "$asked_sha" ]; then
-    if [ "${CONCLUSION:-success}" != "success" ]; then
+    if [ "${CONCLUSION:-success}" = "success" ] && [ -n "$asked_body" ] && [ "$(pr_body_hash "$pr")" != "$asked_body" ]; then
+      # PRの説明だけを直した。CIは走らないので、ここでレビューを付け直す（直す回数は依頼のたびに数えるので、無限には回らない）
+      remove_label "$pr" "ai:review"
+      add_label "$pr" "ai:review"
+      echo "PR #$pr：PRの説明が直ったので、もう一度レビューを依頼しました"
+    elif [ "${CONCLUSION:-success}" != "success" ]; then
       # AIがエラーで終わったとき（使用量の上限など）は、自動でやり直す（watchdog.sh）
       mark_for_retry "$pr" mention "AIに直すよう頼みましたが、AIがエラーで終わりました（使用量の上限などの可能性）"
     else

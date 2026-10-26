@@ -139,6 +139,11 @@ count_auto_fix() {
     | [.[] | select((.body | contains($mark)) and .created_at > $since)] | length'
 }
 
+# PRの説明の中身の目印。AIがコミットを入れず、PRの説明だけを直したかを見分けるのに使う
+pr_body_hash() {
+  gh api "repos/$REPO/pulls/$1" -q '.body // ""' | sha1sum | cut -c1-12
+}
+
 # AIに直させる。上限を超えていたら人間に回す
 request_fix_or_stop() {
   local pr="$1" sha="$2" message="$3"
@@ -161,7 +166,8 @@ ${note}
 直したら、型チェック・リント・テスト・ビルドを通してから、このPRのブランチにpushしてください。（自動の依頼 $((count + 1))/${total}）
 
 ${AUTO_FIX_MARK}
-<!-- auto-fix-sha: ${sha} -->${model_mark}"
+<!-- auto-fix-sha: ${sha} -->
+<!-- auto-fix-body: $(pr_body_hash "$pr") -->${model_mark}"
 }
 
 # 順番待ち（ai:queue）のIssueのうち、番号がいちばん小さい物を実装に回す。

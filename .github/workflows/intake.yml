@@ -19,4 +19,5 @@ jobs:
       - env:
           GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
           NUMBER: ${{ github.event.issue.number }}
+          ACTION: ${{ github.event.action }}
         run: .github/scripts/intake.sh
