@@ -142,18 +142,26 @@ count_auto_fix() {
 # AIに直させる。上限を超えていたら人間に回す
 request_fix_or_stop() {
   local pr="$1" sha="$2" message="$3"
-  local count
+  local count total model_mark="" note=""
   count=$(count_auto_fix "$pr")
-  if [ "$count" -ge "$MAX_AUTO_FIX" ]; then
-    stop_for_human "$pr" "AIが${MAX_AUTO_FIX}回直しても解決しませんでした（最後の理由：${message}）"
+  # 普通のモデルで MAX_AUTO_FIX 回直しても駄目なら、最後に1回だけ、いちばん強いモデル（opus）で直す
+  total=$((MAX_AUTO_FIX + 1))
+  if [ "$count" -ge "$total" ]; then
+    stop_for_human "$pr" "AIが${total}回（最後の1回は強いモデル）直しても解決しませんでした（最後の理由：${message}）"
     return
   fi
+  if [ "$count" -ge "$MAX_AUTO_FIX" ]; then
+    model_mark="
+<!-- auto-fix-model: opus -->"
+    note="（これまでの修正で直らなかったので、最後の1回は、いちばん強いモデルが直します。前の修正の内容とPRのコメントをよく読んでください）
+"
+  fi
   comment "$pr" "@claude ${message}
-
-直したら、型チェック・リント・テスト・ビルドを通してから、このPRのブランチにpushしてください。（自動の依頼 $((count + 1))/${MAX_AUTO_FIX}）
+${note}
+直したら、型チェック・リント・テスト・ビルドを通してから、このPRのブランチにpushしてください。（自動の依頼 $((count + 1))/${total}）
 
 ${AUTO_FIX_MARK}
-<!-- auto-fix-sha: ${sha} -->"
+<!-- auto-fix-sha: ${sha} -->${model_mark}"
 }
 
 # 順番待ち（ai:queue）のIssueのうち、番号がいちばん小さい物を実装に回す。

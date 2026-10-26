@@ -74,7 +74,13 @@ for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry"
       pr_json=$(gh api "repos/$REPO/pulls/$n")
       head=$(printf '%s' "$pr_json" | jq -r .head.sha)
       # 前回の依頼の文を、そのままもう一度出す（印のコメント行は除く）
-      request=$(all_comments "$n" | jq -r 'map(select(.body | test("<!-- auto-fix(-retry)? -->"))) | last | .body // ""' | sed -e '/^<!--/d' -e '/^（前回は応答がなかったので/d')
+      last_request=$(all_comments "$n" | jq -r 'map(select(.body | test("<!-- auto-fix(-retry)? -->"))) | last | .body // ""')
+      request=$(printf '%s' "$last_request" | sed -e '/^<!--/d' -e '/^（前回は応答がなかったので/d')
+      model_mark=""
+      if printf '%s' "$last_request" | grep -q 'auto-fix-model: opus'; then
+        model_mark="
+<!-- auto-fix-model: opus -->"
+      fi
       write_retry_record "$n" "$next" "$kind" "$reason"
       remove_label "$n" "ai:retry"
       comment "$n" "${request}
@@ -82,7 +88,7 @@ for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry"
 （前回は応答がなかったので、同じ依頼をもう一度出します。自動のやり直し ${next}/${MAX_RETRY}）
 
 <!-- auto-fix-retry -->
-<!-- auto-fix-sha: ${head} -->"
+<!-- auto-fix-sha: ${head} -->${model_mark}"
       ;;
     *)
       echo "#$n：やり直しの種類が分からないので、印だけ外します"

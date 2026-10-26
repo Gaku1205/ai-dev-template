@@ -49,7 +49,8 @@ jobs:
                - `READY size:S`：文言や見た目の小さい修正
                - `READY`：普通の大きさ
                - `READY size:L`：設計が絡む大きい作業
-               - `QUESTION`：意図が読み取れない、または1つのPRに収まらない。このときは本文を書き直さず、`gh issue comment` で質問か分け方の案を書く
+               - `QUESTION`：**人間にしかできない作業が必須のときだけ**（依存パッケージの追加、`.github/`・`docs/`・CLAUDE.md の変更、秘密情報の登録、外部サービスの契約や設定）。このときは本文を書き直さず、`gh issue comment` で、人間に何をしてほしいかを書く
+               - 意図が読み取れなくても、質問で止まらない。いちばん無難な解釈で `READY` にして、本文に「### 仮定」を書く（下）
                2行目は `PARALLEL` か `WAIT`（進行中の作業が無ければ `PARALLEL`）。WAIT のときは、どの作業とぶつかるかを Issue に `gh issue comment` で1行書く。書き出しは「順番待ちの理由：」にし、「前の作業が終わると自動で始まります」で終える（実装AIへの指示にならないようにする）
 
             本文の形（日本語）：
@@ -62,13 +63,16 @@ jobs:
             - [ ] 型チェック・リント・テスト・ビルドが通る
             ### やらないこと
             （紛らわしい周辺の作業）
+            ### 仮定
+            （メモから読み取れなくて、あなたが決めた内容を箇条書き。無ければこの見出しごと書かない。違うときはオーナーがコメントで直す）
             > 元のメモ：（オーナーのメモをそのまま）
 
             守ること：
             - メモの意図を変えない。メモに無い機能を足さない。1つのPRで終わる大きさにする
+            - 1つのPRに収まらない大きさなら、いちばん最初に作る分（それだけで動く最小のまとまり）だけをこのIssueにして `READY`。残りは、新しいIssueとして `gh issue create --title "..." --body-file <ファイル>` で作る（本文は上の形。ラベルは付けない。自動で企画に回る）。このIssueの「やらないこと」に、新しいIssueの番号を書く
             - 仕様書と食い違うときは、背景に「docs/○○ の△△と違う」と書く（仕様書そのものは書き換えない）
             - コードは変更しない。Issueの更新とコメントだけをする
-          claude_args: '--model sonnet --max-turns 30 --allowedTools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh issue list:*),Bash(gh pr list:*),Bash(gh pr diff:*),Read,Glob,Grep,Write"'
+          claude_args: '--model sonnet --max-turns 30 --allowedTools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh pr list:*),Bash(gh pr diff:*),Read,Glob,Grep,Write"'
       - name: 次へ進める（実装を依頼する／質問で止まる）
         if: ${{ !cancelled() }}
         env:
