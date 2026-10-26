@@ -19,6 +19,7 @@ OWNER="${REPO%%/*}"
 MAX_AUTO_FIX="${MAX_AUTO_FIX:-2}"
 AUTO_FIX_MARK="<!-- auto-fix -->"
 RESUME_MARK="<!-- auto-resume -->"
+VISUAL_MARK="<!-- auto-visual-update -->"
 # 自動でやり直す回数の上限と、失敗してからやり直すまでの待ち時間（分）。
 # 使用量の上限で止まったときは、リセットされるまで何度かやり直しながら待つ
 RETRY_MARK="<!-- auto-retry -->"
