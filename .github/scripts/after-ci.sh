@@ -32,7 +32,8 @@ case "$CONCLUSION" in
       if gh api -X PUT "repos/$REPO/pulls/$pr/update-branch" -f expected_head_sha="$HEAD_SHA" > /dev/null 2>&1; then
         echo "PR #$pr：main の変更（${behind} コミット）を取り込みました。CIが終わったらレビューに進みます"
       else
-        stop_for_human "$pr" "main の変更を取り込めませんでした（コンフリクトの可能性があります）"
+        # コンフリクトは、AIに解消させる（直す回数に数える。直らなければ人間に回る）
+        request_fix_or_stop "$pr" "$HEAD_SHA" "main の変更を取り込もうとしたら、コンフリクトで取り込めませんでした。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し、どちらかを捨てるときはPRにコメントで理由を書いてください。解消したら型チェック・リント・テスト・ビルドを通して push してください。"
       fi
       exit 0
     fi
