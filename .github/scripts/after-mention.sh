@@ -35,7 +35,7 @@ for pr in $(gh api "repos/$REPO/pulls?state=open&per_page=100" -q '.[].number');
       echo "PR #$pr：PRの説明が直ったので、もう一度レビューを依頼しました"
     elif [ "${CONCLUSION:-success}" != "success" ]; then
       # AIがエラーで終わったとき（使用量の上限など）は、自動でやり直す（watchdog.sh）
-      mark_for_retry "$pr" mention "AIに直すよう頼みましたが、AIがエラーで終わりました（使用量の上限などの可能性）"
+      mark_for_retry "$pr" mention "$(failure_reason "AIに直すよう頼みましたが、AIがエラーで終わりました（ログは、Claude Mention の実行の方を見てください）")"
     else
       stop_for_human "$pr" "AIに直すよう頼みましたが、変更が入りませんでした（AIのコメントを確認してください）"
     fi

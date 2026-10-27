@@ -4,7 +4,7 @@
 #                            進行中の作業とぶつかる（企画AIが WAIT と判断）・上限に達しているなら、代わりに ai:queue
 #   QUESTION              → ai:stuck を付けて人間に回す（質問はIssueのコメントにある）
 #
-# 環境変数：ISSUE、PLAN_OUTCOME、GITHUB_TOKEN_FOR_LABELS（ワークフローのトークン）
+# 環境変数：ISSUE、PLAN_OUTCOME、GITHUB_TOKEN_FOR_LABELS（ワークフローのトークン）、EXECUTION_FILE（AIの実行記録。失敗の原因の分類に使う）
 source "$(dirname "$0")/pipeline-lib.sh"
 # 同時に実装してよい数（使用量を増やしすぎないため）
 MAX_PARALLEL="${MAX_PARALLEL:-2}"
@@ -13,7 +13,7 @@ result=$(head -n 1 plan-result.txt 2> /dev/null | tr -d '\r' || true)
 # 企画AIがエラーで終わったとき（使用量の上限など）は、質問扱いにせず、自動でやり直す（watchdog.sh）
 if [ "$PLAN_OUTCOME" != "success" ]; then
   export GH_TOKEN="$GITHUB_TOKEN_FOR_LABELS"
-  mark_for_retry "$ISSUE" plan "企画AIがエラーで止まりました（使用量の上限などの可能性）"
+  mark_for_retry "$ISSUE" plan "$(failure_reason "企画AIがエラーで止まりました" "${EXECUTION_FILE:-}")"
   exit 0
 fi
 if [ -z "$result" ]; then

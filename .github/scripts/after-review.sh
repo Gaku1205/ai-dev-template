@@ -25,7 +25,7 @@ fi
 
 if [ "$CONCLUSION" != "success" ]; then
   # 使用量の上限などの一時的な失敗かもしれないので、人間に回す前に自動でやり直す（watchdog.sh）
-  mark_for_retry "$pr" review "レビューAIがエラーで止まりました（使用量の上限などの可能性）"
+  mark_for_retry "$pr" review "$(failure_reason "レビューAIがエラーで止まりました（ログは、レビューAIの実行の方を見てください）")"
   exit 0
 fi
 
@@ -82,4 +82,6 @@ fi
 
 gh api -X PUT "repos/$REPO/pulls/$pr/merge" -f merge_method=merge -f sha="$HEAD_SHA" > /dev/null
 notify merged "マージしました" "PR #${pr} ${title}：CIもレビューもOKだったので自動でマージしました" 2
+# 使い終わったブランチを消す（リポジトリの「Automatically delete head branches」が先に消していても構わない）
+delete_branch_if_ai "$HEAD_BRANCH"
 echo "PR #$pr：自動でマージしました（次の順番待ちは、Issueが閉じたときに queue.yml が始める）"
