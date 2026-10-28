@@ -178,9 +178,12 @@ start_next_in_queue() {
   busy=$(count_open_issues_with_label "ai:implement") || return 1
   stuck=$(count_open_issues_with_label "ai:stuck") || return 1
   prs=$(count_open_prs) || return 1
-  echo "実装中 ${busy} / 停止中 ${stuck} / openのPR ${prs}"
-  if [ "$busy" -gt 0 ] || [ "$stuck" -gt 0 ] || [ "$prs" -gt 0 ]; then
-    echo "進行中・停止中の物があるので、順番待ちは進めません"
+  # 停止中（ai:stuck）の数は表示だけにする。実装まで進んだ物は ai:implement か open のPRが残っていて、それで止まる。
+  # 企画の段階で止まった物（人間の作業待ち・質問）はコードに触れていないので、後ろの作業をぶつからずに進められる。
+  # （これを数えると、人間の作業待ちのIssueが1つあるだけで、ほかの作業が永久に始まらない）
+  echo "実装中 ${busy} / 停止中 ${stuck}（数えない） / openのPR ${prs}"
+  if [ "$busy" -gt 0 ] || [ "$prs" -gt 0 ]; then
+    echo "進行中の物があるので、順番待ちは進めません"
     return 0
   fi
   next=$(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aqueue" \
