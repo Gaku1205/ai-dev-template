@@ -166,6 +166,8 @@ for n in $(gh api "repos/$REPO/issues?state=open&per_page=100" -q '.[] | select(
   needs_intake "$n" || continue
   add_label "$n" "ai:plan"
   echo "#$n：ラベルが無いまま${m}分たったので、企画に回しました"
+  # 受付（intake.yml）が拾えなかったということ。Secretsやトークンの期限切れなどに気づけるように知らせる
+  notify intake "頼まれていないIssueがありました" "#${n} $(issue_title "$n")：ラベルが無いまま${m}分たったので、企画に回しました（受付が動いていないかもしれません。Secretsとトークンの期限を確認してください）" 3
 done
 
 # ---- 3.8 使い終わった claude/* ブランチを掃除する ----

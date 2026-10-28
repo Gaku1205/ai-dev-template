@@ -71,6 +71,8 @@ if ! files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[
   exit 0
 fi
 if printf '%s\n' "$files" | grep -qE '^(\.github/|docs/pipeline\.md$|CLAUDE\.md$|AGENTS\.md$)'; then
+  # ai:hold を付けておく（画面で「マージ待ち（人間）」と分かる。人間がマージするまで、自動ではマージされない）
+  has_label "$pr" "ai:hold" || add_label "$pr" "ai:hold" || true
   notify hold "マージできます" "PR #${pr} ${title}：CIもレビューもOK。パイプライン自体を変えるPRなので、マージはあなたが押してください" 4
   echo "PR #$pr：パイプライン自体を変えるので、自動でマージしません"
   exit 0
