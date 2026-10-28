@@ -1,0 +1,19 @@
+[project]
+name = "hello-python"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+strict = true
+files = ["app", "tests", "cli.py"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

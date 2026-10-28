@@ -4,6 +4,9 @@
 name: 実行環境をそろえる
 description: pipeline.json に合わせて、言語の実行環境と依存を入れる
 inputs:
+  dir:
+    description: pipeline.json のあるフォルダ（既定はリポジトリのルート）
+    default: "."
   install:
     description: 依存を入れるコマンド（pipeline.json の setup）も動かすか
     default: "true"
@@ -20,8 +23,11 @@ runs:
     - name: 設定を読む
       id: read
       shell: bash
+      working-directory: ${{ inputs.dir }}
       run: |
-        source .github/scripts/stack.sh
+        # Windows（Git Bash）では D:\a\... の形なので、bash の形に直してから読む
+        here="$GITHUB_ACTION_PATH"; command -v cygpath > /dev/null && here=$(cygpath -u "$here")
+        source "$here/../../scripts/stack.sh"
         errs=$(stack_validate)
         if [ -n "$errs" ]; then
           while IFS= read -r e; do echo "::error title=pipeline.json::$e"; done <<< "$errs"
@@ -36,12 +42,16 @@ runs:
       uses: actions/setup-node@v5
       with:
         node-version: ${{ steps.read.outputs.node }}
-        cache: ${{ hashFiles('package-lock.json') != '' && 'npm' || '' }}
+        cache: ${{ hashFiles(format('{0}/package-lock.json', inputs.dir)) != '' && 'npm' || '' }}
+        cache-dependency-path: ${{ inputs.dir }}/package-lock.json
     - if: steps.read.outputs.python != ''
       uses: actions/setup-python@v5
       with:
         python-version: ${{ steps.read.outputs.python }}
-        cache: ${{ hashFiles('**/requirements*.txt', 'pyproject.toml') != '' && 'pip' || '' }}
+        cache: ${{ hashFiles(format('{0}/requirements*.txt', inputs.dir), format('{0}/pyproject.toml', inputs.dir)) != '' && 'pip' || '' }}
+        cache-dependency-path: |
+          ${{ inputs.dir }}/requirements*.txt
+          ${{ inputs.dir }}/pyproject.toml
     - if: steps.read.outputs.go != ''
       uses: actions/setup-go@v5
       with:
@@ -58,8 +68,11 @@ runs:
     - name: 依存を入れる
       if: inputs.install == 'true'
       shell: bash
+      working-directory: ${{ inputs.dir }}
       run: |
-        source .github/scripts/stack.sh
+        # Windows（Git Bash）では D:\a\... の形なので、bash の形に直してから読む
+        here="$GITHUB_ACTION_PATH"; command -v cygpath > /dev/null && here=$(cygpath -u "$here")
+        source "$here/../../scripts/stack.sh"
         while IFS= read -r cmd; do
           [ -z "$cmd" ] && continue
           echo "::group::$cmd"
