@@ -31,7 +31,7 @@ done
 # 人間に回す前に自動でやり直す（watchdog.sh）。AIが正常に終わったのに変更が無いときは、AIの判断なので人間に回す
 if [ -z "$branch" ]; then
   if [ "$AI_OUTCOME" != "success" ]; then
-    mark_for_retry "$ISSUE" implement "$(failure_reason "実装AIが途中で止まり、変更が作られませんでした" "${EXECUTION_FILE:-}")" "$(limit_signal "${EXECUTION_FILE:-}")"
+    handle_ai_failure "$ISSUE" implement "実装AIが途中で止まり、変更が作られませんでした" "${EXECUTION_FILE:-}"
   else
     add_label "$ISSUE" "ai:stuck" || true
     notify stuck "AIが止まりました" "#${ISSUE} ${ISSUE_TITLE}：変更が作られませんでした。Issueのコメントを確認してください" 4
@@ -42,7 +42,7 @@ fi
 ahead=$(gh api "repos/$REPO/compare/main...$branch" -q .ahead_by)
 if [ "${ahead:-0}" -eq 0 ]; then
   if [ "$AI_OUTCOME" != "success" ]; then
-    mark_for_retry "$ISSUE" implement "$(failure_reason "実装AIが途中で止まり、ブランチに変更がありません" "${EXECUTION_FILE:-}")" "$(limit_signal "${EXECUTION_FILE:-}")"
+    handle_ai_failure "$ISSUE" implement "実装AIが途中で止まり、ブランチに変更がありません" "${EXECUTION_FILE:-}"
   else
     add_label "$ISSUE" "ai:stuck" || true
     notify stuck "AIが止まりました" "#${ISSUE} ${ISSUE_TITLE}：ブランチに変更がありません" 4

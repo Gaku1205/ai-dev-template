@@ -299,6 +299,99 @@ retry_mark_value() {
   printf '%s' "$1" | sed -nE "s/.*<!-- $2=([0-9a-z]+) -->.*/\\1/p" | tail -1
 }
 
+# ---- AIの許可（--allowedTools）の不足 ----
+# AIが「許可されていない操作」で止まったとき、何を足せばいいかを通知・コメントに書き、同じ不足が2回起きたらIssueにする。
+# 許可の一覧は docs/pipeline.md の「AIの許可」の表（tests/test-permissions.sh が、ワークフローと食い違っていないか確かめる）
+
+PERM_LEDGER_TITLE="AIの許可の不足（自動の記録）"
+
+# コマンドを、許可の書き方（--allowedTools に足す形）にする。git は2語、gh・npm は3語（npm は完全一致）、ほかは1語
+permission_key_for_command() {
+  local cmd="$1" a b c
+  read -r a b c _ <<< "$cmd"
+  case "$a" in
+    git) echo "Bash(${a} ${b:-}:*)" ;;
+    gh) echo "Bash(${a} ${b:-} ${c:-}:*)" ;;
+    npm) echo "Bash(${a} ${b:-} ${c:-})" ;;
+    "") return 0 ;;
+    *) echo "Bash(${a}:*)" ;;
+  esac | sed -E 's/ +:\*\)/:*)/; s/ +\)/)/'
+}
+
+# AIの実行記録から、許可が無くて拒否された操作を、許可の書き方で1行ずつ出す（無ければ何も出さない）
+denied_tools() {
+  local f="${1:-}" name cmd
+  { [ -n "$f" ] && [ -s "$f" ]; } || return 0
+  jq -r 'if type == "array" then . else [.] end | map(select(.type == "result")) | last // {} | .permission_denials // []
+    | .[] | "\(.tool_name)\t\(.tool_input.command // "")"' "$f" 2> /dev/null \
+    | while IFS=$'\t' read -r name cmd; do
+      if [ "$name" = "Bash" ]; then permission_key_for_command "$cmd"; else echo "$name"; fi
+    done | sort -u
+}
+
+# AIのコメントの文章から、「許可されていない」と書いてある行と、そこに出てくるコマンド（`...`）の許可の書き方を出す
+#   1行目以降：許可の不足を言っている行（最大3行）。最後に「KEY: …」の行で、許可の書き方
+permission_hints_from_text() {
+  local text lines key
+  text=$(cat)
+  lines=$(printf '%s\n' "$text" | grep -iE '許可されて|許可が無|許可が足り|権限が無|権限がありません|not allowed|permission denied|requires approval|was blocked' | head -3 || true)
+  [ -z "$lines" ] && return 0
+  printf '%s\n' "$lines"
+  printf '%s\n' "$lines" | grep -oE '`[^`]+`' | tr -d '`' | grep -E '^(git|gh|npm|npx|node|curl|python3?) ' \
+    | while IFS= read -r c; do permission_key_for_command "$c"; done | sort -u | sed 's/^/KEY: /'
+}
+
+# 許可の不足を、記録用のIssue（閉じたまま）にコメントで残し、同じ不足が2回目なら、直すためのIssueを自動で作る
+#   使い方：report_permission_gap 番号 "許可の書き方（改行区切り）"
+report_permission_gap() {
+  local from="$1" keys="$2" key ledger n title existing created
+  while IFS= read -r key; do
+    [ -z "$key" ] && continue
+    ledger=$(gh api "repos/$REPO/issues?state=all&per_page=100" -q ".[] | select(.title == \"$PERM_LEDGER_TITLE\") | .number" | head -1) || return 0
+    if [ -z "$ledger" ]; then
+      ledger=$(gh api -X POST "repos/$REPO/issues" -f title="$PERM_LEDGER_TITLE" \
+        -f body="AIが「許可されていない操作」で止まったときの記録です（自動）。同じ不足が2回起きたら、直すためのIssueを自動で作ります。このIssueは閉じたままにしてください。" -q .number) || return 0
+      gh api -X PATCH "repos/$REPO/issues/$ledger" -f state=closed > /dev/null || true
+    fi
+    comment "$ledger" "<!-- perm-gap: ${key} -->
+#${from} で、AIが許可されていない操作を試して止まりました：\`${key}\`" || true
+    n=$(all_comments "$ledger" | jq --arg k "<!-- perm-gap: ${key} -->" '[.[] | select(.body | contains($k))] | length')
+    if [ "${n:-0}" -ge 2 ]; then
+      title="AIの許可が足りない：${key}"
+      existing=$(gh api "repos/$REPO/issues?state=open&per_page=100" -q ".[] | select(.title == \"$title\") | .number" | head -1)
+      if [ -z "$existing" ]; then
+        created=$(gh api -X POST "repos/$REPO/issues" -f title="$title" -f 'labels[]=ai:skip' \
+          -f body="### 背景
+AIが \`${key}\` を許可されておらず、${n}回止まりました（記録：#${ledger}）。
+
+### やること（マネージャーが行う。\`.github/\` を触るのでAIには回さない）
+- docs/pipeline.md の「AIの許可」の表を見て、どのAIにこの操作が要るかを決める
+- 要るなら、そのワークフローの \`--allowedTools\` に足し、表にも書く（tests/test-permissions.sh が食い違いを見つける）
+- 要らない操作なら、AIへの指示の方を直す" -q .number) || return 0
+        notify stuck "AIの許可が足りません" "同じ不足（${key}）が${n}回起きたので、Issue #${created} を作りました" 4
+      fi
+    fi
+  done <<< "$keys"
+}
+
+# AIがエラーで終わったときの処理：許可の不足なら、足りない物を書いて人間に回す（やり直しても直らない）。
+# それ以外は、やり直す（使用量の上限なら待つ）。使い方：handle_ai_failure 番号 kind(plan|implement|review|mention) 説明 [実行記録のファイル]
+handle_ai_failure() {
+  local num="$1" kind="$2" label="$3" file="${4:-}" denied reason
+  denied=$(denied_tools "$file")
+  if [ -n "$denied" ]; then
+    report_permission_gap "$num" "$denied"
+    reason="$(failure_reason "$label" "$file")。足りない許可：$(printf '%s' "$denied" | paste -sd, - | sed 's/,/、/g')（docs/pipeline.md の「AIの許可」の表と、ワークフローの --allowedTools を見てください）"
+    case "$kind" in
+      plan) remove_label "$num" "ai:plan"; stop_issue_for_human "$num" "$reason" ;;
+      implement) stop_issue_for_human "$num" "$reason" ;;
+      *) stop_for_human "$num" "$reason" ;;
+    esac
+    return 0
+  fi
+  mark_for_retry "$num" "$kind" "$(failure_reason "$label" "$file")" "$(limit_signal "$file")"
+}
+
 # 止まったことを記録して、あとで自動でやり直す。使い方：mark_for_retry 番号 kind 理由 [limit]
 #   limit：使用量の上限のとき、リセット時刻（UNIX秒）か unknown（limit_signal の出力）。上限で待つあいだは、やり直しの回数を使わない
 mark_for_retry() {

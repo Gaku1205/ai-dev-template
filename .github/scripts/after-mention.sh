@@ -37,7 +37,14 @@ for pr in $(gh api "repos/$REPO/pulls?state=open&per_page=100" -q '.[].number');
       # AIがエラーで終わったとき（使用量の上限など）は、自動でやり直す（watchdog.sh）
       mark_for_retry "$pr" mention "$(failure_reason "AIに直すよう頼みましたが、AIがエラーで終わりました（ログは、Claude Mention の実行の方を見てください）")"
     else
-      stop_for_human "$pr" "AIに直すよう頼みましたが、変更が入りませんでした（AIのコメントを確認してください）"
+      # AIが「許可されていない」と報告していたら、足りない許可を書く（人間が何を足せばいいか分かるように）
+      hints=$(all_comments "$pr" | jq -r '[.[] | select(.user.login == "claude[bot]")] | last | .body // ""' | permission_hints_from_text)
+      if [ -n "$hints" ]; then
+        report_permission_gap "$pr" "$(printf '%s\n' "$hints" | sed -n 's/^KEY: //p')"
+        stop_for_human "$pr" "AIが許可されていない操作で止まったようです。AIの報告：$(printf '%s\n' "$hints" | grep -v '^KEY: ' | tr '\n' ' ')／足りない許可の候補：$(printf '%s\n' "$hints" | sed -n 's/^KEY: //p' | paste -sd, - | sed 's/,/、/g')（docs/pipeline.md の「AIの許可」の表を見てください）"
+      else
+        stop_for_human "$pr" "AIに直すよう頼みましたが、変更が入りませんでした（AIのコメントを確認してください）"
+      fi
     fi
   else
     # AIが直してpushした。そのCIが承認待ちで止まっていたら動かし直す
