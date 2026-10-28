@@ -31,6 +31,11 @@ PY
   row=$(printf '%s\n' "$section" | grep -F "\`$name\`" | head -1)
   assert_contains "$name：表に行がある" "$row" "$name"
   while IFS= read -r tool; do
+    # 確認コマンドは pipeline.json から入る（setup-stack の出力）。表では「pipeline.json の checks」と書く
+    if [ "$tool" = '${{ steps.stack.outputs.allowed }}' ]; then
+      assert_contains "$name：確認コマンド（pipeline.json の checks）が表にある" "$row" "pipeline.json の checks"
+      continue
+    fi
     assert_contains "$name：$tool が表にある" "$row" "\`$tool\`"
   done <<< "$tools"
   # 表に書いてあるのに、ワークフローに無い操作（古い記述）が無いか。「許可している操作」の列だけを見る

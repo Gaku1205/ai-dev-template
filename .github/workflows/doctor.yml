@@ -53,6 +53,11 @@ jobs:
           APP_TOKEN_FAILED: ${{ (steps.app-key.outcome == 'failure' || steps.app-token.outcome == 'failure') && '1' || '0' }}
           USING_APP: ${{ steps.app-token.outputs.token != '' && '1' || '0' }}
           HAS_NTFY: ${{ secrets.NTFY_TOPIC != '' && '1' || '0' }}
+          # 公開先（pipeline.json の deploy）ごとの設定
+          HAS_AWS_ROLE: ${{ vars.AWS_ROLE_ARN != '' && '1' || '0' }}
+          HAS_AWS_REGION: ${{ vars.AWS_REGION != '' && '1' || '0' }}
+          HAS_APPRUNNER_ACCESS: ${{ vars.AWS_APPRUNNER_ACCESS_ROLE_ARN != '' && '1' || '0' }}
+          HAS_EXPO: ${{ secrets.EXPO_TOKEN != '' && '1' || '0' }}
         run: |
           set -o pipefail
           .github/scripts/doctor.sh | tee -a "$GITHUB_STEP_SUMMARY"

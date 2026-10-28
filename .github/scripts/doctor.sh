@@ -96,6 +96,23 @@ check_files() {
   if [ -f CLAUDE.md ] && grep -q "pipeline-self-edit: auto" CLAUDE.md && ! is_template_repo; then
     warn "CLAUDE.md に pipeline-self-edit の印が残っている" "ai-dev-template 自身の節ごと消す（残るとパイプラインの変更が自動でマージされる）"
   fi
+  check_stack
+}
+
+# 言語と確認コマンド：pipeline.json があればその中身を、無ければ今までの Next.js（package.json）を見る
+check_stack() {
+  local s errs n
+  if [ -f pipeline.json ]; then
+    errs=$(bash -c "source '$(dirname "${BASH_SOURCE[0]}")/stack.sh'; stack_validate")
+    if [ -n "$errs" ]; then
+      while IFS= read -r s; do ng "pipeline.json：$s" "docs/pipeline.md「言語と公開先」の形に直す"; done <<< "$errs"
+      return
+    fi
+    n=$(jq '.checks | length' pipeline.json)
+    ok "pipeline.json がある（実行環境：$(jq -r '.tools // {} | to_entries | map("\(.key) \(.value)") | join("・") | if . == "" then "なし" else . end' pipeline.json)・確認コマンド ${n} 個）"
+    check_deploy
+    return
+  fi
   if [ -f package.json ]; then
     for s in typecheck lint build; do
       if grep -q "\"$s\"[[:space:]]*:" package.json; then ok "npm run $s がある"
@@ -105,8 +122,29 @@ check_files() {
     if grep -q "\"test\"[[:space:]]*:" package.json; then ok "npm run test がある"
     else warn "package.json に test のスクリプトが無い" "動くが、AIの変更を確かめにくい。vitest を入れて \"test\": \"vitest run\" を足す"; fi
   else
-    warn "package.json が無い" "Next.js 以外の構成なら、CLAUDE.md と ci.yml の確認コマンドを合わせる"
+    ng "pipeline.json も package.json も無い" "Next.js 以外なら、pipeline.json に言語・確認コマンド・公開先を書く（docs/pipeline.md「言語と公開先」）"
   fi
+}
+
+# 公開先ごとに、要る設定がそろっているか
+check_deploy() {
+  local kind
+  while IFS= read -r kind; do
+    case "$kind" in
+      vercel) echo "- ➖ 公開先：Vercel（Vercel の画面でこのリポジトリを読み込む。ここからは確かめられない）" ;;
+      none) ok "公開先：なし" ;;
+      github-release) ok "公開先：GitHub Releases（追加の設定は要らない）" ;;
+      aws-apprunner)
+        if [ "${HAS_AWS_ROLE:-0}" = 1 ] && [ "${HAS_AWS_REGION:-0}" = 1 ] && [ "${HAS_APPRUNNER_ACCESS:-0}" = 1 ]; then
+          ok "公開先：AWS App Runner（Variable の AWS_ROLE_ARN・AWS_REGION・AWS_APPRUNNER_ACCESS_ROLE_ARN がある）"
+        else
+          ng "公開先 AWS App Runner の設定が足りない" "Settings → Secrets and variables → Actions → Variables に AWS_ROLE_ARN・AWS_REGION・AWS_APPRUNNER_ACCESS_ROLE_ARN（docs/pipeline.md「AWS App Runner」。CloudFormation で1回作れば出てくる）"
+        fi ;;
+      expo)
+        if [ "${HAS_EXPO:-0}" = 1 ]; then ok "公開先：Expo（Secret の EXPO_TOKEN がある）"
+        else ng "公開先 Expo の鍵が無い" "expo.dev → Access tokens で作り、Secret の EXPO_TOKEN に登録"; fi ;;
+    esac
+  done < <(bash -c "source '$(dirname "${BASH_SOURCE[0]}")/stack.sh'; stack_deploy_kinds")
 }
 
 main() {

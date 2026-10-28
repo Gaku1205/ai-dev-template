@@ -101,4 +101,16 @@ merge_fail_case unknown
 assert_contains "状態が分からない：やり直し待ち" "$(labels_of 58)" "ai:retry"
 unset MERGE_STATE_WAIT_SEC
 
+echo "== pipeline.json（AIに許すコマンドを決める）を触るPRは、どのリポジトリでも人間に任せる"
+run_case "pipeline.json src/a.py" ""
+assert_eq "印なし：マージされず ai:hold" ":ai:hold" "$(merged):$(labels_of 58)"
+export CLAUDE_MD="$MOCK_DIR/CLAUDE_with_mark.md"
+run_case "pipeline.json" ""
+assert_eq "テンプレート自身でも：マージされず ai:hold" ":ai:hold" "$(merged):$(labels_of 58)"
+run_case ".github/actions/setup-stack/action.yml" ""
+assert_eq "テンプレート自身：実行環境の部品（.github/actions/）も ai:hold" ":ai:hold" "$(merged):$(labels_of 58)"
+export CLAUDE_MD="$MOCK_DIR/CLAUDE_default.md"
+run_case "docs/pipeline.json.md src/pipeline.json" ""
+assert_eq "似た名前（直下の pipeline.json 以外）はマージする" "58" "$(merged)"
+
 finish

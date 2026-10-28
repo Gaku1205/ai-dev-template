@@ -111,4 +111,32 @@ assert_contains "読めないときは決めつけない" "$out" "main の保護
 assert_not_contains "読めないときは警告しない" "$out" "main が保護されていない"
 PROTECTED=true
 
+echo "== 言語と公開先（pipeline.json）"
+wd="$(mktemp -d)"; cd "$wd" || exit 1
+mkdir -p docs; echo "# app" > CLAUDE.md; echo x > AGENTS.md; echo x > docs/spec.md
+LABELS="$all_labels" DELBR=true CANPUSH=true HAS_OAUTH=1 HAS_PIPELINE_TOKEN=1 HAS_NTFY=1
+run_doctor
+assert_contains "どちらも無ければ ❌" "$out" "❌ pipeline.json も package.json も無い"
+echo '{"tools":{"python":"3.12"},"checks":[{"run":"pytest"}],"deploy":[{"kind":"github-release","build":"make","files":"dist/*"}]}' > pipeline.json
+run_doctor
+assert_eq "Python＋Releases：終了コード 0" "0" "$rc"
+assert_contains "中身を出す" "$out" "pipeline.json がある（実行環境：python 3.12・確認コマンド 1 個）"
+assert_contains "Releases は設定不要" "$out" "✅ 公開先：GitHub Releases"
+assert_not_contains "package.json は見ない" "$out" "package.json"
+echo '{"checks":[{"run":"pytest"}],"deploy":[{"kind":"aws-apprunner","service":"hello-api"},{"kind":"expo"}]}' > pipeline.json
+HAS_AWS_ROLE=1 HAS_AWS_REGION=0 HAS_APPRUNNER_ACCESS=1 HAS_EXPO=0
+run_doctor
+assert_eq "設定が足りない：終了コード 1" "1" "$rc"
+assert_contains "AWS の Variable が足りない" "$out" "❌ 公開先 AWS App Runner の設定が足りない"
+assert_contains "Expo の鍵が無い" "$out" "❌ 公開先 Expo の鍵が無い"
+HAS_AWS_REGION=1 HAS_EXPO=1
+run_doctor
+assert_eq "そろった：終了コード 0" "0" "$rc"
+assert_contains "AWS" "$out" "✅ 公開先：AWS App Runner"
+echo '{"checks":[]}' > pipeline.json
+run_doctor
+assert_contains "設定の誤りは ❌" "$out" "❌ pipeline.json：checks が空"
+cd /; rm -rf "$wd"
+unset HAS_AWS_ROLE HAS_AWS_REGION HAS_APPRUNNER_ACCESS HAS_EXPO
+
 finish
