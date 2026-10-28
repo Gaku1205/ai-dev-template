@@ -23,6 +23,39 @@ if has_label "$pr" "ai:stuck"; then
   exit 0
 fi
 
+# パイプラインの更新を配るPR（テンプレートの sync-to-apps.sh が作る）：AIのレビューは通さず、CIだけで決める。
+#   通った → main に追いついていればマージ（追いついていなければ取り込んで、CIのやり直しを待つ）
+#   落ちた → 配られた更新がこのアプリで動かないので、人間に回す
+sync_pr=no
+case "$HEAD_BRANCH" in
+  pipeline-sync/*)
+    # 印のある本文で、AI（claude[bot]）以外が作ったPRだけを、配布のPRとして扱う（AIがこの近道でレビューを飛ばせないように）
+    pr_info=$(gh api "repos/$REPO/pulls/$pr" -q '"\(.user.login)|\(.body // "" | contains("<!-- pipeline-sync -->"))"')
+    case "$pr_info" in "claude[bot]|"*) ;; *"|true") sync_pr=yes ;; esac
+    ;;
+esac
+case "$sync_pr" in
+  yes)
+    if [ "$CONCLUSION" = success ]; then
+      behind=$(gh api "repos/$REPO/compare/$HEAD_SHA...main" -q .ahead_by)
+      if [ "${behind:-0}" -gt 0 ]; then
+        gh api -X PUT "repos/$REPO/pulls/$pr/update-branch" -f expected_head_sha="$HEAD_SHA" > /dev/null 2>&1 || true
+        echo "PR #$pr（パイプラインの更新）：main を取り込みました。CIが終わったらマージします"
+      else
+        gh api -X PUT "repos/$REPO/pulls/$pr/merge" -f sha="$HEAD_SHA" -f merge_method=merge > /dev/null
+        gh api -X DELETE "repos/$REPO/git/refs/heads/$HEAD_BRANCH" > /dev/null 2>&1 || true
+        echo "PR #$pr（パイプラインの更新）：CIが通ったのでマージしました"
+      fi
+    else
+      add_label "$pr" "ai:stuck"
+      comment "$pr" "⚠️ テンプレートから配られたパイプラインの更新で、このリポジトリのCIが落ちました。マネージャーに確認してもらってください（AIには直させません）。"
+      notify stuck "パイプラインの更新が入りません" "PR #${pr}：配られた更新でCIが落ちました" 4
+      echo "PR #$pr（パイプラインの更新）：CIが落ちたので人間に回しました"
+    fi
+    exit 0
+    ;;
+esac
+
 case "$CONCLUSION" in
   success)
     # main が先に進んでいたら、先にPRのブランチへ取り込む（取り込むとCIがもう一度走り、通ったらここに戻ってくる）。
