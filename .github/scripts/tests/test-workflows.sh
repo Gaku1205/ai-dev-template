@@ -82,4 +82,9 @@ assert_contains "CIの完了で動く" "$sync" "workflows: [CI]"
 assert_contains "成功のときだけ" "$sync" "conclusion == 'success'"
 assert_not_contains "push では動かない" "$sync" "  push:"
 
+echo "== claude-review.yml：大きい・危ない変更は強いモデルでレビューする"
+review="$(cat "$WORKFLOWS/claude-review.yml")"
+assert_contains "モデルを決める段がある" "$review" "steps.weight.outputs.model"
+assert_not_contains "sonnet 固定ではない" "$review" "--model sonnet --max-turns"
+
 finish

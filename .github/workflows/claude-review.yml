@@ -2,6 +2,8 @@
 # 全自動パイプラインでは、CIが通るたびに進行役（pipeline.yml）がラベルを付け直して動かす。
 # AIは指摘するだけ。マージするかは進行役（CIとこの結果）か人間が決める。
 # 見逃しが一番高くつく所なので、モデルは軽くせず sonnet。
+# 大きい変更（追加＋削除が300行を超える）と、危ない場所（ログイン・トークン・秘密・権限・依存・ワークフロー）を触る変更は、
+# いちばん強い opus でレビューする（AIだけのレビューで見逃しを減らすため）。
 #
 # 公式の code-review プラグインは「一度レビューしたPRは二度レビューしない」ため、
 # 修正後のやり直しで結果が出ず止まってしまう。そこで、毎回必ずレビューして
@@ -30,6 +32,20 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
+      # PRのコードは動かさない。APIで変更の大きさと場所だけを見て、モデルを決める
+      - name: レビューのモデルを決める
+        id: weight
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          CHANGED: ${{ github.event.pull_request.additions }}+${{ github.event.pull_request.deletions }}
+        run: |
+          lines=$(( CHANGED ))
+          risky=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files?per_page=100" --paginate --jq '.[].filename' \
+            | grep -ciE '(auth|token|secret|session|permission|middleware|crypto|webhook)|(^|/)package(-lock)?\.json$|^\.github/' || true)
+          if [ "$lines" -gt 300 ] || [ "${risky:-0}" -gt 0 ]; then model=opus; else model=sonnet; fi
+          echo "変更 ${lines} 行・危ない場所 ${risky:-0} ファイル → $model"
+          echo "model=$model" >> "$GITHUB_OUTPUT"
       - uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ github.token }}
@@ -60,4 +76,4 @@ jobs:
             - 確信が持てない物は指摘しない
             - CIで分かること（型エラー、リント）は指摘しない（CIが通ったあとにレビューしている）
             - コードは変更しない。コメントを書くだけ
-          claude_args: '--model sonnet --max-turns 40 --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh issue view:*),Bash(gh pr comment:*),Read,Glob,Grep,Write,mcp__github_inline_comment__create_inline_comment"'
+          claude_args: '--model ${{ steps.weight.outputs.model }} --max-turns 40 --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh issue view:*),Bash(gh pr comment:*),Read,Glob,Grep,Write,mcp__github_inline_comment__create_inline_comment"'
