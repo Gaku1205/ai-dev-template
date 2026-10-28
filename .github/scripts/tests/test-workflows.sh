@@ -119,4 +119,8 @@ assert_contains "claude-mention.yml：コメントした人の立場を見る" "
 assert_contains "claude-mention.yml：OWNER・MEMBER・COLLABORATOR だけ" "$wf" "fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]')"
 assert_contains "claude-mention.yml：ボットは claude[bot] 以外" "$wf" "github.event.comment.user.login != 'claude[bot]'"
 
+echo "== 清書AIの質問には、ダッシュボードが拾う印を付けさせる"
+wf="$(cat "$WORKFLOWS/claude-plan.yml")"
+assert_contains "claude-plan.yml：質問の1行目は <!-- human-request -->" "$wf" "<!-- human-request -->"
+
 finish
