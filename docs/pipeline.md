@@ -72,6 +72,23 @@ AIが正常に終わったのに変更が無いとき（質問した、指摘が
 - AI（claude[bot]）のpushでCIが「承認待ち」になったら、進行役がオーナーのトークンで空のコミットを足してCIを動かし直す
 - 公開後に壊れていたら、Vercelの画面から前の版にすぐ戻せる
 
+## AIの許可（`--allowedTools`）
+
+各AIが使ってよい操作は、ワークフローの `--allowedTools` に書いてある。AIは、ここに無い操作をしようとすると拒否されて止まる。次の表が一覧（`.github/scripts/tests/test-permissions.sh` が、ワークフローと表が食い違っていないか確かめる）。
+
+| AI（ワークフロー） | 許可している操作 | 許可していない操作と理由 |
+| --- | --- | --- |
+| 企画AI（`claude-plan.yml`） | `Bash(gh issue view:*)`、`Bash(gh issue edit:*)`、`Bash(gh issue comment:*)`、`Bash(gh issue create:*)`、`Bash(gh issue list:*)`、`Bash(gh pr list:*)`、`Bash(gh pr diff:*)`、`Read`、`Glob`、`Grep`、`Write` | コードを変えるgit操作・npm（企画はIssueを書くだけ。`Write` は結果ファイル `plan-result.txt` のため） |
+| 実装AI（`claude-implement.yml`） | `Bash(npm run typecheck)`、`Bash(npm run lint)`、`Bash(npm run test)`、`Bash(npm run build)` | `gh`（PRやコメントは進行役が作る）、`npm run readme:shots` などの重い物（ブラウザの撮影はCIのワークフローでやる）。ファイルの編集・gitのcommitは、このツールの標準で許可される |
+| レビューAI（`claude-review.yml`） | `Bash(gh pr view:*)`、`Bash(gh pr diff:*)`、`Bash(gh issue view:*)`、`Bash(gh pr comment:*)`、`Read`、`Glob`、`Grep`、`Write`、`mcp__github_inline_comment__create_inline_comment` | コードの変更・git操作・npm（レビューは読むだけ。コードは直さない） |
+| 修正AI（`claude-mention.yml`） | `Bash(gh pr view:*)`、`Bash(gh pr edit:*)`、`Bash(gh pr comment:*)`、`Bash(git fetch:*)`、`Bash(git merge:*)`、`Bash(git status:*)`、`Bash(git diff:*)`、`Bash(git add:*)`、`Bash(git commit:*)`、`Bash(git push:*)`、`Bash(npm run typecheck)`、`Bash(npm run lint)`、`Bash(npm run test)`、`Bash(npm run build)` | `git rebase`・`git push --force`（履歴を書き換えない）、`gh pr merge`（マージは進行役だけ）。`gh pr edit` はPRの説明の直し、`git merge` はコンフリクトの解消のために許可している |
+
+許可が足りなくて止まったときは、次のようになる。
+
+- 企画AI・実装AIは、実行記録から拒否された操作を読み取り、「足りない許可：`Bash(git merge:*)`」のように、通知とコメントに書いて人間に回す（やり直しても直らないので、自動のやり直しはしない）
+- 修正AIは、AIのコメントに「許可されていない」などと書かれていれば、その行と、出てくるコマンドから足りない許可の候補を書いて人間に回す
+- 同じ許可の不足が2回起きたら、直すためのIssue（`AIの許可が足りない：…`）を自動で作る（`ai:skip` 付き。マネージャーが `--allowedTools` と上の表を直す）。回数の記録は、閉じたままの「AIの許可の不足（自動の記録）」Issueのコメントに残る
+
 ## 必要な設定（リポジトリの Settings → Secrets and variables → Actions）
 
 | 名前 | 種類 | 内容 |
