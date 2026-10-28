@@ -64,4 +64,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: shellcheck
-        run: shellcheck -S warning -x -P SCRIPTDIR .github/scripts/*.sh
+        run: shellcheck -S warning -x -P SCRIPTDIR .github/scripts/*.sh .github/scripts/tests/*.sh
+
+  # パイプラインのスクリプトのテスト（疑似 gh。本物のGitHubには触らない）
+  script-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - name: スクリプトのテスト
+        run: .github/scripts/tests/run-all.sh
