@@ -1,0 +1,244 @@
+#!/usr/bin/env python3
+"""テスト用の疑似 gh。本物の GitHub には繋がず、ラベル・コメント・PR などを JSON ファイル
+（環境変数 FAKE_GH_STATE）に持つ。パイプラインのスクリプトが使う `gh api` だけを真似る。
+知らない API を呼ばれたら、黙って通さず失敗させる（テストの書き忘れに気づけるように）。"""
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.parse
+
+STATE = os.environ["FAKE_GH_STATE"]
+REPO = os.environ.get("GITHUB_REPOSITORY", "owner/repo")
+
+
+def now():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def die(msg, code=1):
+    sys.stderr.write("fake gh: %s\n" % msg)
+    sys.exit(code)
+
+
+with open(STATE, encoding="utf-8") as f:
+    s = json.load(f)
+dirty = False
+
+
+def touch(n):
+    s["issues"][str(n)]["updated_at"] = now()
+
+
+def next_id():
+    s["next_id"] += 1
+    return s["next_id"]
+
+
+def issue_obj(n):
+    i = s["issues"].get(str(n))
+    if i is None:
+        die("issue #%s がありません" % n)
+    o = {
+        "number": int(n),
+        "title": i["title"],
+        "state": i.get("state", "open"),
+        "user": {"login": i["user"]},
+        "labels": [{"name": l} for l in i["labels"]],
+        "updated_at": i["updated_at"],
+    }
+    if i.get("pr"):
+        o["pull_request"] = {}
+    return o
+
+
+def pull_obj(n):
+    p = s["pulls"].get(str(n))
+    if p is None:
+        die("PR #%s がありません" % n)
+    return {
+        "number": int(n),
+        "title": s["issues"][str(n)]["title"],
+        "state": p.get("state", "open"),
+        "body": p.get("body"),
+        "head": p["head"],
+        "updated_at": s["issues"][str(n)]["updated_at"],
+    }
+
+
+args = sys.argv[1:]
+if not args or args[0] != "api":
+    die("api 以外は真似できません: %s" % " ".join(args))
+method = None
+fields = []
+query = None
+slurp = False
+endpoint = None
+i = 1
+while i < len(args):
+    a = args[i]
+    if a == "-X":
+        method = args[i + 1]
+        i += 2
+    elif a in ("-f", "-F", "--field", "--raw-field"):
+        fields.append(args[i + 1])
+        i += 2
+    elif a in ("-q", "--jq"):
+        query = args[i + 1]
+        i += 2
+    elif a == "--slurp":
+        slurp = True
+        i += 1
+    elif a == "--paginate":
+        i += 1
+    else:
+        endpoint = a
+        i += 1
+if endpoint is None:
+    die("エンドポイントがありません")
+if method is None:
+    method = "POST" if fields else "GET"
+
+form = {}
+for fld in fields:
+    k, _, v = fld.partition("=")
+    if k.endswith("[]"):
+        form.setdefault(k[:-2], []).append(v)
+    else:
+        form[k] = v
+
+prefix = "repos/%s/" % REPO
+if not endpoint.startswith(prefix):
+    die("知らないエンドポイント: %s" % endpoint)
+path, _, qs = endpoint[len(prefix):].partition("?")
+q = {k: v[0] for k, v in urllib.parse.parse_qs(qs).items()}
+
+out = None
+m = None
+
+
+def match(pattern):
+    global m
+    m = re.fullmatch(pattern, path)
+    return m is not None
+
+
+if method == "GET" and match(r"issues"):
+    want = [x for x in q.get("labels", "").split(",") if x]
+    out = []
+    for n in sorted(s["issues"], key=int):
+        o = issue_obj(n)
+        names = [l["name"] for l in o["labels"]]
+        if o["state"] == q.get("state", "open") and all(w in names for w in want):
+            out.append(o)
+elif method == "GET" and match(r"issues/(\d+)"):
+    out = issue_obj(m.group(1))
+elif method == "GET" and match(r"issues/(\d+)/labels"):
+    out = issue_obj(m.group(1))["labels"]
+elif method == "POST" and match(r"issues/(\d+)/labels"):
+    n = m.group(1)
+    for l in form.get("labels", []):
+        if l not in s["issues"][n]["labels"]:
+            s["issues"][n]["labels"].append(l)
+    touch(n)
+    dirty = True
+    out = issue_obj(n)["labels"]
+elif method == "DELETE" and match(r"issues/(\d+)/labels/(.+)"):
+    n, name = m.group(1), urllib.parse.unquote(m.group(2))
+    if name not in s["issues"][n]["labels"]:
+        die("404 ラベル %s は付いていません" % name)
+    s["issues"][n]["labels"].remove(name)
+    touch(n)
+    dirty = True
+elif method == "GET" and match(r"issues/(\d+)/comments"):
+    out = s["comments"].get(m.group(1), [])
+elif method == "POST" and match(r"issues/(\d+)/comments"):
+    n = m.group(1)
+    c = {"id": next_id(), "body": form["body"], "user": {"login": s.get("actor", "owner")},
+         "created_at": now(), "updated_at": now()}
+    s["comments"].setdefault(n, []).append(c)
+    touch(n)
+    dirty = True
+    out = c
+elif method == "PATCH" and match(r"issues/comments/(\d+)"):
+    cid = int(m.group(1))
+    for lst in s["comments"].values():
+        for c in lst:
+            if c["id"] == cid:
+                c["body"] = form["body"]
+                c["updated_at"] = now()
+                out = c
+    if out is None:
+        die("404 コメント %s がありません" % cid)
+    dirty = True
+elif method == "GET" and match(r"pulls"):
+    out = []
+    head = q.get("head", "")
+    for n in sorted(s["pulls"], key=int):
+        o = pull_obj(n)
+        if o["state"] != q.get("state", "open"):
+            continue
+        if head and o["head"]["ref"] != head.partition(":")[2]:
+            continue
+        out.append(o)
+elif method == "GET" and match(r"pulls/(\d+)"):
+    out = pull_obj(m.group(1))
+elif method == "PUT" and match(r"pulls/(\d+)/update-branch"):
+    if s.get("update_branch_fails"):
+        die("422 コンフリクトで取り込めません")
+    s["events"].append("update-branch %s" % m.group(1))
+    dirty = True
+    out = {}
+elif method == "GET" and match(r"compare/(.+)\.\.\.main"):
+    out = {"ahead_by": s["behind"].get(m.group(1), 0)}
+elif method == "GET" and match(r"actions/runs"):
+    sha = q.get("head_sha")
+    out = {"workflow_runs": [r for r in s["runs"] if sha is None or r["head_sha"] == sha]}
+elif method == "GET" and match(r"actions/runs/(\d+)/jobs"):
+    out = {"jobs": [{"steps": s["jobs"][m.group(1)]}] if m.group(1) in s["jobs"] else []}
+elif method == "GET" and match(r"commits/(.+)"):
+    out = {"commit": {"committer": {"date": s["commit_dates"].get(m.group(1), now())}}}
+elif method == "GET" and match(r"git/commits/(.+)"):
+    out = {"tree": {"sha": "tree-of-" + m.group(1)}}
+elif method == "POST" and match(r"git/commits"):
+    sha = "emptycommit%d" % next_id()
+    s["events"].append("empty-commit parent=%s" % ",".join(form.get("parents", [])))
+    dirty = True
+    out = {"sha": sha}
+elif method == "PATCH" and match(r"git/refs/heads/(.+)"):
+    s["events"].append("ref-update %s" % m.group(1))
+    dirty = True
+    out = {}
+elif method == "DELETE" and match(r"git/refs/heads/(.+)"):
+    if m.group(1) not in s["branches"]:
+        die("404 ブランチがありません")
+    del s["branches"][m.group(1)]
+    s["events"].append("delete-branch %s" % m.group(1))
+    dirty = True
+elif method == "GET" and match(r"branches"):
+    out = [{"name": b, "commit": {"commit": {"committer": {"date": d}}}} for b, d in s["branches"].items()]
+elif method == "GET" and match(r"branches/(.+)"):
+    b = m.group(1)
+    if b not in s["branches"]:
+        die("404 ブランチがありません")
+    out = {"name": b, "commit": {"commit": {"committer": {"date": s["branches"][b]}}}}
+else:
+    die("まだ真似していない API です: %s %s" % (method, endpoint))
+
+if dirty:
+    with open(STATE, "w", encoding="utf-8") as f:
+        json.dump(s, f, ensure_ascii=False)
+
+if out is None:
+    sys.exit(0)
+if slurp:
+    out = [out]
+text = json.dumps(out, ensure_ascii=False)
+if query:
+    r = subprocess.run(["jq", "-r", query], input=text, text=True, capture_output=True)
+    sys.stdout.write(r.stdout)
+    sys.stderr.write(r.stderr)
+    sys.exit(r.returncode)
+print(text)

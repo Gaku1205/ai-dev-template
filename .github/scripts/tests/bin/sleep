@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# テスト用の sleep（待たずにすぐ返す）
+exit 0
