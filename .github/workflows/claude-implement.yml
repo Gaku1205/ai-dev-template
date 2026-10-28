@@ -41,10 +41,24 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # パイプラインの App（ボット）がラベル・コメントで起こした実行を、AIのアクションが断らないようにする。
+      # AI自身（claude[bot]）は許さない（自分のコメントで自分を呼ぶ繰り返しを防ぐ）。Secret は使わない
+      - name: 起こしたボットを許可に入れる
+        id: bots
+        env:
+          SENDER: ${{ github.event.sender.login }}
+          SENDER_TYPE: ${{ github.event.sender.type }}
+        run: |
+          list=""
+          if [ "$SENDER_TYPE" = Bot ] && [ "$SENDER" != "claude[bot]" ]; then
+            list="${SENDER},${SENDER%\[bot\]}"
+          fi
+          echo "list=$list" >> "$GITHUB_OUTPUT"
       - uses: anthropics/claude-code-action@v1
         id: claude
         continue-on-error: true
         with:
+          allowed_bots: ${{ steps.bots.outputs.list }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           label_trigger: "ai:implement"
           claude_args: "--model ${{ env.MODEL }} --max-turns ${{ env.MAX_TURNS }} --allowedTools \"Bash(npm run typecheck),Bash(npm run lint),Bash(npm run test),Bash(npm run build),Bash(.github/scripts/tests/run-all.sh),Bash(git status:*),Bash(git diff:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(bash .github/scripts/tests/run-all.sh),Bash(shellcheck:*)\" --disallowedTools \"Bash(git push --force:*),Bash(git push -f:*),Bash(git push --force-with-lease:*),Bash(git rebase:*)\""

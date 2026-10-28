@@ -26,12 +26,26 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
+      # パイプラインの App（ボット）がラベル・コメントで起こした実行を、AIのアクションが断らないようにする。
+      # AI自身（claude[bot]）は許さない（自分のコメントで自分を呼ぶ繰り返しを防ぐ）。Secret は使わない
+      - name: 起こしたボットを許可に入れる
+        id: bots
+        env:
+          SENDER: ${{ github.event.sender.login }}
+          SENDER_TYPE: ${{ github.event.sender.type }}
+        run: |
+          list=""
+          if [ "$SENDER_TYPE" = Bot ] && [ "$SENDER" != "claude[bot]" ]; then
+            list="${SENDER},${SENDER%\[bot\]}"
+          fi
+          echo "list=$list" >> "$GITHUB_OUTPUT"
       - uses: anthropics/claude-code-action@v1
         id: claude
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         with:
+          allowed_bots: ${{ steps.bots.outputs.list }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             あなたはこのリポジトリ（${{ github.repository }}）の企画担当です。

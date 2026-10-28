@@ -106,4 +106,11 @@ PY
 )
 assert_eq "鍵を使うジョブに App の鍵の段がある" "ok" "$result"
 
+echo "== AIのアクションは、パイプラインの App が起こした実行を断らない（AI自身は除く）"
+for name in claude-plan.yml claude-implement.yml claude-review.yml claude-mention.yml; do
+  wf="$(cat "$WORKFLOWS/$name")"
+  assert_contains "$name：allowed_bots を渡す" "$wf" "allowed_bots: \${{ steps.bots.outputs.list }}"
+  assert_contains "$name：claude[bot] は許可しない" "$wf" '"$SENDER" != "claude[bot]"'
+done
+
 finish
