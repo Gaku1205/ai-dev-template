@@ -87,4 +87,20 @@ review="$(cat "$WORKFLOWS/claude-review.yml")"
 assert_contains "モデルを決める段がある" "$review" "steps.weight.outputs.model"
 assert_not_contains "sonnet 固定ではない" "$review" "--model sonnet --max-turns"
 
+echo "== パイプラインの鍵を使うジョブは、GitHub App の鍵を先に作る（無ければ PIPELINE_TOKEN）"
+result=$(python3 - "$WORKFLOWS" <<'PY'
+import sys, os, yaml
+bad = []
+for f in sorted(os.listdir(sys.argv[1])):
+    if not f.endswith('.yml'): continue
+    d = yaml.safe_load(open(os.path.join(sys.argv[1], f)))
+    for name, job in (d.get('jobs') or {}).items():
+        text = yaml.dump(job)
+        if 'secrets.PIPELINE_TOKEN' in text and 'create-github-app-token' not in text:
+            bad.append(f + ':' + name)
+print(','.join(bad) or 'ok')
+PY
+)
+assert_eq "鍵を使うジョブに App の鍵の段がある" "ok" "$result"
+
 finish

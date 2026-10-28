@@ -29,7 +29,7 @@ LABELS="ai:plan" DELBR=false CANPUSH=false HAS_OAUTH=0 HAS_PIPELINE_TOKEN=0 HAS_
 run_doctor
 assert_eq "終了コード 1" "1" "$rc"
 assert_contains "OAuth" "$out" "CLAUDE_CODE_OAUTH_TOKEN が無い"
-assert_contains "PIPELINE_TOKEN" "$out" "PIPELINE_TOKEN が無い"
+assert_contains "鍵が無い" "$out" "パイプラインの鍵が無い"
 assert_contains "ラベル" "$out" "ラベルが足りない"
 assert_contains "通知は警告" "$out" "⚠️ NTFY_TOPIC"
 
@@ -78,5 +78,15 @@ EXP="$(date -u -d '+200 days' '+%Y-%m-%d %H:%M:%S UTC')"
 run_doctor
 assert_contains "十分あれば ✅" "$out" "✅ PIPELINE_TOKEN の期限まであと"
 EXP=""
+
+echo "== GitHub App の鍵を使っているとき"
+USING_APP=1 CANPUSH=true HAS_PIPELINE_TOKEN=1 EXP="$(date -u -d '+0 days' '+%Y-%m-%d %H:%M:%S UTC')"
+run_doctor
+assert_contains "App で書き込める" "$out" "GitHub App の鍵でこのリポジトリに書き込める"
+assert_not_contains "1時間の鍵の期限で警告しない" "$out" "PIPELINE_TOKEN の期限"
+assert_not_contains "切り替えを勧めない" "$out" "GitHub App ではなく"
+USING_APP=0 EXP=""
+run_doctor
+assert_contains "PIPELINE_TOKEN なら App を勧める" "$out" "⚠️ GitHub App ではなく PIPELINE_TOKEN"
 
 finish

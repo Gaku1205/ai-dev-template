@@ -27,8 +27,13 @@ check_secrets() {
   if [ "${HAS_OAUTH:-}" = 1 ]; then ok "CLAUDE_CODE_OAUTH_TOKEN が登録されている"
   else ng "CLAUDE_CODE_OAUTH_TOKEN が無い" "Settings → Secrets → Actions に、claude setup-token で作ったトークンを登録"; fi
   if [ "${HAS_PIPELINE_TOKEN:-}" != 1 ]; then
-    ng "PIPELINE_TOKEN が無い" "Fine-grained トークン（Contents・Issues・Pull requests・Workflows の Read and write）を登録"
-  elif [ "$(token_can_push)" = true ]; then ok "PIPELINE_TOKEN でこのリポジトリに書き込める"; check_token_expiration
+    ng "パイプラインの鍵が無い" "GitHub App（Variable PIPELINE_APP_ID と Secret PIPELINE_APP_PRIVATE_KEY）か、Secret PIPELINE_TOKEN を登録（docs/pipeline.md の「必要な設定」）"
+  elif [ "${USING_APP:-0}" = 1 ]; then
+    if [ "$(token_can_push)" = true ]; then ok "GitHub App の鍵でこのリポジトリに書き込める（回数制限はオーナーと別・期限切れなし）"
+    else ng "GitHub App の鍵でこのリポジトリに書き込めない" "App の設定（Install App）で、このリポジトリを入れる"; fi
+  elif [ "$(token_can_push)" = true ]; then
+    ok "PIPELINE_TOKEN でこのリポジトリに書き込める"; check_token_expiration
+    warn "GitHub App ではなく PIPELINE_TOKEN を使っている" "回数制限をオーナーと共有し、期限もある。GitHub App に切り替えるとよい（docs/pipeline.md）"
   else ng "PIPELINE_TOKEN でこのリポジトリに書き込めない" "トークンの Repository access にこのリポジトリを足す"; fi
   if [ "${HAS_NTFY:-}" = 1 ]; then ok "NTFY_TOPIC が登録されている（通知が届く）"
   else warn "NTFY_TOPIC が無い" "スマホ通知が鳴らない。ntfy のトピック名を Secret に登録"; fi

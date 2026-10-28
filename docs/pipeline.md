@@ -110,6 +110,8 @@ AIが正常に終わったのに変更が無いとき（質問した、指摘が
 | 名前 | 種類 | 内容 |
 | --- | --- | --- |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Secret | `claude setup-token` で作るトークン（Claudeのサブスクで動かす） |
+| `PIPELINE_APP_ID` | Variable | パイプライン用の GitHub App の App ID（おすすめ）。これと下の鍵があれば、`PIPELINE_TOKEN` の代わりに App の1時間だけの鍵を使う。回数制限がオーナーと別になり、期限切れが無く、操作が「App名[bot]」の名義になる |
+| `PIPELINE_APP_PRIVATE_KEY` | Secret | その App の秘密鍵（.pem の中身をそのまま） |
 | `PIPELINE_TOKEN` | Secret | オーナーのFine-grained トークン。ラベル・コメント・PR作成・マージに使う。これで操作すると次のワークフローが動く（Actions標準のトークンだと動かない）。無い間は、PR作成とマージを人間がする |
 | `NTFY_TOPIC` | Secret | スマホ通知（ntfyアプリ）のトピック名。無ければ通知しない |
 | `AGENT_DESK_URL` | Variable | 通知を押したときに開く画面（省略可） |
@@ -118,3 +120,14 @@ AIが正常に終わったのに変更が無いとき（質問した、指摘が
 ほかに、Settings → General → Pull Requests の「Automatically delete head branches」をオンにする（マージ後のブランチが溜まらない。オンにしなくても、進行役がマージ後に `claude/*` ブランチを消し、見張り役が古い物を掃除する）。
 
 ほかに、GitHubの Claude アプリをこのリポジトリに入れる。テンプレートから作った最初の push で「Bootstrap」が自動で動き、ラベルを作り、`CLAUDE.md` から「ai-dev-template 自身の作業」の節を消し、診断（Doctor）の結果を実行画面の Summary に出す（ラベルがもうあれば何もしない）。❌ が出たら、Summary の「→」のとおり直し、Actions の「Doctor」をもう一度実行する。
+
+### パイプライン用の GitHub App の作り方（1回だけ）
+
+1. GitHub の Settings → Developer settings → GitHub Apps → **New GitHub App**
+2. 名前は好きに（例：`gaku-pipeline`）。Homepage URL はリポジトリのURLでよい。**Webhook の Active は外す**
+3. Repository permissions：Actions（Read）、Checks（Read）、Commit statuses（Read）、Contents（Read and write）、Issues（Read and write）、Pull requests（Read and write）、Workflows（Read and write）。Administration（Read）は任意（Doctor がブランチ削除の設定を見るのに使う）
+4. Where can this GitHub App be installed? は **Only on this account** → Create
+5. 出てきた **App ID** を、リポジトリの Variable `PIPELINE_APP_ID` に入れる
+6. ページ下の **Generate a private key** で .pem をダウンロードし、中身を Secret `PIPELINE_APP_PRIVATE_KEY` に入れる
+7. 左の **Install App** → このアカウントに Install → 使うリポジトリを選ぶ（ai-dev-template と、自動で配る先も全部）
+8. Doctor を実行して「GitHub App の鍵でこのリポジトリに書き込める」が出れば完了。`PIPELINE_TOKEN` は消してよい（残っていても App が優先）

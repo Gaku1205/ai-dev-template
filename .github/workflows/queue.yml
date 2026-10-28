@@ -24,22 +24,30 @@ jobs:
     permissions:
       contents: read
     steps:
+      # パイプラインの鍵：GitHub App があれば、その1時間だけの鍵を使う（回数制限がオーナーと別・期限切れなし）。無ければ PIPELINE_TOKEN
+      - name: パイプラインの鍵を作る
+        id: app-token
+        if: vars.PIPELINE_APP_ID != ''
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.PIPELINE_APP_ID }}
+          private-key: ${{ secrets.PIPELINE_APP_PRIVATE_KEY }}
       - uses: actions/checkout@v6
-      - name: PIPELINE_TOKEN が登録されているか
+      - name: パイプラインの鍵があるか
         env:
-          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
-            echo "::error::Secret PIPELINE_TOKEN が登録されていません"
+            echo "::error::パイプラインの鍵がありません（GitHub App の PIPELINE_APP_ID・PIPELINE_APP_PRIVATE_KEY か、Secret PIPELINE_TOKEN を登録）"
             exit 1
           fi
       - name: トークンでIssueを読めるか
         env:
-          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN }}
         run: gh issue list -R "$GITHUB_REPOSITORY" --limit 1 --json number > /dev/null
       - name: 順番待ちを1つ進める
         env:
-          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN }}
         run: |
           # Issueが閉じた直後は、まだ一覧に反映されていないことがあるので少し待つ
           sleep 5
