@@ -18,6 +18,13 @@ fetch_delete_branch() {
   [ -z "$v" ] && v=$(gh api "repos/$REPO" --jq '.delete_branch_on_merge // empty' 2> /dev/null)
   echo "$v"
 }
+# 既定のブランチ（main）が保護されているか：true / false / 空（読めない）。読み取りの権限で見える
+fetch_main_protected() {
+  local b
+  b=$(gh api "repos/$REPO" --jq '.default_branch // empty' 2> /dev/null) || b=""
+  [ -n "$b" ] || return 0
+  gh api "repos/$REPO/branches/$b" --jq '.protected' 2> /dev/null || true
+}
 is_template_repo()    { [ "$(gh api "repos/$REPO" --jq '.is_template' 2> /dev/null)" = true ]; }
 # Fine-grained トークンの期限（GitHub が返事のヘッダーで教えてくれる。期限なしなら空）
 token_expiration()    { GH_TOKEN="${PIPELINE_TOKEN:-}" gh api -i "repos/$REPO" 2> /dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="github-authentication-token-expiration"{print $2; exit}'; }
@@ -71,6 +78,10 @@ check_settings() {
   if [ "$v" = true ]; then ok "マージ後にブランチを自動で消す設定がオン"
   elif [ "$v" = false ]; then warn "「Automatically delete head branches」がオフ" "Settings → General → Pull Requests でオン（オフでも進行役が掃除はする）"
   else echo "- ➖ 「Automatically delete head branches」はトークンの権限では見えないので確かめていない（オフでも進行役が掃除はする）"; fi
+  v="$(fetch_main_protected)"
+  if [ "$v" = true ]; then ok "main が保護されている（PRを通さないと入らない）"
+  elif [ "$v" = false ]; then warn "main が保護されていない（AIが PR とレビューを通さずに main へ push できてしまう）" "Settings → Branches → Add rule で main に「Require a pull request before merging」（承認0人でよい）と「Require status checks to pass」（check）を付ける"
+  else echo "- ➖ main の保護は読めなかったので確かめていない"; fi
 }
 
 check_files() {

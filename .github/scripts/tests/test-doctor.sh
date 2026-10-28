@@ -13,6 +13,7 @@ token_can_push() { echo "$CANPUSH"; }
 token_expiration() { echo "${EXP:-}"; }
 app_installed_here() { [ "${APP_HERE:-true}" = true ]; }
 is_template_repo() { [ "${IS_TEMPLATE:-false}" = true ]; }
+fetch_main_protected() { echo "${PROTECTED-true}"; }
 
 run_doctor() { out="$(main 2>&1)"; rc=$?; }
 workdir="$(mktemp -d)"; cd "$workdir" || exit 1
@@ -99,5 +100,15 @@ APP_TOKEN_FAILED=1 USING_APP=0 CANPUSH=true HAS_PIPELINE_TOKEN=1
 run_doctor
 assert_contains "鍵を作れない" "$out" "❌ GitHub App の鍵を作れない"
 APP_TOKEN_FAILED=0
+
+echo "== main の保護"
+PROTECTED=true; run_doctor
+assert_contains "保護あり" "$out" "✅ main が保護されている"
+PROTECTED=false; run_doctor
+assert_contains "保護なしは警告" "$out" "⚠️ main が保護されていない"
+PROTECTED=""; run_doctor
+assert_contains "読めないときは決めつけない" "$out" "main の保護は読めなかった"
+assert_not_contains "読めないときは警告しない" "$out" "main が保護されていない"
+PROTECTED=true
 
 finish
