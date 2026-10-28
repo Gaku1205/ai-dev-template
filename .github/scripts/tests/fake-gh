@@ -80,7 +80,7 @@ if base=='issues':
     lab=unquote(lab.group(1)) if lab else None
     stm=re.search(r'state=([a-z]+)',path); want=stm.group(1) if stm else 'open'
     meta=st.get('issues_meta',{})
-    res=[{'number':int(n),'title':meta.get(n,{}).get('title','t'),'state':meta.get(n,{}).get('state','open'),'updated_at':st['issue_updated'].get(n,now)} for n,L in st['labels'].items() if (lab is None or lab in L) and (want=='all' or meta.get(n,{}).get('state','open')==want)]
+    res=[{'number':int(n),'title':meta.get(n,{}).get('title','t'),'state':meta.get(n,{}).get('state','open'),'updated_at':st['issue_updated'].get(n,now),'labels':[{'name':x} for x in L],'closed_at':meta.get(n,{}).get('closed_at')} for n,L in st['labels'].items() if (lab is None or lab in L) and (want=='all' or meta.get(n,{}).get('state','open')==want)]
     out(res); sys.exit(0)
 m=re.match(r'pulls/(\d+)/comments$',base)
 if m: out([[]] if slurp else []); sys.exit(0)
