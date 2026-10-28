@@ -361,11 +361,12 @@ permission_key_for_command() {
 }
 
 # AIの実行記録から、許可が無くて拒否された操作を、許可の書き方で1行ずつ出す（無ければ何も出さない）
+# 複数行のコマンド（ヒアドキュメントなど）は1行目だけを見る（2行目以降を別の操作と読まない）
 denied_tools() {
   local f="${1:-}" name cmd
   { [ -n "$f" ] && [ -s "$f" ]; } || return 0
   jq -r 'if type == "array" then . else [.] end | map(select(.type == "result")) | last // {} | .permission_denials // []
-    | .[] | "\(.tool_name)\t\(.tool_input.command // "")"' "$f" 2> /dev/null \
+    | .[] | "\(.tool_name // "" | gsub("[\t\r\n]"; " "))\t\(.tool_input.command // "" | tostring | (split("\n")[0] // "") | gsub("[\t\r]"; " "))"' "$f" 2> /dev/null \
     | while IFS=$'\t' read -r name cmd; do
       if [ "$name" = "Bash" ]; then permission_key_for_command "$cmd"; else echo "$name"; fi
     done | sort -u

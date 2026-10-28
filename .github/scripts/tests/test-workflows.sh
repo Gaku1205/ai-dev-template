@@ -128,4 +128,13 @@ wf="$(cat "$WORKFLOWS/sync.yml")"
 assert_contains "sync.yml：sync-targets.sh を使う" "$wf" "list=\$(.github/scripts/sync-targets.sh .github/sync-targets)"
 assert_not_contains "sync.yml：配り先の失敗をプロセス置換で隠さない" "$wf" "< <(.github/scripts/sync-targets.sh"
 
+echo "== 実装AI・修正AIは、push の前に main を取り込む（作業中に配布でワークフローが変わっても push が拒否されない）"
+for name in claude-implement.yml claude-mention.yml; do
+  wf="$(cat "$WORKFLOWS/$name")"
+  assert_contains "$name：履歴を全部取る" "$wf" "fetch-depth: 0"
+  assert_contains "$name：git fetch を許す" "$wf" "Bash(git fetch:*)"
+  assert_contains "$name：git merge を許す" "$wf" "Bash(git merge:*)"
+  assert_contains "$name：push の前に main を取り込む指示" "$wf" "git merge origin/main で最新の main を取り込んでから"
+done
+
 finish

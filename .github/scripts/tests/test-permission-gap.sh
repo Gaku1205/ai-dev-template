@@ -17,6 +17,8 @@ write d1 '[{"type":"result","subtype":"error_during_execution","result":"","perm
 write d0 '[{"type":"result","subtype":"error_max_turns","result":"","permission_denials":[]}]'
 assert_eq "重複をまとめて、1行ずつ" "Bash(git merge:*)
 WebFetch" "$(run_lib "denied_tools '$MOCK_DIR/d1.json'")"
+write d2 '[{"type":"result","subtype":"error_during_execution","result":"","permission_denials":[{"tool_name":"Bash","tool_input":{"command":"python3 - <<'"'"'EOF'"'"'\nimport re\nassert a in s,(p,a)\n    return x;\nEOF"}}]}]'
+assert_eq "複数行のコマンドは1行目だけを見る（2行目以降を別の操作と読まない）" "Bash(python3:*)" "$(run_lib "denied_tools '$MOCK_DIR/d2.json'")"
 assert_eq "拒否が無ければ何も出ない" "" "$(run_lib "denied_tools '$MOCK_DIR/d0.json'")"
 assert_eq "記録が無くても何も出ない" "" "$(run_lib "denied_tools '$MOCK_DIR/none.json'")"
 
