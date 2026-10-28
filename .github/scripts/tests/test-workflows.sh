@@ -98,6 +98,9 @@ for f in sorted(os.listdir(sys.argv[1])):
         text = yaml.dump(job)
         if 'secrets.PIPELINE_TOKEN' in text and 'create-github-app-token' not in text:
             bad.append(f + ':' + name)
+        for st in job.get('steps') or []:
+            if 'create-github-app-token' in str(st.get('uses', '')) and not st.get('continue-on-error'):
+                bad.append(f + ':' + name + '(鍵が作れないと止まる)')
 print(','.join(bad) or 'ok')
 PY
 )

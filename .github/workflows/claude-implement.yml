@@ -82,6 +82,8 @@ jobs:
       - name: パイプラインの鍵を作る
         id: app-token
         if: vars.PIPELINE_APP_ID != ''
+        # 鍵が作れなくても（秘密鍵の貼り間違いなど）止めずに PIPELINE_TOKEN で続ける。Doctor が ❌ で知らせる
+        continue-on-error: true
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.PIPELINE_APP_ID }}

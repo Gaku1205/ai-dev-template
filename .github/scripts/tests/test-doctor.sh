@@ -89,4 +89,10 @@ USING_APP=0 EXP=""
 run_doctor
 assert_contains "PIPELINE_TOKEN なら App を勧める" "$out" "⚠️ GitHub App ではなく PIPELINE_TOKEN"
 
+echo "== App の鍵が作れなかったら ❌"
+APP_TOKEN_FAILED=1 USING_APP=0 CANPUSH=true HAS_PIPELINE_TOKEN=1
+run_doctor
+assert_contains "鍵を作れない" "$out" "❌ GitHub App の鍵を作れない"
+APP_TOKEN_FAILED=0
+
 finish

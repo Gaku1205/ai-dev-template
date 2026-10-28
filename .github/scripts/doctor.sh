@@ -26,6 +26,9 @@ token_can_push()      { GH_TOKEN="${PIPELINE_TOKEN:-}" gh api "repos/$REPO" --jq
 check_secrets() {
   if [ "${HAS_OAUTH:-}" = 1 ]; then ok "CLAUDE_CODE_OAUTH_TOKEN が登録されている"
   else ng "CLAUDE_CODE_OAUTH_TOKEN が無い" "Settings → Secrets → Actions に、claude setup-token で作ったトークンを登録"; fi
+  if [ "${APP_TOKEN_FAILED:-0}" = 1 ]; then
+    ng "GitHub App の鍵を作れない（PIPELINE_TOKEN で代わりに動いている）" "App ID（Variable PIPELINE_APP_ID）と秘密鍵（Secret PIPELINE_APP_PRIVATE_KEY：.pem の中身を -----BEGIN から -----END ... KEY----- まで全部）を確かめ、App をこのリポジトリに Install する"
+  fi
   if [ "${HAS_PIPELINE_TOKEN:-}" != 1 ]; then
     ng "パイプラインの鍵が無い" "GitHub App（Variable PIPELINE_APP_ID と Secret PIPELINE_APP_PRIVATE_KEY）か、Secret PIPELINE_TOKEN を登録（docs/pipeline.md の「必要な設定」）"
   elif [ "${USING_APP:-0}" = 1 ]; then
