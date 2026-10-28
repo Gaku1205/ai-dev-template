@@ -70,7 +70,13 @@ if ! files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[
   mark_for_retry "$pr" review "変更ファイルの一覧を取得できませんでした（APIエラーなどの可能性）"
   exit 0
 fi
-if printf '%s\n' "$files" | grep -qE '^(\.github/|docs/pipeline\.md$|CLAUDE\.md$|AGENTS\.md$)'; then
+# ai-dev-template 自身（main の CLAUDE.md に「pipeline-self-edit: auto」の印がある）は、スクリプト・テスト・docs/pipeline.md の変更を自動でマージしてよい。
+# ワークフロー・CLAUDE.md・AGENTS.md（AIの許可とルール）は、どのリポジトリでも人間に任せる。印は main の物を見るので、PRの変更で印を足してもすり抜けられない
+hold_pattern='^(\.github/|docs/pipeline\.md$|CLAUDE\.md$|AGENTS\.md$)'
+if grep -q 'pipeline-self-edit: auto' "${CLAUDE_MD:-$(dirname "$0")/../../CLAUDE.md}" 2> /dev/null; then
+  hold_pattern='^(\.github/workflows/|CLAUDE\.md$|AGENTS\.md$)'
+fi
+if printf '%s\n' "$files" | grep -qE "$hold_pattern"; then
   # ai:hold を付けておく（画面で「マージ待ち（人間）」と分かる。人間がマージするまで、自動ではマージされない）
   has_label "$pr" "ai:hold" || add_label "$pr" "ai:hold" || true
   notify hold "マージできます" "PR #${pr} ${title}：CIもレビューもOK。パイプライン自体を変えるPRなので、マージはあなたが押してください" 4

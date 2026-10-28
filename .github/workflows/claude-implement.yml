@@ -45,7 +45,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           label_trigger: "ai:implement"
-          claude_args: "--model ${{ env.MODEL }} --max-turns ${{ env.MAX_TURNS }} --allowedTools \"Bash(npm run typecheck),Bash(npm run lint),Bash(npm run test),Bash(npm run build)\""
+          claude_args: "--model ${{ env.MODEL }} --max-turns ${{ env.MAX_TURNS }} --allowedTools \"Bash(npm run typecheck),Bash(npm run lint),Bash(npm run test),Bash(npm run build),Bash(.github/scripts/tests/run-all.sh)\""
       # 作業回数の上限で止まっても、変更があればPRにしてCIで確かめる
       - name: PRを作る
         if: ${{ !cancelled() }}

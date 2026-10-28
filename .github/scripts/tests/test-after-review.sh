@@ -2,6 +2,9 @@
 # レビューのあと（after-review.sh）：指摘なし・CI通過なら自動でマージ。パイプライン自体を変えるPRと ai:hold のPRは、マージを人間に任せる
 source "$(dirname "$0")/lib.sh"
 setup_mock
+# 既存のケースは、印の無い CLAUDE.md で確かめる（実際のリポジトリの CLAUDE.md に左右されないように）
+printf '%s\n' '# 普通のリポジトリ' > "$MOCK_DIR/CLAUDE_default.md"
+export CLAUDE_MD="$MOCK_DIR/CLAUDE_default.md"
 
 run_case() { # 変更ファイル（スペース区切り） ラベル（カンマ区切り、空でもよい）
   local files labels
@@ -33,6 +36,23 @@ done
 echo "== 似た名前（docs/spec.md、src/.github-note.ts）は、パイプライン自体の変更ではない"
 run_case "docs/spec.md src/.github-note.ts" ""
 assert_eq "マージされる" "58" "$(merged)"
+
+echo "== ai-dev-template 自身（CLAUDE.md に印がある）：スクリプト・テスト・docs/pipeline.md は自動でマージ。ワークフロー・CLAUDE.md・AGENTS.md は人間に任せる"
+printf '%s\n' '<!-- pipeline-self-edit: auto -->' > "$MOCK_DIR/CLAUDE_with_mark.md"
+printf '%s\n' '# 普通のリポジトリ' > "$MOCK_DIR/CLAUDE_without_mark.md"
+export CLAUDE_MD="$MOCK_DIR/CLAUDE_with_mark.md"
+run_case ".github/scripts/watchdog.sh .github/scripts/tests/test-x.sh docs/pipeline.md" ""
+assert_eq "スクリプト・テスト・docs は、自動でマージされる" "58:" "$(merged):$(labels_of 58)"
+run_case ".github/workflows/ci.yml" ""
+assert_eq "ワークフローは、マージされず ai:hold" ":ai:hold" "$(merged):$(labels_of 58)"
+for f in CLAUDE.md AGENTS.md; do
+  run_case "$f .github/scripts/a.sh" ""
+  assert_eq "$f が混ざると、マージされず ai:hold" ":ai:hold" "$(merged):$(labels_of 58)"
+done
+export CLAUDE_MD="$MOCK_DIR/CLAUDE_without_mark.md"
+run_case ".github/scripts/watchdog.sh" ""
+assert_eq "印が無いリポジトリ（テンプレートから作ったアプリ）は、スクリプトでも ai:hold" ":ai:hold" "$(merged):$(labels_of 58)"
+export CLAUDE_MD="$MOCK_DIR/CLAUDE_default.md"
 
 echo "== ai:hold が付いているPR：アプリだけの変更でもマージしない"
 run_case "src/app/page.tsx" "ai:hold"
