@@ -54,7 +54,7 @@
 
 ### Vercelの公開回数について
 
-Vercelの無料プランには、1日に公開できる回数の上限があります。AIは `claude/*` ブランチに何度もpushするので、そのたびにプレビューを作ると上限をすぐ使い切ってしまいます。`vercel.json` は、`claude/*` ブランチのプレビューを作らず、mainにマージされたときだけ公開するための設定です。
+Vercelの無料プランには、1日に公開できる回数の上限があります。AIは `claude/*` ブランチに何度もpushするので、そのたびにプレビューを作ると上限をすぐ使い切ってしまいます。`vercel.json` は、`claude/*` ブランチのプレビューを作らず、mainにマージされたときだけ公開するための設定です。また、直前のコミットが `.github/` と `docs/pipeline.md` の変更だけなら、アプリは変わらないので公開を飛ばします（`ignoreCommand`）。
 
 ## 安全のしくみ
 
@@ -79,5 +79,5 @@ Vercelの無料プランには、1日に公開できる回数の上限があり�
 | `CLAUDE.md` | AIが守るルール（触ってはいけない場所、作業の終わらせ方、PRの書き方） |
 | `docs/` | 仕様書・デザイン仕様・パイプラインの説明 |
 | `src/` | 最小の Next.js（App Router）＋TypeScript＋Vitest |
-| `vercel.json` | `claude/*` ブランチのVercelプレビューを作らない設定 |
+| `vercel.json` | `claude/*` ブランチのVercelプレビューを作らない設定と、`.github/`・`docs/pipeline.md` だけの変更では公開を飛ばす設定（`ignoreCommand`） |
 | `LICENSE` | MIT License（Copyright (c) 2026 Gaku1205） |
