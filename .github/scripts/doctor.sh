@@ -19,6 +19,8 @@ fetch_delete_branch() {
   echo "$v"
 }
 is_template_repo()    { [ "$(gh api "repos/$REPO" --jq '.is_template' 2> /dev/null)" = true ]; }
+# Fine-grained トークンの期限（GitHub が返事のヘッダーで教えてくれる。期限なしなら空）
+token_expiration()    { GH_TOKEN="${PIPELINE_TOKEN:-}" gh api -i "repos/$REPO" 2> /dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="github-authentication-token-expiration"{print $2; exit}'; }
 token_can_push()      { GH_TOKEN="${PIPELINE_TOKEN:-}" gh api "repos/$REPO" --jq '.permissions.push' 2>/dev/null; }
 
 check_secrets() {
@@ -26,10 +28,21 @@ check_secrets() {
   else ng "CLAUDE_CODE_OAUTH_TOKEN が無い" "Settings → Secrets → Actions に、claude setup-token で作ったトークンを登録"; fi
   if [ "${HAS_PIPELINE_TOKEN:-}" != 1 ]; then
     ng "PIPELINE_TOKEN が無い" "Fine-grained トークン（Contents・Issues・Pull requests・Workflows の Read and write）を登録"
-  elif [ "$(token_can_push)" = true ]; then ok "PIPELINE_TOKEN でこのリポジトリに書き込める"
+  elif [ "$(token_can_push)" = true ]; then ok "PIPELINE_TOKEN でこのリポジトリに書き込める"; check_token_expiration
   else ng "PIPELINE_TOKEN でこのリポジトリに書き込めない" "トークンの Repository access にこのリポジトリを足す"; fi
   if [ "${HAS_NTFY:-}" = 1 ]; then ok "NTFY_TOPIC が登録されている（通知が届く）"
   else warn "NTFY_TOPIC が無い" "スマホ通知が鳴らない。ntfy のトピック名を Secret に登録"; fi
+}
+
+# 期限が来るとパイプラインが全部止まるので、30日前から警告する
+check_token_expiration() {
+  local exp days
+  exp="$(token_expiration)"
+  if [ -z "$exp" ]; then ok "PIPELINE_TOKEN に期限が無い（または期限を読めない）"; return; fi
+  days=$(( ( $(date -d "$exp" +%s 2> /dev/null || echo 0) - $(date +%s) ) / 86400 ))
+  if [ "$days" -lt 0 ]; then ng "PIPELINE_TOKEN の期限が切れている（$exp）" "トークンを作り直し（Regenerate）、Secret を登録し直す"
+  elif [ "$days" -lt 30 ]; then warn "PIPELINE_TOKEN の期限まであと ${days} 日（$exp）" "期限が来るとパイプラインが止まる。トークンの設定で期限を延ばす（Regenerate）"
+  else ok "PIPELINE_TOKEN の期限まであと ${days} 日（$exp）"; fi
 }
 
 check_labels() {

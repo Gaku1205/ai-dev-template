@@ -10,6 +10,7 @@ all_labels="ai:plan ai:implement ai:review ai:queue ai:hold ai:stuck ai:skip ai:
 fetch_labels() { printf '%s\n' $LABELS; }
 fetch_delete_branch() { echo "$DELBR"; }
 token_can_push() { echo "$CANPUSH"; }
+token_expiration() { echo "${EXP:-}"; }
 is_template_repo() { [ "${IS_TEMPLATE:-false}" = true ]; }
 
 run_doctor() { out="$(main 2>&1)"; rc=$?; }
@@ -64,5 +65,18 @@ DELBR=""
 run_doctor
 assert_not_contains "オフと言わない" "$out" "がオフ"
 assert_contains "見えないと書く" "$out" "確かめていない"
+
+echo "== トークンの期限"
+DELBR=true CANPUSH=true HAS_PIPELINE_TOKEN=1
+EXP="$(date -u -d '+10 days' '+%Y-%m-%d %H:%M:%S UTC')"
+run_doctor
+assert_contains "30日未満は警告" "$out" "⚠️ PIPELINE_TOKEN の期限まであと"
+EXP="$(date -u -d '-1 days' '+%Y-%m-%d %H:%M:%S UTC')"
+run_doctor
+assert_contains "切れていたら ❌" "$out" "❌ PIPELINE_TOKEN の期限が切れている"
+EXP="$(date -u -d '+200 days' '+%Y-%m-%d %H:%M:%S UTC')"
+run_doctor
+assert_contains "十分あれば ✅" "$out" "✅ PIPELINE_TOKEN の期限まであと"
+EXP=""
 
 finish
