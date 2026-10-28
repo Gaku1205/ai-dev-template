@@ -46,6 +46,16 @@ if [ "$inline" -gt 0 ] || { [ -n "$review" ] && ! printf '%s' "$review" | grep -
   exit 0
 fi
 
+# 画像など、文字で読めない変更だけのPR（README のスクショの撮り直しなど）は、レビューAIに読む差分が無く、
+# 結果のコメントを書かずに終わる。そのときは、指摘なしとして進める。
+# 「文字で読めない」＝差分（patch）が無く、変更の行数も 0。大きすぎて patch が省かれた文字のファイルは、行数があるので含めない
+if [ -z "$review" ]; then
+  if kinds=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate     -q '.[] | if (.patch == null and (.changes // 0) == 0) then "binary" else "text" end')     && [ -n "$kinds" ] && ! printf '%s\n' "$kinds" | grep -q '^text$'; then
+    comment "$pr" "画像など、文字で読めない変更だけなので、レビューする差分がありません。指摘なしとして進めます。" || true
+    review="No issues found"
+    echo "PR #$pr：文字で読めない変更だけなので、指摘なしとして進めます"
+  fi
+fi
 if [ -z "$review" ]; then
   stop_for_human "$pr" "レビューAIの結果のコメントが見つかりませんでした"
   exit 0

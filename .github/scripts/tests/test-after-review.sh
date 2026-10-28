@@ -58,4 +58,22 @@ echo "== ai:hold が付いているPR：アプリだけの変更でもマージ�
 run_case "src/app/page.tsx" "ai:hold"
 assert_eq "マージされない" "" "$(merged)"
 
+echo "== レビューの結果が無い：画像だけのPRは、指摘なしとして進める"
+review_missing_case() { # 変更ファイル（JSON の配列）
+  init_state '{"labels":{"58":[]},"files":'"$1"',"pulls":[{"number":58,"state":"open","body":"Closes #54","head":{"sha":"abc","ref":"claude/issue-54-x"},"updated_at":"2026-01-01T00:00:00Z"}],"checks":[{"name":"check","status":"completed","conclusion":"success","app":{"slug":"github-actions"}}],"branches":[{"name":"claude/issue-54-x","date":"2026-01-01T00:00:00Z"}]}'
+  CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+}
+review_missing_case '[{"filename":"assets/readme/home.png","changes":0},{"filename":"assets/readme/demo.gif","changes":0}]'
+assert_eq "画像だけ：マージされる" "58" "$(merged)"
+assert_not_contains "画像だけ：止めない" "$(labels_of 58)" "ai:stuck"
+assert_contains "画像だけ：理由をコメントする" "$(comments_of 58)" "文字で読めない変更だけ"
+review_missing_case '[{"filename":"assets/readme/home.png","changes":0},"src/app/page.tsx"]'
+assert_eq "文字のファイルが混ざる：マージしない" "" "$(merged)"
+assert_contains "文字のファイルが混ざる：人間に回す" "$(labels_of 58)" "ai:stuck"
+review_missing_case '[{"filename":"src/big.ts","changes":5000}]'
+assert_eq "大きすぎて patch が無い文字のファイル：マージしない" "" "$(merged)"
+assert_contains "大きすぎて patch が無い文字のファイル：人間に回す" "$(labels_of 58)" "ai:stuck"
+review_missing_case '[]'
+assert_contains "変更ファイルが読めない・無い：人間に回す" "$(labels_of 58)" "ai:stuck"
+
 finish
