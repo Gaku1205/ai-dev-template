@@ -5,7 +5,8 @@
 #   3. CIが「承認待ち」で止まっている物を動かし直す
 #   4. ラベルが無いまま放置されたIssueを企画（ai:plan）に回す
 #   5. 使い終わった claude/* ブランチを掃除する
-#   6. 順番待ち（ai:queue）を進める
+#   6. ラベルの矛盾（ai:queue と ai:implement など）を直す
+#   7. 順番待ち（ai:queue）を進める
 # 人間の確認待ち（ai:stuck）の物は触らない。
 #
 # 環境変数：READ_TOKEN（ワークフローのトークン、actions: read）
@@ -40,6 +41,8 @@ for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry"
   retry_due "$n" || { echo "#$n：やり直すにはまだ早いです"; continue; }
 
   record=$(retry_comment "$n")
+  # やり直しの記録が無い物は、ここでは触らない（3.9 が ai:stuck にして人間に回す）
+  [ -z "$record" ] && continue
   body=$(printf '%s' "$record" | jq -r .body)
   kind=$(printf '%s' "$body" | sed -nE 's/.*kind=([a-z]+).*/\1/p' | tail -1)
   reason=$(printf '%s' "$body" | sed -nE 's/^理由：(.*)$/\1/p' | head -1)
@@ -183,6 +186,56 @@ for b in $(gh api "repos/$REPO/branches?per_page=100" --paginate -q '.[].name | 
   delete_branch_if_ai "$b"
   cleaned=$(( cleaned + 1 ))
 done
+
+# ---- 3.9 ラベルの矛盾を直す（人が手でラベルを付け外ししたとき） ----
+# 直したら、その Issue・PR に1行コメントする。矛盾が無ければ何もしない。1回に直すのは、Issue と PR を合わせて20件まで
+fixed=0
+fix_labels() { # 番号 コメント 外すラベル...
+  local num="$1" msg="$2" l
+  shift 2
+  for l in "$@"; do remove_label "$num" "$l"; done
+  comment "$num" "🔧 ${msg}（見張り役がラベルの矛盾を直しました）"
+  echo "#$num：${msg}"
+  fixed=$(( fixed + 1 ))
+}
+open_items=$(gh api "repos/$REPO/issues?state=open&per_page=100" -q '.[] | [.number, ([.labels[].name] | join(","))] | @tsv')
+while IFS=$'\t' read -r n labels; do
+  [ -z "$n" ] && continue
+  [ "$fixed" -ge 20 ] && break
+  case ",$labels," in
+    *,ai:implement,*)
+      case ",$labels," in
+        *,ai:queue,*) fix_labels "$n" "ai:queue と ai:implement が両方付いていたので、ai:queue を外しました" ai:queue; continue ;;
+      esac
+      case ",$labels," in
+        *,ai:plan,*) fix_labels "$n" "ai:plan と ai:implement が両方付いていたので、ai:plan を外しました" ai:plan; continue ;;
+      esac
+      ;;
+  esac
+  case ",$labels," in
+    *,ai:retry,*)
+      if [ -z "$(retry_comment "$n")" ]; then
+        fix_labels "$n" "ai:retry が付いていますが、やり直しの記録が無いので、ai:retry を外して ai:stuck にしました。人間が確認してください" ai:retry
+        add_label "$n" "ai:stuck"
+      fi
+      ;;
+  esac
+done <<< "$open_items"
+
+# 閉じた物（直近7日に閉じた物だけ）に、ai:stuck・ai:retry・ai:queue が残っている
+since=$(date -u -d "7 days ago" +%Y-%m-%dT%H:%M:%SZ)
+closed_items=$(gh api "repos/$REPO/issues?state=closed&since=${since}&per_page=100" \
+  -q ".[] | select(.closed_at != null and .closed_at >= \"$since\") | [.number, ([.labels[].name] | join(\",\"))] | @tsv")
+while IFS=$'\t' read -r n labels; do
+  [ -z "$n" ] && continue
+  [ "$fixed" -ge 20 ] && break
+  stale=()
+  for l in ai:stuck ai:retry ai:queue; do
+    case ",$labels," in *,"$l",*) stale+=("$l") ;; esac
+  done
+  [ "${#stale[@]}" -eq 0 ] && continue
+  fix_labels "$n" "閉じているのに ${stale[*]} が残っていたので、外しました" "${stale[@]}"
+done <<< "$closed_items"
 
 # ---- 4. 順番待ちを進める ----
 start_next_in_queue || echo "順番待ちを進められませんでした"
