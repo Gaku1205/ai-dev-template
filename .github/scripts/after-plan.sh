@@ -13,7 +13,7 @@ result=$(head -n 1 plan-result.txt 2> /dev/null | tr -d '\r' || true)
 # 企画AIがエラーで終わったとき（使用量の上限など）は、質問扱いにせず、自動でやり直す（watchdog.sh）
 if [ "$PLAN_OUTCOME" != "success" ]; then
   export GH_TOKEN="$GITHUB_TOKEN_FOR_LABELS"
-  mark_for_retry "$ISSUE" plan "$(failure_reason "企画AIがエラーで止まりました" "${EXECUTION_FILE:-}")"
+  mark_for_retry "$ISSUE" plan "$(failure_reason "企画AIがエラーで止まりました" "${EXECUTION_FILE:-}")" "$(limit_signal "${EXECUTION_FILE:-}")"
   exit 0
 fi
 if [ -z "$result" ]; then

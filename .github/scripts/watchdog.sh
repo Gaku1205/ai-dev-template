@@ -45,18 +45,23 @@ for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry"
   reason=$(printf '%s' "$body" | sed -nE 's/^理由：(.*)$/\1/p' | head -1)
   count=$(retry_count "$n")
   next=$((count + 1))
+  # 使用量の上限で待っていたぶんは、やり直しの回数を使わない（上限の待ちを始めた時刻は、次の失敗のために残す）
+  limit_first=$(retry_mark_value "$body" limit-first)
+  if [ -n "$(retry_mark_value "$body" limit-until)" ]; then
+    next=$count
+  fi
   echo "#$n：${kind} をやり直します（${next}/${MAX_RETRY}回目）"
   handled="${handled}${n} "
 
   case "$kind" in
     plan)
-      write_retry_record "$n" "$next" "$kind" "$reason"
+      write_retry_record "$n" "$next" "$kind" "$reason" "" "$limit_first"
       remove_label "$n" "ai:retry"
       remove_label "$n" "ai:plan"
       add_label "$n" "ai:plan"
       ;;
     implement)
-      write_retry_record "$n" "$next" "$kind" "$reason"
+      write_retry_record "$n" "$next" "$kind" "$reason" "" "$limit_first"
       remove_label "$n" "ai:retry"
       if has_open_pr_for_issue "$n"; then
         echo "#$n：PRができているので、実装はやり直しません"
@@ -66,7 +71,7 @@ for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry"
       fi
       ;;
     review)
-      write_retry_record "$n" "$next" "$kind" "$reason"
+      write_retry_record "$n" "$next" "$kind" "$reason" "" "$limit_first"
       remove_label "$n" "ai:retry"
       remove_label "$n" "ai:review"
       add_label "$n" "ai:review"
@@ -82,7 +87,7 @@ for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry"
         model_mark="
 <!-- auto-fix-model: opus -->"
       fi
-      write_retry_record "$n" "$next" "$kind" "$reason"
+      write_retry_record "$n" "$next" "$kind" "$reason" "" "$limit_first"
       remove_label "$n" "ai:retry"
       comment "$n" "${request}
 
