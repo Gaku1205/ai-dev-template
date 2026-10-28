@@ -1,11 +1,12 @@
 # 順番待ち（ai:queue）：進行中・停止中の物が無くなったら、番号の小さいIssueから実装を始める。
 # きっかけ：ai:queue を付けた／Issueが閉じた（PRがマージされた）／ai:stuck を外した
+# pull_request_target なので、PRの中身ではなく main にある版のスクリプトが動く（PRの変更でトークンを使われない）。
 name: Queue
 
 on:
   issues:
     types: [labeled, unlabeled, closed]
-  pull_request:
+  pull_request_target:
     types: [closed, unlabeled]
 
 concurrency:
