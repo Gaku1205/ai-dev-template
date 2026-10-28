@@ -2,6 +2,7 @@
 # PRに「visual:update」ラベルを付けると動く（終わるとラベルは外れる）。
 # 文字の描き方はパソコンごとに少し違うので、基準の画像はCIの環境で撮った物にそろえる。
 # 見た目をわざと変えたPRや、初めて基準の画像を作るPRで使う。
+# 安全のため2段に分ける：撮り直し（PRのコードを動かす。Secret を渡さない）→ 画像だけ取り出してコミット（Secret を使う。PRのコードは動かさない）。
 name: Visual Update
 
 on:
@@ -9,7 +10,7 @@ on:
     types: [labeled]
 
 jobs:
-  update:
+  shoot:
     if: >-
       github.event.label.name == 'visual:update' &&
       github.event.pull_request.head.repo.full_name == github.repository
@@ -21,11 +22,11 @@ jobs:
     permissions:
       contents: read
     steps:
-      # オーナーのトークンでpushするので、そのあとCIがもう一度走る
+      # ここではPRのコードを動かすので、Secret は使わず、トークンも残さない
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-          token: ${{ secrets.PIPELINE_TOKEN }}
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -34,12 +35,40 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: 基準の画像を撮り直す
         run: npm run test:visual -- --update-snapshots
+      - uses: actions/upload-artifact@v4
+        with:
+          name: visual-snapshots
+          path: tests/visual
+          if-no-files-found: error
+          retention-days: 1
+
+  commit:
+    needs: shoot
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      # ここではPRのコードを動かさない（npm も実行しない）。画像（png）だけを取り出す
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.PIPELINE_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: visual-snapshots
+          path: ${{ runner.temp }}/snap
       - name: 変わった画像をコミットする
         env:
           BRANCH: ${{ github.event.pull_request.head.ref }}
+          SNAP: ${{ runner.temp }}/snap
         run: |
-          git config user.name "agent-desk pipeline"
+          git config user.name "pipeline"
           git config user.email "noreply@github.com"
+          (cd "$SNAP" && find . -type f -name '*.png' -print0) | while IFS= read -r -d '' f; do
+            mkdir -p "tests/visual/$(dirname "$f")"
+            cp "$SNAP/$f" "tests/visual/$f"
+          done
           git add -A tests/visual
           if git diff --cached --quiet; then
             echo "基準の画像に変わりはありません"
@@ -47,8 +76,14 @@ jobs:
             git commit -m "見た目のテスト：基準の画像をCIの環境で撮り直す"
             git push origin "HEAD:$BRANCH"
           fi
+
+  unlabel:
+    needs: [shoot, commit]
+    if: always() && github.event.label.name == 'visual:update' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
       - name: ラベルを外す
-        if: always()
         env:
           GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
           PR: ${{ github.event.pull_request.number }}

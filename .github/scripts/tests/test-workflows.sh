@@ -36,4 +36,21 @@ for name in queue.yml resume.yml; do
   assert_contains "$name：pull_request_target を使う" "$(cat "$WORKFLOWS/$name")" "pull_request_target:"
 done
 
+echo "== visual-update.yml：PRのコードを動かすジョブには Secret を渡さない"
+result=$(python3 - "$WORKFLOWS/visual-update.yml" <<'PY'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1]))
+bad = []
+for name, job in d['jobs'].items():
+    text = yaml.dump(job)
+    runs_code = any(w in text for w in ('npm ci', 'npm run', 'npx '))
+    uses_secret = 'secrets.' in text
+    if runs_code and uses_secret:
+        bad.append(name)
+print(','.join(bad) or 'ok')
+PY
+)
+assert_eq "npm を動かすジョブが Secret を使わない" "ok" "$result"
+assert_contains "撮り直しはトークンを残さない" "$(cat "$WORKFLOWS/visual-update.yml")" "persist-credentials: false"
+
 finish
