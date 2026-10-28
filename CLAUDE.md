@@ -21,10 +21,20 @@
 
 ## 触ってはいけないもの
 
-- `.github/` 配下（ワークフロー、スクリプト、テンプレート）
+- `.github/` 配下（ワークフロー、スクリプト、テンプレート）。ただし ai-dev-template 自身だけ、下の「ai-dev-template 自身の作業」で許した物は触ってよい
 - `package.json` の依存パッケージの追加・変更（必要なら理由をコメントに書いて人間に任せる）
-- `CLAUDE.md`、`AGENTS.md`、`docs/pipeline.md`（パイプラインの説明）。`docs/spec.md` と `docs/design.md` は、上のとおり必要なときだけ更新してよい
+- `CLAUDE.md`、`AGENTS.md`、`docs/pipeline.md`（パイプラインの説明。ai-dev-template 自身だけ、`docs/pipeline.md` は下の節で触ってよい）。`docs/spec.md` と `docs/design.md` は、上のとおり必要なときだけ更新してよい
 - APIキーやトークンなどの秘密情報。コード・コメント・テストに書かない。設定は環境変数から読む
+
+## ai-dev-template 自身の作業（パイプライン本体のリポジトリだけ。テンプレートから新しいアプリを作ったら、この節ごと消す）
+
+<!-- pipeline-self-edit: auto -->
+
+- 触ってよい：`.github/scripts/`（テストの `tests/` を含む）と `docs/pipeline.md`、README
+- 触ってはいけない：`.github/workflows/`（許可と安全のため、マネージャー（人間側のClaude）が行う。GitHubの仕様で、AIはワークフローのファイルをpushできない）、`CLAUDE.md`、`AGENTS.md`（AI自身のルールを、AIが無人で書き換えない）、`package.json` の依存パッケージ。これらの変更が要るときは、PRの説明の「人間にお願いしたいこと」に、変えてほしい差分を書く
+- スクリプトを変えたら、場面に合うテストを `.github/scripts/tests/` に足し、`.github/scripts/tests/run-all.sh` を通す（使い方は `tests/lib.sh`）。シェルは `shellcheck` の警告が出ない書き方にする
+- 触ってよい物だけを変えるPRは、CIもレビューも通れば、アプリの作業と同じく自動でマージされる（上の印 `pipeline-self-edit` があるリポジトリだけ。マージされるかは、進行役が main の CLAUDE.md を見て決める）。ワークフロー・`CLAUDE.md`・`AGENTS.md` を触るPRは、自動ではマージされず `ai:hold` が付く
+- 秘密情報（トークンなど）を、スクリプトやテストに書かない。環境変数から読む
 
 ## コードの書き方
 
