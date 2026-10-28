@@ -20,34 +20,34 @@ echo "== 全部そろっていれば問題なし"
 LABELS="$all_labels" DELBR=true CANPUSH=true HAS_OAUTH=1 HAS_PIPELINE_TOKEN=1 HAS_NTFY=1
 run_doctor
 assert_eq "終了コード 0" "0" "$rc"
-assert_contains "問題なし" "問題なし" "$out"
+assert_contains "問題なし" "$out" "問題なし"
 
 echo "== Secret もラベルも無ければ ❌"
 LABELS="ai:plan" DELBR=false CANPUSH=false HAS_OAUTH=0 HAS_PIPELINE_TOKEN=0 HAS_NTFY=0
 run_doctor
 assert_eq "終了コード 1" "1" "$rc"
-assert_contains "OAuth" "CLAUDE_CODE_OAUTH_TOKEN が無い" "$out"
-assert_contains "PIPELINE_TOKEN" "PIPELINE_TOKEN が無い" "$out"
-assert_contains "ラベル" "ラベルが足りない" "$out"
-assert_contains "通知は警告" "⚠️ NTFY_TOPIC" "$out"
+assert_contains "OAuth" "$out" "CLAUDE_CODE_OAUTH_TOKEN が無い"
+assert_contains "PIPELINE_TOKEN" "$out" "PIPELINE_TOKEN が無い"
+assert_contains "ラベル" "$out" "ラベルが足りない"
+assert_contains "通知は警告" "$out" "⚠️ NTFY_TOPIC"
 
 echo "== トークンはあるが書き込めない"
 LABELS="$all_labels" DELBR=true CANPUSH=false HAS_OAUTH=1 HAS_PIPELINE_TOKEN=1 HAS_NTFY=1
 run_doctor
-assert_contains "書き込めない" "書き込めない" "$out"
+assert_contains "書き込めない" "$out" "書き込めない"
 
 echo "== CLAUDE.md がテンプレートのまま・足りないスクリプト"
 echo "（アプリの説明を1〜2行で書く）" > CLAUDE.md
 echo '{"scripts":{"lint":"x"}}' > package.json
 CANPUSH=true
 run_doctor
-assert_contains "テンプレートのまま" "CLAUDE.md がテンプレートのまま" "$out"
-assert_contains "test が無い" "test のスクリプトが無い" "$out"
+assert_contains "テンプレートのまま" "$out" "CLAUDE.md がテンプレートのまま"
+assert_contains "test が無い" "$out" "test のスクリプトが無い"
 
 echo "== セルフ編集の印が他のリポジトリに残っていたら警告"
 echo "<!-- pipeline-self-edit: auto -->" > CLAUDE.md
 run_doctor
-assert_contains "印の警告" "pipeline-self-edit の印が残っている" "$out"
+assert_contains "印の警告" "$out" "pipeline-self-edit の印が残っている"
 
 cd /; rm -rf "$workdir"
 finish

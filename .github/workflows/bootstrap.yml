@@ -1,0 +1,38 @@
+# テンプレートから作ったリポジトリの、最初の準備を自動でやる（ラベルを作る・CLAUDE.md の自己編集の節を消す・診断を出す）。
+# ラベル（ai:plan）がもうあれば何もしないので、2回目以降は空振りする。結果は実行画面の Summary に出る。
+name: Bootstrap
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  bootstrap:
+    # ai-dev-template 自身では動かさない
+    if: github.repository != 'Gaku1205/ai-dev-template'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: 最初の準備
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          HAS_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' && '1' || '0' }}
+          HAS_PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN != '' && '1' || '0' }}
+          HAS_NTFY: ${{ secrets.NTFY_TOPIC != '' && '1' || '0' }}
+        run: .github/scripts/bootstrap.sh | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: CLAUDE.md の変更をコミットする
+        if: env.CHANGED_CLAUDE_MD == '1'
+        run: |
+          git config user.name "pipeline"
+          git config user.email "noreply@github.com"
+          git add CLAUDE.md
+          git commit -m "CLAUDE.md：ai-dev-template 自身の作業の節を消す（自動）"
+          git push origin HEAD:main
