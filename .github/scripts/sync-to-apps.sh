@@ -28,6 +28,11 @@ for repo in "$@"; do
   rsync -a --delete "${excludes[@]}" "$src_root/.github/" "$dir/.github/"
   mkdir -p "$dir/docs"
   cp "$src_root/docs/pipeline.md" "$dir/docs/pipeline.md"
+  # 共通のスキル（.claude/skills/）も配る。配り先だけのスキルは消さない（同じ名前の物だけ上書き）
+  if [ -d "$src_root/.claude/skills" ]; then
+    mkdir -p "$dir/.claude/skills"
+    cp -R "$src_root/.claude/skills/." "$dir/.claude/skills/"
+  fi
 
   if [ -z "$(git -C "$dir" status --porcelain)" ]; then
     echo "変更なし"; continue
