@@ -13,8 +13,9 @@
 #   deploy_failed 公開に失敗した
 #   merged        自動でマージした
 #   ci_failed     CIが失敗した（AIが直す前）
+#   limit         使用量の上限で待っている（リセット後に自動で再開する。待ちに入った最初の1回だけ）
 set -uo pipefail
-DEFAULT_EVENTS="stuck,question,hold,manual,deployed,deploy_failed"
+DEFAULT_EVENTS="stuck,question,hold,manual,deployed,deploy_failed,limit"
 event="$1"
 shift
 events="${NOTIFY_EVENTS:-$DEFAULT_EVENTS}"

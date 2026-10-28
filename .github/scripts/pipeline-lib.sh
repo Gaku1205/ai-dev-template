@@ -26,6 +26,9 @@ VISUAL_MARK="<!-- auto-visual-update -->"
 RETRY_MARK="<!-- auto-retry -->"
 MAX_RETRY="${MAX_RETRY:-10}"
 RETRY_COOLDOWN_MIN="${RETRY_COOLDOWN_MIN:-30}"
+# 使用量の上限で止まったときは、回数を減らさずに待つ。リセット時刻が分からないときの待ち時間（分）と、待つのをあきらめる上限（時間）
+LIMIT_UNKNOWN_WAIT_MIN="${LIMIT_UNKNOWN_WAIT_MIN:-60}"
+LIMIT_MAX_WAIT_HOURS="${LIMIT_MAX_WAIT_HOURS:-24}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 notify() {
@@ -219,11 +222,16 @@ retry_count() {
   echo "${n:-0}"
 }
 
-# 記録のコメントは1つだけ作り、あとは書き換える（コメントが増えないように）。num 回数 kind 理由
+# 記録のコメントは1つだけ作り、あとは書き換える（コメントが増えないように）。
+#   num 回数 kind 理由 [上限のリセット時刻（UNIX秒 か unknown）] [上限の待ちを最初に始めた時刻（UNIX秒）]
 write_retry_record() {
-  local num="$1" count="$2" kind="$3" reason="$4" c id body
-  body=$(printf '🔁 AIが止まったので、時間をおいて自動でやり直します（やり直し %s/%s回）。\n理由：%s\n\n%s\n<!-- count=%s kind=%s -->' \
-    "$count" "$MAX_RETRY" "$reason" "$RETRY_MARK" "$count" "$kind")
+  local num="$1" count="$2" kind="$3" reason="$4" until_at="${5:-}" first="${6:-}" c id body marks=""
+  [ -n "$until_at" ] && marks="${marks}
+<!-- limit-until=${until_at} -->"
+  [ -n "$first" ] && marks="${marks}
+<!-- limit-first=${first} -->"
+  body=$(printf '🔁 AIが止まったので、時間をおいて自動でやり直します（やり直し %s/%s回）。\n理由：%s\n\n%s\n<!-- count=%s kind=%s -->%s' \
+    "$count" "$MAX_RETRY" "$reason" "$RETRY_MARK" "$count" "$kind" "$marks")
   c=$(retry_comment "$num")
   if [ -n "$c" ]; then
     id=$(printf '%s' "$c" | jq -r .id)
@@ -231,6 +239,20 @@ write_retry_record() {
   else
     comment "$num" "$body"
   fi
+}
+
+
+# AIの実行記録から、使用量の上限かどうかと、リセット時刻を見分ける。出力：
+#   （空）    上限ではない／分からない
+#   unknown   上限だが、リセット時刻は読み取れない
+#   <数字>    上限で、リセットされる時刻（UNIX秒）。「…limit reached|1761000000」の形で書かれているとき
+limit_signal() {
+  local f="${1:-}" result epoch
+  { [ -n "$f" ] && [ -s "$f" ]; } || return 0
+  result=$(jq -r 'if type == "array" then . else [.] end | map(select(.type == "result")) | last // {} | .result // "" | tostring' "$f" 2> /dev/null) || return 0
+  printf '%s' "$result" | grep -qiE 'usage limit|rate limit|limit reached|hit your limit' || return 0
+  epoch=$(printf '%s' "$result" | sed -nE 's/.*[Ll]imit reached\|([0-9]{10}).*/\1/p' | head -1)
+  echo "${epoch:-unknown}"
 }
 
 # AIの実行記録（claude-code-action の execution_file）から、失敗の原因を一言に分類する
@@ -272,10 +294,32 @@ delete_branch_if_ai() {
   esac
 }
 
+# 記録のコメントの本文から、印の値を取り出す（無ければ空）。使い方：retry_mark_value "$body" limit-until
+retry_mark_value() {
+  printf '%s' "$1" | sed -nE "s/.*<!-- $2=([0-9a-z]+) -->.*/\\1/p" | tail -1
+}
+
+# 止まったことを記録して、あとで自動でやり直す。使い方：mark_for_retry 番号 kind 理由 [limit]
+#   limit：使用量の上限のとき、リセット時刻（UNIX秒）か unknown（limit_signal の出力）。上限で待つあいだは、やり直しの回数を使わない
 mark_for_retry() {
-  local num="$1" kind="$2" reason="$3" count
+  local num="$1" kind="$2" reason="$3" limit="${4:-}" count now record body updated first
+  now=$(date +%s)
   count=$(retry_count "$num")
-  if [ "$count" -ge "$MAX_RETRY" ]; then
+  if [ -n "$limit" ]; then
+    record=$(retry_comment "$num")
+    body=$(printf '%s' "$record" | jq -r '.body // ""')
+    first=$(retry_mark_value "$body" limit-first)
+    # 前の上限の待ちから時間があいているなら、別の出来事として数え直す
+    if [ -n "$record" ] && [ -n "$first" ]; then
+      updated=$(date -d "$(printf '%s' "$record" | jq -r .updated_at)" +%s)
+      [ $(( now - updated )) -gt $(( LIMIT_MAX_WAIT_HOURS * 3600 )) ] && first=""
+    fi
+    if [ -n "$first" ] && [ $(( now - first )) -gt $(( LIMIT_MAX_WAIT_HOURS * 3600 )) ]; then
+      reason="${reason}（使用量の上限が${LIMIT_MAX_WAIT_HOURS}時間以上続いています）"
+      limit=""
+    fi
+  fi
+  if [ -z "$limit" ] && [ "$count" -ge "$MAX_RETRY" ]; then
     if [ "$kind" = "plan" ]; then
       remove_label "$num" "ai:plan"
     fi
@@ -285,19 +329,52 @@ mark_for_retry() {
     esac
     return
   fi
+  if [ -n "$limit" ]; then
+    first="${first:-$now}"
+    write_retry_record "$num" "$count" "$kind" "$reason" "$limit" "$first"
+    add_label "$num" "ai:retry"
+    # 待ちに入った最初の1回だけ通知する
+    if [ -z "$(retry_mark_value "$body" limit-first)" ] || [ "$(retry_mark_value "$body" limit-first)" != "$first" ]; then
+      notify limit "使用量の上限で待っています" "#${num}：$(limit_until_text "$limit")に自動で再開します。回数は減りません" 2
+    fi
+    echo "#$num：使用量の上限なので、$(limit_until_text "$limit")まで待ちます（やり直しの回数は使いません）"
+    return
+  fi
   write_retry_record "$num" "$count" "$kind" "$reason"
   add_label "$num" "ai:retry"
   echo "#$num：${reason}。あとで自動でやり直します（${count}/${MAX_RETRY}回やり直し済み）"
 }
 
+
+# 上限の待ちの表示用（日本時間）
+limit_until_text() {
+  if [ "$1" = "unknown" ]; then
+    echo "${LIMIT_UNKNOWN_WAIT_MIN}分後"
+  else
+    TZ=Asia/Tokyo date -d "@$1" +"%H:%M ごろ"
+  fi
+}
+
 # 記録のコメントが最後に書き換えられてから、待ち時間が過ぎたか
+#   上限で待っているとき：リセット時刻（の1分後）か、時刻が分からないときは LIMIT_UNKNOWN_WAIT_MIN 分
 retry_due() {
-  local c updated
+  local c updated until_at now
   c=$(retry_comment "$1")
   [ -z "$c" ] && return 0
+  now=$(date +%s)
+  until_at=$(retry_mark_value "$(printf '%s' "$c" | jq -r .body)" limit-until)
+  if [ -n "$until_at" ] && [ "$until_at" != "unknown" ]; then
+    [ "$now" -ge $(( until_at + 60 )) ]
+    return
+  fi
   updated=$(date -d "$(printf '%s' "$c" | jq -r .updated_at)" +%s)
-  [ $(( $(date +%s) - updated )) -ge $(( RETRY_COOLDOWN_MIN * 60 )) ]
+  if [ "$until_at" = "unknown" ]; then
+    [ $(( now - updated )) -ge $(( LIMIT_UNKNOWN_WAIT_MIN * 60 )) ]
+  else
+    [ $(( now - updated )) -ge $(( RETRY_COOLDOWN_MIN * 60 )) ]
+  fi
 }
+
 
 # AI（claude[bot]）がpushしたコミットのCIは、GitHubが「承認待ち（action_required）」で止めることがある。
 # そうなっていたら、オーナーのトークンで空のコミットを1つ足して、CIを動かし直す（オーナーのpushなら承認は要らない）。
