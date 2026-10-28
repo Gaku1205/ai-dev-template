@@ -90,6 +90,18 @@ AIが正常に終わったのに変更が無いとき（質問した、指摘が
 - 修正AIは、AIのコメントに「許可されていない」などと書かれていれば、その行と、出てくるコマンドから足りない許可の候補を書いて人間に回す
 - 同じ許可の不足が2回起きたら、直すためのIssue（`AIの許可が足りない：…`）を自動で作る（`ai:skip` 付き。マネージャーが `--allowedTools` と上の表を直す）。回数の記録は、閉じたままの「AIの許可の不足（自動の記録）」Issueのコメントに残る
 
+## スクリプトのテスト
+
+`.github/scripts/tests/` に、進行役のスクリプトのテストがある。本物の GitHub には触らず、疑似の `gh`（`tests/fake-gh`）が状態をファイルに持つ。
+
+- 全部実行：`.github/scripts/tests/run-all.sh`（CIの `script-tests`、`shellcheck` も同じ物を見る）
+- 書き方は `tests/lib.sh` の冒頭。スクリプトを変えたら、場面に合うテストを足す
+- 変更を入れる前にテストを壊してみて（わざとバグを入れる）、テストが落ちることを確かめると確実
+
+## セットアップの診断
+
+新しいリポジトリを作ったら、Actions の「Doctor」を1回実行する。Secret・ラベル・設定・`CLAUDE.md` やスクリプトの名前を調べて、✅／⚠️／❌ で、直し方つきで Summary に出す（`.github/scripts/doctor.sh`）。❌ が無くなれば Issue を書くだけで動く。
+
 ## 必要な設定（リポジトリの Settings → Secrets and variables → Actions）
 
 | 名前 | 種類 | 内容 |
@@ -102,4 +114,4 @@ AIが正常に終わったのに変更が無いとき（質問した、指摘が
 
 ほかに、Settings → General → Pull Requests の「Automatically delete head branches」をオンにする（マージ後のブランチが溜まらない。オンにしなくても、進行役がマージ後に `claude/*` ブランチを消し、見張り役が古い物を掃除する）。
 
-ほかに、GitHubの Claude アプリをこのリポジトリに入れる。ラベルは Actions の「Setup Labels」を1回実行すると作られる。
+ほかに、GitHubの Claude アプリをこのリポジトリに入れる。ラベルは Actions の「Setup Labels」を1回実行すると作られる。最後に「Doctor」を実行して、❌ が無いことを確かめる。
