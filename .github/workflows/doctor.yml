@@ -22,4 +22,6 @@ jobs:
           HAS_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' && '1' || '0' }}
           HAS_PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN != '' && '1' || '0' }}
           HAS_NTFY: ${{ secrets.NTFY_TOPIC != '' && '1' || '0' }}
-        run: .github/scripts/doctor.sh | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          set -o pipefail
+          .github/scripts/doctor.sh | tee -a "$GITHUB_STEP_SUMMARY"

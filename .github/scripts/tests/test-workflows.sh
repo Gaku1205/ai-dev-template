@@ -53,4 +53,7 @@ PY
 assert_eq "npm を動かすジョブが Secret を使わない" "ok" "$result"
 assert_contains "撮り直しはトークンを残さない" "$(cat "$WORKFLOWS/visual-update.yml")" "persist-credentials: false"
 
+echo "== doctor.yml：診断の失敗（❌）が、tee で隠れず、実行の失敗になる"
+assert_contains "pipefail を使う" "$(cat "$WORKFLOWS/doctor.yml")" "set -o pipefail"
+
 finish
