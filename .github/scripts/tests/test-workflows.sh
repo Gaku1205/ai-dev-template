@@ -123,4 +123,9 @@ echo "== 清書AIの質問には、ダッシュボードが拾う印を付けさ
 wf="$(cat "$WORKFLOWS/claude-plan.yml")"
 assert_contains "claude-plan.yml：質問の1行目は <!-- human-request -->" "$wf" "<!-- human-request -->"
 
+echo "== 配り先は sync-targets.sh で決める（テンプレートから作ったリポジトリは自動）"
+wf="$(cat "$WORKFLOWS/sync.yml")"
+assert_contains "sync.yml：sync-targets.sh を使う" "$wf" "list=\$(.github/scripts/sync-targets.sh .github/sync-targets)"
+assert_not_contains "sync.yml：配り先の失敗をプロセス置換で隠さない" "$wf" "< <(.github/scripts/sync-targets.sh"
+
 finish

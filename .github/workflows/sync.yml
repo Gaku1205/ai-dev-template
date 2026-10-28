@@ -1,6 +1,6 @@
 # ai-dev-template の main が更新され、CI（スクリプトのテストを含む）が通ったら、アプリのリポジトリへ .github と docs/pipeline.md を自動で配る。
 # CIが落ちた版は配らない（壊れた版が、アプリ全部の main に入らないように）。
-# 配り先は .github/sync-targets（1行に1つ）。ワークフローも配るため、鍵（GitHub App か PIPELINE_TOKEN）に Workflows (Read and write) 権限が要る。
+# 配り先は、このテンプレートから作られたリポジトリ（自動）と .github/sync-targets に書いた物（sync-targets.sh が決める）。ワークフローも配るため、鍵（GitHub App か PIPELINE_TOKEN）に Workflows (Read and write) 権限が要る。
 name: Sync to apps
 
 on:
@@ -66,6 +66,9 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN }}
         run: |
-          mapfile -t targets < <(grep -vE '^[[:space:]]*(#|$)' .github/sync-targets 2> /dev/null || true)
-          if [ "${#targets[@]}" -eq 0 ]; then echo "配り先がありません（.github/sync-targets）"; exit 0; fi
+          # 配り先を決められなかったら（鍵の不具合など）、黙って「配り先なし」にせず失敗にする
+          list=$(.github/scripts/sync-targets.sh .github/sync-targets)
+          mapfile -t targets < <(printf '%s\n' "$list" | awk 'NF')
+          if [ "${#targets[@]}" -eq 0 ]; then echo "配り先がありません（テンプレートから作ったリポジトリも、.github/sync-targets も無し）"; exit 0; fi
+          echo "配り先：${targets[*]}"
           .github/scripts/sync-to-apps.sh "${targets[@]}"
