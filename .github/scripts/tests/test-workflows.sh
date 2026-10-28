@@ -72,6 +72,7 @@ PY
 )
 assert_eq "AIのジョブに PIPELINE_TOKEN が無い" "ok" "$result"
 for name in claude-plan.yml claude-implement.yml; do
+  assert_contains "$name：AIのジョブが飛ばされたら後の処理も動かない" "$(cat "$WORKFLOWS/$name")" ".result != 'skipped'"
   assert_contains "$name：後の処理は main を取り直して動かす" "$(cat "$WORKFLOWS/$name")" "ref: \${{ github.event.repository.default_branch }}"
 done
 

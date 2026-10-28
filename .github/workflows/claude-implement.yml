@@ -69,7 +69,8 @@ jobs:
     # 安全のため別のジョブにする：AIが作業フォルダのスクリプトを書き換えても、ここでは main の版を動かす。
     # PIPELINE_TOKEN を使うのはこのジョブだけ（AIのジョブには渡さない）
     needs: implement
-    if: ${{ !cancelled() }}
+    # AIのジョブが動いたときだけ（別のラベルが付いたときなど、AIのジョブが飛ばされたら何もしない）
+    if: ${{ !cancelled() && needs.implement.result != 'skipped' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
