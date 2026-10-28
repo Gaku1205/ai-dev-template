@@ -28,10 +28,18 @@ jobs:
       contents: read
       actions: read
     steps:
+      # パイプラインの鍵：GitHub App があれば、その1時間だけの鍵を使う（回数制限がオーナーと別・期限切れなし）。無ければ PIPELINE_TOKEN
+      - name: パイプラインの鍵を作る
+        id: app-token
+        if: vars.PIPELINE_APP_ID != ''
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.PIPELINE_APP_ID }}
+          private-key: ${{ secrets.PIPELINE_APP_PRIVATE_KEY }}
       - uses: actions/checkout@v6
       - name: 見張る
         env:
-          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN }}
           READ_TOKEN: ${{ github.token }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}

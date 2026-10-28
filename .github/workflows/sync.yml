@@ -1,6 +1,6 @@
 # ai-dev-template の main が更新され、CI（スクリプトのテストを含む）が通ったら、アプリのリポジトリへ .github と docs/pipeline.md を自動で配る。
 # CIが落ちた版は配らない（壊れた版が、アプリ全部の main に入らないように）。
-# 配り先は .github/sync-targets（1行に1つ）。ワークフローも配るため、PIPELINE_TOKEN に Workflows (Read and write) 権限が要る。
+# 配り先は .github/sync-targets（1行に1つ）。ワークフローも配るため、鍵（GitHub App か PIPELINE_TOKEN）に Workflows (Read and write) 権限が要る。
 name: Sync to apps
 
 on:
@@ -26,6 +26,16 @@ jobs:
        (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success'))
     runs-on: ubuntu-latest
     steps:
+      # パイプラインの鍵：GitHub App があれば、その1時間だけの鍵を使う（回数制限がオーナーと別・期限切れなし）。無ければ PIPELINE_TOKEN
+      - name: パイプラインの鍵を作る
+        id: app-token
+        if: vars.PIPELINE_APP_ID != ''
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.PIPELINE_APP_ID }}
+          private-key: ${{ secrets.PIPELINE_APP_PRIVATE_KEY }}
+          # 配り先にも push するので、このアカウントに入れた App の全部のリポジトリに使える鍵にする
+          owner: ${{ github.repository_owner }}
       - uses: actions/checkout@v4
         with:
           # CIが通った版そのものを配る
@@ -33,7 +43,7 @@ jobs:
           persist-credentials: false
       - name: アプリへ配る
         env:
-          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN }}
         run: |
           mapfile -t targets < <(grep -vE '^[[:space:]]*(#|$)' .github/sync-targets 2> /dev/null || true)
           if [ "${#targets[@]}" -eq 0 ]; then echo "配り先がありません（.github/sync-targets）"; exit 0; fi
