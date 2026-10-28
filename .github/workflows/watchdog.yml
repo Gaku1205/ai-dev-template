@@ -28,16 +28,27 @@ jobs:
       contents: read
       actions: read
     steps:
+      # 秘密鍵を PKCS#8 にそろえる（create-github-app-token は Node 24 だと「BEGIN RSA PRIVATE KEY」の形式を読めず Invalid keyData になる）
+      - name: パイプラインの鍵の秘密鍵をそろえる
+        id: app-key
+        if: vars.PIPELINE_APP_ID != ''
+        continue-on-error: true
+        env:
+          KEY: ${{ secrets.PIPELINE_APP_PRIVATE_KEY }}
+        run: |
+          pem=$(printf '%s\n' "$KEY" | tr -d '\r' | openssl pkey 2> /dev/null) || { echo "::error::PIPELINE_APP_PRIVATE_KEY を秘密鍵として読めません（.pem の中身を -----BEGIN から -----END まで全部貼る）"; exit 1; }
+          while IFS= read -r line; do [ -n "$line" ] && echo "::add-mask::$line"; done <<< "$pem"
+          { echo 'pem<<PEM_END'; echo "$pem"; echo 'PEM_END'; } >> "$GITHUB_OUTPUT"
       # パイプラインの鍵：GitHub App があれば、その1時間だけの鍵を使う（回数制限がオーナーと別・期限切れなし）。無ければ PIPELINE_TOKEN
       - name: パイプラインの鍵を作る
         id: app-token
-        if: vars.PIPELINE_APP_ID != ''
+        if: steps.app-key.outputs.pem != ''
         # 鍵が作れなくても（秘密鍵の貼り間違いなど）止めずに PIPELINE_TOKEN で続ける。Doctor が ❌ で知らせる
         continue-on-error: true
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.PIPELINE_APP_ID }}
-          private-key: ${{ secrets.PIPELINE_APP_PRIVATE_KEY }}
+          private-key: ${{ steps.app-key.outputs.pem }}
       - uses: actions/checkout@v6
       - name: 見張る
         env:
