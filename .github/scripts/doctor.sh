@@ -21,6 +21,8 @@ fetch_delete_branch() {
 is_template_repo()    { [ "$(gh api "repos/$REPO" --jq '.is_template' 2> /dev/null)" = true ]; }
 # Fine-grained トークンの期限（GitHub が返事のヘッダーで教えてくれる。期限なしなら空）
 token_expiration()    { GH_TOKEN="${PIPELINE_TOKEN:-}" gh api -i "repos/$REPO" 2> /dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="github-authentication-token-expiration"{print $2; exit}'; }
+# App の鍵では、リポジトリの情報に permissions が付かない。App が入っているリポジトリの一覧に、このリポジトリがあるかで見る
+app_installed_here()  { GH_TOKEN="${PIPELINE_TOKEN:-}" gh api "installation/repositories?per_page=100" --paginate --jq '.repositories[].full_name' 2> /dev/null | grep -qixF "$REPO"; }
 token_can_push()      { GH_TOKEN="${PIPELINE_TOKEN:-}" gh api "repos/$REPO" --jq '.permissions.push' 2>/dev/null; }
 
 check_secrets() {
@@ -32,8 +34,8 @@ check_secrets() {
   if [ "${HAS_PIPELINE_TOKEN:-}" != 1 ]; then
     ng "パイプラインの鍵が無い" "GitHub App（Variable PIPELINE_APP_ID と Secret PIPELINE_APP_PRIVATE_KEY）か、Secret PIPELINE_TOKEN を登録（docs/pipeline.md の「必要な設定」）"
   elif [ "${USING_APP:-0}" = 1 ]; then
-    if [ "$(token_can_push)" = true ]; then ok "GitHub App の鍵でこのリポジトリに書き込める（回数制限はオーナーと別・期限切れなし）"
-    else ng "GitHub App の鍵でこのリポジトリに書き込めない" "App の設定（Install App）で、このリポジトリを入れる"; fi
+    if app_installed_here; then ok "GitHub App の鍵でこのリポジトリを操作できる（回数制限はオーナーと別・期限切れなし）"
+    else ng "GitHub App がこのリポジトリに入っていない" "App の設定（Install App → ⚙️）で、このリポジトリを選ぶ"; fi
   elif [ "$(token_can_push)" = true ]; then
     ok "PIPELINE_TOKEN でこのリポジトリに書き込める"; check_token_expiration
     warn "GitHub App ではなく PIPELINE_TOKEN を使っている" "回数制限をオーナーと共有し、期限もある。GitHub App に切り替えるとよい（docs/pipeline.md）"

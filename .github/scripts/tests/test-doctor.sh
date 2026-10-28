@@ -11,6 +11,7 @@ fetch_labels() { printf '%s\n' $LABELS; }
 fetch_delete_branch() { echo "$DELBR"; }
 token_can_push() { echo "$CANPUSH"; }
 token_expiration() { echo "${EXP:-}"; }
+app_installed_here() { [ "${APP_HERE:-true}" = true ]; }
 is_template_repo() { [ "${IS_TEMPLATE:-false}" = true ]; }
 
 run_doctor() { out="$(main 2>&1)"; rc=$?; }
@@ -82,7 +83,11 @@ EXP=""
 echo "== GitHub App の鍵を使っているとき"
 USING_APP=1 CANPUSH=true HAS_PIPELINE_TOKEN=1 EXP="$(date -u -d '+0 days' '+%Y-%m-%d %H:%M:%S UTC')"
 run_doctor
-assert_contains "App で書き込める" "$out" "GitHub App の鍵でこのリポジトリに書き込める"
+assert_contains "App で操作できる" "$out" "GitHub App の鍵でこのリポジトリを操作できる"
+APP_HERE=false
+run_doctor
+assert_contains "App が入っていなければ ❌" "$out" "❌ GitHub App がこのリポジトリに入っていない"
+APP_HERE=true
 assert_not_contains "1時間の鍵の期限で警告しない" "$out" "PIPELINE_TOKEN の期限"
 assert_not_contains "切り替えを勧めない" "$out" "GitHub App ではなく"
 USING_APP=0 EXP=""
