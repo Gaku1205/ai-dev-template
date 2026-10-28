@@ -70,6 +70,13 @@ AIが正常に終わったのに変更が無いとき（質問した、指摘が
 - AI（claude[bot]）のpushでCIが「承認待ち」になったら、進行役がオーナーのトークンで空のコミットを足してCIを動かし直す
 - 公開後に壊れていたら、Vercelの画面から前の版にすぐ戻せる
 
+## スクリプトのテスト
+
+`.github/scripts/` のシェルスクリプトは、疑似 `gh`（`.github/scripts/tests/fake-gh`。GitHubの代わりにファイルの中だけで動く）を使ったテストで確かめる。CI の `script-tests` が毎回動かし、`shellcheck` も通す。手元では `.github/scripts/tests/run-all.sh`（`python3`・`jq`・`shellcheck` が要る）。
+
+- 見るもの：自動のやり直し（待ち時間・回数・上限）、失敗の原因の分類、ブランチ掃除、受付（オーナー以外を止める）、CIが落ちたあとの判断
+- スクリプトを変えたら、場面に合うテストを足す（`test-*.sh`。使い方は `tests/lib.sh`）。疑似 `gh` が知らないAPIを呼ぶと `UNHANDLED` で失敗するので、`fake-gh` に足す
+
 ## 必要な設定（リポジトリの Settings → Secrets and variables → Actions）
 
 | 名前 | 種類 | 内容 |

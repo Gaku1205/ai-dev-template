@@ -239,8 +239,9 @@ classify_failure() {
     return
   fi
   info=$(jq -r 'if type == "array" then . else [.] end | map(select(.type == "result")) | last // {}
-    | "\(.subtype // "")\t\(.permission_denials // [] | length)\t\(.result // "" | tostring | .[0:300] | gsub("[\t\n]"; " "))"' "$f" 2> /dev/null) || info=""
-  IFS=$'\t' read -r subtype denials result <<< "$info"
+    | "\(.subtype // "")|\(.permission_denials // [] | length)|\(.result // "" | tostring | .[0:300] | gsub("\n"; " "))"' "$f" 2> /dev/null) || info=""
+  # 区切りは | （空白の区切りだと、先頭の項目が空のときに詰められてずれる）。result は最後なので、中に | があってもよい
+  IFS='|' read -r subtype denials result <<< "$info"
   if printf '%s' "$result" | grep -qiE 'usage limit|rate limit|limit reached|overloaded|429'; then
     echo "使用量の上限"
   elif [ "${denials:-0}" -gt 0 ]; then
