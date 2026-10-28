@@ -11,7 +11,13 @@ ng()   { echo "- ❌ $1 → $2"; NG=$((NG + 1)); }
 
 # 外に出る部分（テストでは差し替える）
 fetch_labels()        { gh api "repos/$REPO/labels?per_page=100" --paginate --jq '.[].name'; }
-fetch_delete_branch() { gh api "repos/$REPO" --jq '.delete_branch_on_merge'; }
+# この設定は管理者の権限が無いと見えない（空で返る）。PIPELINE_TOKEN で見て、だめなら標準のトークンで見る
+fetch_delete_branch() {
+  local v=""
+  [ -n "${PIPELINE_TOKEN:-}" ] && v=$(GH_TOKEN="$PIPELINE_TOKEN" gh api "repos/$REPO" --jq '.delete_branch_on_merge // empty' 2> /dev/null)
+  [ -z "$v" ] && v=$(gh api "repos/$REPO" --jq '.delete_branch_on_merge // empty' 2> /dev/null)
+  echo "$v"
+}
 is_template_repo()    { [ "$(gh api "repos/$REPO" --jq '.is_template' 2> /dev/null)" = true ]; }
 token_can_push()      { GH_TOKEN="${PIPELINE_TOKEN:-}" gh api "repos/$REPO" --jq '.permissions.push' 2>/dev/null; }
 
@@ -37,8 +43,11 @@ check_labels() {
 }
 
 check_settings() {
-  if [ "$(fetch_delete_branch)" = true ]; then ok "マージ後にブランチを自動で消す設定がオン"
-  else warn "「Automatically delete head branches」がオフ" "Settings → General → Pull Requests でオン（オフでも進行役が掃除はする）"; fi
+  local v
+  v="$(fetch_delete_branch)"
+  if [ "$v" = true ]; then ok "マージ後にブランチを自動で消す設定がオン"
+  elif [ "$v" = false ]; then warn "「Automatically delete head branches」がオフ" "Settings → General → Pull Requests でオン（オフでも進行役が掃除はする）"
+  else echo "- ➖ 「Automatically delete head branches」はトークンの権限では見えないので確かめていない（オフでも進行役が掃除はする）"; fi
 }
 
 check_files() {

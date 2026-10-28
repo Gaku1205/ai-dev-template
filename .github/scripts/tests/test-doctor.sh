@@ -59,4 +59,10 @@ run_doctor
 assert_not_contains "テンプレート自身なら警告しない" "$out" "pipeline-self-edit の印が残っている"
 
 cd /; rm -rf "$workdir"
+echo "== ブランチ削除の設定が見えない（空）なら、オフと決めつけない"
+DELBR=""
+run_doctor
+assert_not_contains "オフと言わない" "$out" "がオフ"
+assert_contains "見えないと書く" "$out" "確かめていない"
+
 finish
