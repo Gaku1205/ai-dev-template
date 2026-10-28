@@ -2,6 +2,7 @@
 # ai-dev-template の .github と docs/pipeline.md を、アプリのリポジトリへ配る。
 # 使い方: sync-to-apps.sh owner/repo [owner/repo ...]
 # 必要な環境変数: GH_TOKEN（配る先に push と PR 作成ができる鍵。ワークフローも配るので Workflows 権限が要る）
+# .claude/skills/ の共通スキルも配る（配り先だけのスキルは残す）。
 # 配り先の main には直接入れず、PR（ブランチ pipeline-sync/<sha>）を作る。配り先の CI が通ったら after-ci.sh がマージする。
 # 配る先に .github/sync-keep があれば、そこに書かれたファイル名（1行1つ）は消さずに残す。
 # CLAUDE.md / AGENTS.md / docs/spec.md / docs/design.md は配らない。
@@ -28,6 +29,11 @@ for repo in "$@"; do
   rsync -a --delete "${excludes[@]}" "$src_root/.github/" "$dir/.github/"
   mkdir -p "$dir/docs"
   cp "$src_root/docs/pipeline.md" "$dir/docs/pipeline.md"
+  # 共通のスキル（.claude/skills/）も配る。配り先だけのスキルは消さない（同じ名前の物だけ上書き）
+  if [ -d "$src_root/.claude/skills" ]; then
+    mkdir -p "$dir/.claude/skills"
+    cp -R "$src_root/.claude/skills/." "$dir/.claude/skills/"
+  fi
   if [ -z "$(git -C "$dir" status --porcelain)" ]; then
     echo "変更なし"; continue
   fi
