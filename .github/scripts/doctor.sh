@@ -46,7 +46,8 @@ check_files() {
   for f in CLAUDE.md AGENTS.md docs/spec.md; do
     if [ -f "$f" ]; then ok "$f がある"; else ng "$f が無い" "テンプレートから作り、アプリの説明を書く"; fi
   done
-  if [ -f CLAUDE.md ] && grep -q "（アプリの説明を1〜2行で書く）" CLAUDE.md; then
+  # テンプレート（本体）の CLAUDE.md は、わざと書きかけのまま（作ったリポジトリで書く）
+  if [ -f CLAUDE.md ] && grep -q "（アプリの説明を1〜2行で書く）" CLAUDE.md && ! is_template_repo; then
     ng "CLAUDE.md がテンプレートのまま" "アプリの説明を書き、「ai-dev-template 自身の作業」の節を消す"
   fi
   if [ -f CLAUDE.md ] && grep -q "pipeline-self-edit: auto" CLAUDE.md && ! is_template_repo; then

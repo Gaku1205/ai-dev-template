@@ -43,6 +43,10 @@ echo '{"scripts":{"lint":"x"}}' > package.json
 CANPUSH=true
 run_doctor
 assert_contains "テンプレートのまま" "$out" "CLAUDE.md がテンプレートのまま"
+IS_TEMPLATE=true
+run_doctor
+assert_not_contains "テンプレート自身なら書きかけでよい" "$out" "CLAUDE.md がテンプレートのまま"
+IS_TEMPLATE=false
 assert_contains "test が無いのは警告" "$out" "⚠️ package.json に test のスクリプトが無い"
 assert_contains "typecheck が無いのは ❌" "$out" "❌ package.json に typecheck のスクリプトが無い"
 
