@@ -19,6 +19,7 @@ OWNER="${REPO%%/*}"
 MAX_AUTO_FIX="${MAX_AUTO_FIX:-2}"
 AUTO_FIX_MARK="<!-- auto-fix -->"
 RESUME_MARK="<!-- auto-resume -->"
+# shellcheck disable=SC2034  # after-ci.sh など、この下を読み込む側のスクリプトで使う
 VISUAL_MARK="<!-- auto-visual-update -->"
 # 自動でやり直す回数の上限と、失敗してからやり直すまでの待ち時間（分）。
 # 使用量の上限で止まったときは、リセットされるまで何度かやり直しながら待つ
@@ -197,7 +198,7 @@ start_next_in_queue() {
 
 # ---- 自動のやり直し ----
 # 止まったとき、すぐ人間に回さず「あとでやり直す」印（ai:retry）と記録のコメントを付ける。
-# やり直しは watchdog.sh（30分ごと）が、待ち時間（RETRY_COOLDOWN_MIN）が過ぎてから行う。
+# やり直しは watchdog.sh（定期・ほかのワークフロー完了のたび）が、待ち時間（RETRY_COOLDOWN_MIN）が過ぎてから行う。
 # 上限（MAX_RETRY）を超えたら人間に回す。kind：plan / implement（Issue）、review / mention（PR）
 
 retry_comment() {
@@ -227,6 +228,44 @@ write_retry_record() {
   else
     comment "$num" "$body"
   fi
+}
+
+# AIの実行記録（claude-code-action の execution_file）から、失敗の原因を一言に分類する
+#   使用量の上限 / 許可不足 / 作業回数の上限 / その他 / 不明（記録なし）
+classify_failure() {
+  local f="${1:-}" info subtype denials result
+  if [ -z "$f" ] || [ ! -s "$f" ]; then
+    echo "不明（AIの実行記録がありません）"
+    return
+  fi
+  info=$(jq -r 'if type == "array" then . else [.] end | map(select(.type == "result")) | last // {}
+    | "\(.subtype // "")\t\(.permission_denials // [] | length)\t\(.result // "" | tostring | .[0:300] | gsub("[\t\n]"; " "))"' "$f" 2> /dev/null) || info=""
+  IFS=$'\t' read -r subtype denials result <<< "$info"
+  if printf '%s' "$result" | grep -qiE 'usage limit|rate limit|limit reached|overloaded|429'; then
+    echo "使用量の上限"
+  elif [ "${denials:-0}" -gt 0 ]; then
+    echo "許可不足（AIが許可されていない操作を試した：${denials}件）"
+  elif [ "$subtype" = "error_max_turns" ]; then
+    echo "作業回数の上限（--max-turns）"
+  elif [ -n "$subtype" ]; then
+    echo "その他（${subtype}）"
+  else
+    echo "その他（結果が読み取れません）"
+  fi
+}
+
+# 失敗コメントの理由に、分類（classify_failure）と、見に行けるログのURLを足す
+#   使い方：failure_reason "企画AIがエラーで止まりました" [実行記録のファイル]
+failure_reason() {
+  echo "$1（原因：$(classify_failure "${2:-}")。ログ：${GITHUB_SERVER_URL:-https://github.com}/${REPO}/actions/runs/${GITHUB_RUN_ID:-0}）"
+}
+
+# AIが作ったブランチ（claude/ で始まる物）だけを消す。人間のブランチやmainには触らない（無ければ何もしない）
+delete_branch_if_ai() {
+  local b="${1:-}"
+  case "$b" in
+    claude/*) gh api -X DELETE "repos/$REPO/git/refs/heads/$b" > /dev/null 2>&1 && echo "ブランチ $b を消しました" || true ;;
+  esac
 }
 
 mark_for_retry() {
@@ -260,8 +299,8 @@ retry_due() {
 # そうなっていたら、オーナーのトークンで空のコミットを1つ足して、CIを動かし直す（オーナーのpushなら承認は要らない）。
 # READ_TOKEN（ワークフローのトークン、actions: read）でCIの実行を読む
 rerun_ci_if_waiting_approval() {
-  local pr="$1" sha="$2" branch="$3" runs="[]" attempt
-  for attempt in 1 2 3 4; do
+  local pr="$1" sha="$2" branch="$3" runs="[]"
+  for _ in 1 2 3 4; do
     runs=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/runs?head_sha=$sha&event=pull_request&per_page=50" \
       -q '[.workflow_runs[] | select(.name == "CI")]')
     [ "$(printf '%s' "$runs" | jq 'length')" -gt 0 ] && break

@@ -29,7 +29,7 @@ jobs:
       actions: read
     env:
       MODEL: ${{ contains(github.event.issue.labels.*.name, 'size:S') && 'haiku' || (contains(github.event.issue.labels.*.name, 'size:L') && 'opus' || 'sonnet') }}
-      MAX_TURNS: ${{ contains(github.event.issue.labels.*.name, 'size:S') && '25' || (contains(github.event.issue.labels.*.name, 'size:L') && '80' || '50') }}
+      MAX_TURNS: ${{ contains(github.event.issue.labels.*.name, 'size:S') && '40' || (contains(github.event.issue.labels.*.name, 'size:L') && '100' || '60') }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -57,4 +57,5 @@ jobs:
           ISSUE: ${{ github.event.issue.number }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           AI_OUTCOME: ${{ steps.claude.outcome }}
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
         run: .github/scripts/open-pr.sh

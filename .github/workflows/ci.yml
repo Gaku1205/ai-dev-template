@@ -54,3 +54,14 @@ jobs:
           name: visual-diff
           path: test-results/
           retention-days: 7
+
+  # パイプラインのシェルスクリプトの静的チェック（書き間違いを先に見つける）
+  shellcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - name: shellcheck
+        run: shellcheck -S warning -x -P SCRIPTDIR .github/scripts/*.sh

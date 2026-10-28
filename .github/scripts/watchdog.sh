@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# 見張り役（watchdog.yml が30分ごとに動かす）：パイプラインが止まったまま動かなくなっていないか見て、自動で再開させる。
+# 見張り役（watchdog.yml が、定期的に・ほかのワークフローが終わるたびに動かす）：パイプラインが止まったまま動かなくなっていないか見て、自動で再開させる。
 #   1. ai:retry が付いた物（使用量の上限・AIのエラーで止まった物）を、待ち時間が過ぎていたらやり直す
 #   2. 失敗の知らせも無いまま止まっている物（時間切れなど）を見つけて、ai:retry を付ける
 #   3. CIが「承認待ち」で止まっている物を動かし直す
 #   4. ラベルが無いまま放置されたIssueを企画（ai:plan）に回す
-#   5. 順番待ち（ai:queue）を進める
+#   5. 使い終わった claude/* ブランチを掃除する
+#   6. 順番待ち（ai:queue）を進める
 # 人間の確認待ち（ai:stuck）の物は触らない。
 #
 # 環境変数：READ_TOKEN（ワークフローのトークン、actions: read）
@@ -160,6 +161,20 @@ for n in $(gh api "repos/$REPO/issues?state=open&per_page=100" -q '.[] | select(
   needs_intake "$n" || continue
   add_label "$n" "ai:plan"
   echo "#$n：ラベルが無いまま${m}分たったので、企画に回しました"
+done
+
+# ---- 3.8 使い終わった claude/* ブランチを掃除する ----
+# 開いているPRが無く、最後のコミットから2日以上たった物だけ（作業中の物は消さない）。1回に消すのは20本まで
+cleaned=0
+for b in $(gh api "repos/$REPO/branches?per_page=100" --paginate -q '.[].name | select(startswith("claude/"))'); do
+  [ "$cleaned" -ge 20 ] && break
+  if printf '%s' "$open_prs" | jq -e --arg b "$b" 'any(.[]; .head.ref == $b)' > /dev/null; then
+    continue
+  fi
+  last=$(gh api "repos/$REPO/branches/$b" -q .commit.commit.committer.date 2> /dev/null) || continue
+  [ "$(idle_min "$last")" -lt $(( 2 * 24 * 60 )) ] && continue
+  delete_branch_if_ai "$b"
+  cleaned=$(( cleaned + 1 ))
 done
 
 # ---- 4. 順番待ちを進める ----

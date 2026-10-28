@@ -1,4 +1,4 @@
-# 見張り役：30分ごとに、パイプラインが止まったまま動かなくなっていないか見て、自動で再開させる。
+# 見張り役：定期的に（GitHubの都合で、混んでいると数時間あくことがある）と、ほかのワークフローが終わるたびに、パイプラインが止まったまま動かなくなっていないか見て、自動で再開させる。
 #   ・使用量の上限やAIのエラーで止まった物（ai:retry）を、時間をおいてやり直す
 #   ・時間切れなどで、失敗の知らせも無いまま止まっている物を見つけてやり直す
 #   ・CIが承認待ちで止まっている物を動かし直す
@@ -10,6 +10,10 @@ name: Watchdog
 on:
   schedule:
     - cron: "*/30 * * * *"
+  # 定期の起動は大きく遅れることがあるので、AIやCIの実行が終わるたびにも見張る（止まりに早く気づく）
+  workflow_run:
+    workflows: ["Claude Plan", "Claude Implement", "Claude Review", "Claude Mention", "CI", "Intake"]
+    types: [completed]
   workflow_dispatch:
 
 concurrency:

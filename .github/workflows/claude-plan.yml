@@ -85,4 +85,5 @@ jobs:
           ISSUE: ${{ github.event.issue.number }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           PLAN_OUTCOME: ${{ steps.claude.outcome }}
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
         run: .github/scripts/after-plan.sh
