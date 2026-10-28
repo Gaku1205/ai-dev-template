@@ -88,6 +88,8 @@ m=re.match(r'pulls/(\d+)/files$',base)
 # 文字列は普通の（文字の差分がある）ファイル。dict はそのまま（画像など patch の無いファイルを表すのに使う）
 if m: out([f if isinstance(f,dict) else {'filename':f,'patch':'@@ -1 +1 @@','changes':1} for f in st.get('files',[])]); sys.exit(0)
 m=re.match(r'pulls/(\d+)/merge$',base)
+# merge_fail があれば、マージを断る（main との衝突などを表す）
+if m and method=='PUT' and st.get('merge_fail'): sys.stderr.write(st['merge_fail']+'\n'); sys.exit(1)
 if m and method=='PUT': st.setdefault('merged',[]).append(int(m.group(1))); save(); print('{}'); sys.exit(0)
 m=re.match(r'pulls/(\d+)$',base)
 if m:

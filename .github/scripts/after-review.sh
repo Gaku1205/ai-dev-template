@@ -98,7 +98,7 @@ if has_label "$pr" "ai:hold"; then
   exit 0
 fi
 
-gh api -X PUT "repos/$REPO/pulls/$pr/merge" -f merge_method=merge -f sha="$HEAD_SHA" > /dev/null
+merge_or_handle "$pr" "$HEAD_SHA" review || exit 0
 notify merged "マージしました" "PR #${pr} ${title}：CIもレビューもOKだったので自動でマージしました" 2
 # 使い終わったブランチを消す（リポジトリの「Automatically delete head branches」が先に消していても構わない）
 delete_branch_if_ai "$HEAD_BRANCH"

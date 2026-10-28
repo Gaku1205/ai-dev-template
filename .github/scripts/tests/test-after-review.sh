@@ -76,4 +76,29 @@ assert_contains "大きすぎて patch が無い文字のファイル：人間�
 review_missing_case '[]'
 assert_contains "変更ファイルが読めない・無い：人間に回す" "$(labels_of 58)" "ai:stuck"
 
+echo "== マージできなかった：main と衝突なら AI に解消させ、それ以外はやり直し待ち（黙って終わらない）"
+export MERGE_STATE_WAIT_SEC=0
+merge_fail_case() { # mergeable_state
+  run_case_state() {
+    init_state '{"labels":{"58":[]},"files":["src/a.ts"],"merge_fail":"HTTP 405: Pull Request is not mergeable","pulls":[{"number":58,"state":"open","mergeable_state":"'"$1"'","body":"Closes #54","head":{"sha":"abc","ref":"claude/issue-54-x"},"updated_at":"2026-01-01T00:00:00Z"}],"checks":[{"name":"check","status":"completed","conclusion":"success","app":{"slug":"github-actions"}}],"branches":[{"name":"claude/issue-54-x","date":"2026-01-01T00:00:00Z"}]}'
+    state_py "s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\nNo issues found.','user':{'login':'github-actions[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})"
+    CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh
+  }
+  run_case_state "$1" > /dev/null
+}
+merge_fail_case dirty
+assert_eq "衝突：マージされない" "" "$(merged)"
+assert_contains "衝突：AIに main の取り込みを頼む" "$(comments_of 58)" "@claude レビューのあとに main が進み、コンフリクトでマージできませんでした"
+assert_contains "衝突：直す依頼の印が付く" "$(comments_of 58)" "auto-fix-sha: abc"
+assert_not_contains "衝突：止めない" "$(labels_of 58)" "ai:stuck"
+assert_contains "衝突：ブランチは消さない" "$(branch_names)" "claude/issue-54-x"
+merge_fail_case blocked
+assert_eq "それ以外：マージされない" "" "$(merged)"
+assert_contains "それ以外：やり直し待ち" "$(labels_of 58)" "ai:retry"
+assert_contains "それ以外：理由に状態が入る" "$(comments_of 58)" "状態：blocked"
+assert_contains "それ以外：失敗の内容が入る" "$(comments_of 58)" "not mergeable"
+merge_fail_case unknown
+assert_contains "状態が分からない：やり直し待ち" "$(labels_of 58)" "ai:retry"
+unset MERGE_STATE_WAIT_SEC
+
 finish

@@ -174,6 +174,36 @@ ${AUTO_FIX_MARK}
 <!-- auto-fix-body: $(pr_body_hash "$pr") -->${model_mark}"
 }
 
+# PR のマージの状態（GitHub が計算し終わるまで少し待つ）：clean / dirty（main と衝突）/ blocked / behind / unknown など
+pr_merge_state() {
+  local pr="$1" i state=""
+  for i in 1 2 3 4 5; do
+    state=$(gh api "repos/$REPO/pulls/$pr" -q '.mergeable_state // "unknown"' 2> /dev/null) || state="unknown"
+    [ "$state" != unknown ] && break
+    [ "$i" -lt 5 ] && sleep "${MERGE_STATE_WAIT_SEC:-5}"
+  done
+  echo "${state:-unknown}"
+}
+
+# 自動でマージする。できなかったら黙って終わらず、main との衝突なら AI に解消させ、それ以外はやり直し待ちに回す。
+#   使い方：merge_or_handle PR番号 先頭コミット 種類（mark_for_retry に渡す）。マージできたら 0、できなければ 1
+merge_or_handle() {
+  local pr="$1" sha="$2" kind="$3" out state
+  if out=$(gh api -X PUT "repos/$REPO/pulls/$pr/merge" -f merge_method=merge -f sha="$sha" 2>&1); then
+    return 0
+  fi
+  state=$(pr_merge_state "$pr")
+  if [ "$state" = dirty ]; then
+    # 同時に進めた別の PR が先にマージされ、同じファイルを触っていたとき
+    request_fix_or_stop "$pr" "$sha" "レビューのあとに main が進み、コンフリクトでマージできませんでした。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し（docs/spec.md・docs/design.md も両方の決まりを残す）、どちらかを捨てるときはPRにコメントで理由を書いてください。解消したら型チェック・リント・テスト・ビルドを通して push してください。"
+    echo "PR #$pr：main と衝突してマージできないので、AIに解消を依頼しました"
+  else
+    mark_for_retry "$pr" "$kind" "自動でマージできませんでした（状態：${state}。$(printf '%s' "$out" | tail -n 1 | cut -c1-160)）"
+    echo "PR #$pr：マージできなかったので、やり直し待ちにしました（状態：${state}）"
+  fi
+  return 1
+}
+
 # 順番待ち（ai:queue）のIssueのうち、番号がいちばん小さい物を実装に回す。
 # 止まっている物（ai:stuck）や実装中の物、openのPRがあれば何もしない
 start_next_in_queue() {
