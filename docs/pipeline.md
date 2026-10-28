@@ -7,10 +7,10 @@ Issueを作る（メモ）。ラベルが無ければ自動で ai:plan が付く
   → 企画AIが清書して ai:implement を付ける        claude-plan.yml
      （進行中の作業とぶつかると企画AIが判断したら ai:queue で順番待ち。別の場所なら最大2つまで並列）
   → 実装AIがブランチに実装し、PRを自動で作る        claude-implement.yml
-  → CI（型チェック・リント・テスト・ビルド）         ci.yml
+  → CI（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）   ci.yml
   → main が進んでいたら取り込んでCIをやり直す         pipeline.yml
   → 通ったらレビューAI（ai:review）                 pipeline.yml → claude-review.yml
-  → 指摘なし：自動でマージ → Vercelが本番に公開      pipeline.yml
+  → 指摘なし：自動でマージ → 公開（Vercel／App Runner／GitHub Releases／Expo）   pipeline.yml → deploy.yml
      指摘あり／CI失敗：AIが直す（@claude、3回目は opus）→ CIから   pipeline.yml → claude-mention.yml
   → 公開されたらスマホに通知                        deploy-notify.yml
   → 順番待ち（ai:queue）があれば次を始める           queue.yml
@@ -68,7 +68,7 @@ AIが正常に終わったのに変更が無いとき（質問した、指摘が
 - AIが動くジョブには `PIPELINE_TOKEN` を渡さない。企画・実装のあとの処理（次へ進める・PRを作る）は別のジョブで、main から取り直したスクリプトを動かす。AIが作業フォルダのスクリプトを書き換えても、強いトークンでは動かない（AIの結果は、実行記録と `plan-result.txt` をデータとして受け渡すだけ）
 - パイプラインの更新を配る（`sync.yml`）のは、テンプレートの main でCIが通った版だけ。配り先は、このテンプレートから作られ、パイプラインの鍵（App）が見えるリポジトリ（自動。新しいアプリを作っても書き足さなくてよい）と、`.github/sync-targets` に書いた物（テンプレートより前からあるリポジトリなど）。配りたくない物は `.github/sync-targets` に `!owner/repo` と書く（`sync-targets.sh`）。配り先の main には直接入れず、`pipeline-sync/<sha>` のPRを作る。配り先のCIが通ったら、進行役がレビューなしでマージする（落ちたら `ai:stuck` で人間に回す。AIが作ったPRや、印の無いPRはこの扱いにしない）
 
-- `.github/`・`docs/pipeline.md`・CLAUDE.md・AGENTS.md を変えるPRは、CIとレビューが通っても自動でマージしない（マージを人間に任せて通知する）。仕組みそのものが、AIの判断だけで書き換わらないようにするため。普通のIssueは今までどおり全自動
+- `.github/`・`docs/pipeline.md`・CLAUDE.md・AGENTS.md・`pipeline.json` を変えるPRは、CIとレビューが通っても自動でマージしない（マージを人間に任せて通知する）。仕組みそのものが、AIの判断だけで書き換わらないようにするため。普通のIssueは今までどおり全自動
 - 合否を決めるのはCI。AIの「できました」は信じない
 - 進行役（pipeline.yml）は `workflow_run` で main にある版が動くので、PRの中身で判断を書き換えられない
 - AIは `.github/`・`docs/pipeline.md`・`CLAUDE.md`・依存パッケージを触らない。`docs/spec.md`・`docs/design.md` は、見た目や挙動を決めるIssueのとき、実装の前に更新して同じPRに入れる（CLAUDE.md）。レビューAIが、書いた内容がIssueの範囲かを見る
@@ -85,15 +85,73 @@ AIが正常に終わったのに変更が無いとき（質問した、指摘が
 | AI（ワークフロー） | 許可している操作 | 許可していない操作と理由 |
 | --- | --- | --- |
 | 企画AI（`claude-plan.yml`） | `Bash(gh issue view:*)`、`Bash(gh issue edit:*)`、`Bash(gh issue comment:*)`、`Bash(gh issue create:*)`、`Bash(gh issue list:*)`、`Bash(gh pr list:*)`、`Bash(gh pr diff:*)`、`Read`、`Glob`、`Grep`、`Write` | コードを変えるgit操作・npm（企画はIssueを書くだけ。`Write` は結果ファイル `plan-result.txt` のため） |
-| 実装AI（`claude-implement.yml`） | `Bash(npm run typecheck)`、`Bash(npm run lint)`、`Bash(npm run test)`、`Bash(npm run build)`、`Bash(.github/scripts/tests/run-all.sh)`、`Bash(git status:*)`、`Bash(git diff:*)`、`Bash(git add:*)`、`Bash(git commit:*)`、`Bash(git push:*)`、`Bash(bash .github/scripts/tests/run-all.sh)`、`Bash(shellcheck:*)` | `gh`（PRやコメントは進行役が作る）、`npm run readme:shots` などの重い物（ブラウザの撮影はCIのワークフローでやる）。ファイルの編集は、このツールの標準で許可される。gitは、標準に任せると拒否されて止まったことがあるので、明示して許可している。`git push --force`・`git rebase` は許可しない |
+| 実装AI（`claude-implement.yml`） | pipeline.json の checks のコマンド（無ければ npm run typecheck・lint・test・build。下の「言語と公開先」）、`Bash(.github/scripts/tests/run-all.sh)`、`Bash(git status:*)`、`Bash(git diff:*)`、`Bash(git add:*)`、`Bash(git commit:*)`、`Bash(git push:*)`、`Bash(bash .github/scripts/tests/run-all.sh)`、`Bash(shellcheck:*)` | `gh`（PRやコメントは進行役が作る）、`npm run readme:shots` などの重い物（ブラウザの撮影はCIのワークフローでやる）。ファイルの編集は、このツールの標準で許可される。gitは、標準に任せると拒否されて止まったことがあるので、明示して許可している。`git push --force`・`git rebase` は許可しない |
 | レビューAI（`claude-review.yml`） | `Bash(gh pr view:*)`、`Bash(gh pr diff:*)`、`Bash(gh issue view:*)`、`Bash(gh pr comment:*)`、`Read`、`Glob`、`Grep`、`Write`、`mcp__github_inline_comment__create_inline_comment` | コードの変更・git操作・npm（レビューは読むだけ。コードは直さない） |
-| 修正AI（`claude-mention.yml`） | `Bash(gh pr view:*)`、`Bash(gh pr edit:*)`、`Bash(gh pr comment:*)`、`Bash(git fetch:*)`、`Bash(git merge:*)`、`Bash(git status:*)`、`Bash(git diff:*)`、`Bash(git add:*)`、`Bash(git commit:*)`、`Bash(git push:*)`、`Bash(npm run typecheck)`、`Bash(npm run lint)`、`Bash(npm run test)`、`Bash(npm run build)`、`Bash(.github/scripts/tests/run-all.sh)`、`Bash(bash .github/scripts/tests/run-all.sh)`、`Bash(shellcheck:*)` | `git rebase`・`git push --force`（履歴を書き換えない）、`gh pr merge`（マージは進行役だけ）。`gh pr edit` はPRの説明の直し、`git merge` はコンフリクトの解消のために許可している |
+| 修正AI（`claude-mention.yml`） | `Bash(gh pr view:*)`、`Bash(gh pr edit:*)`、`Bash(gh pr comment:*)`、`Bash(git fetch:*)`、`Bash(git merge:*)`、`Bash(git status:*)`、`Bash(git diff:*)`、`Bash(git add:*)`、`Bash(git commit:*)`、`Bash(git push:*)`、pipeline.json の checks のコマンド（無ければ npm run typecheck・lint・test・build）、`Bash(.github/scripts/tests/run-all.sh)`、`Bash(bash .github/scripts/tests/run-all.sh)`、`Bash(shellcheck:*)` | `git rebase`・`git push --force`（履歴を書き換えない）、`gh pr merge`（マージは進行役だけ）。`gh pr edit` はPRの説明の直し、`git merge` はコンフリクトの解消のために許可している |
 
 許可が足りなくて止まったときは、次のようになる。
 
 - 企画AI・実装AIは、実行記録から拒否された操作を読み取り、「足りない許可：`Bash(git merge:*)`」のように、通知とコメントに書いて人間に回す（やり直しても直らないので、自動のやり直しはしない）
 - 修正AIは、AIのコメントに「許可されていない」などと書かれていれば、その行と、出てくるコマンドから足りない許可の候補を書いて人間に回す
 - 同じ許可の不足が2回起きたら、直すためのIssue（`AIの許可が足りない：…`）を自動で作る（`ai:skip` 付き。マネージャーが `--allowedTools` と上の表を直す）。回数の記録は、閉じたままの「AIの許可の不足（自動の記録）」Issueのコメントに残る
+
+## 言語と公開先（`pipeline.json`）
+
+リポジトリ直下の `pipeline.json` に、言語・確認コマンド・公開先を書く。**無ければ今までどおりの Next.js（Node 22・`npm ci`・型チェック／リント／テスト／ビルド・Vercel）**として動くので、既存のアプリは何もしなくてよい。読み取りは `.github/scripts/stack.sh`、実行環境を入れるのは `.github/actions/setup-stack`（CI・実装AI・修正AI・公開で共通）。
+
+```json
+{
+  "tools":  { "python": "3.12" },
+  "setup":  [ "pip install -r requirements-dev.txt" ],
+  "checks": [
+    { "name": "リント", "run": "ruff check ." },
+    { "name": "テスト", "run": "pytest -q" }
+  ],
+  "deploy": [
+    { "kind": "aws-apprunner", "service": "hello-api", "port": 8000, "health": "/health" },
+    { "kind": "github-release", "os": ["windows-latest", "macos-latest"], "build": "pyinstaller --onefile cli.py", "files": "dist/*" }
+  ]
+}
+```
+
+| 項目 | 内容 |
+| --- | --- |
+| `tools` | 入れる実行環境と版。`node`・`python`・`go`・`java`（Temurin）・`dotnet`。Rust・C/C++ などはランナーに最初から入っている物を使う |
+| `setup` | 依存を入れるコマンド（CIとAIの前に1回ずつ動く） |
+| `checks` | CIで順に**全部**回すコマンド（1つ落ちても最後まで回し、落ちた物をまとめて出す）。**実装AI・修正AIに許すコマンドもこれになる**（`"`・`,`・`(`・`)`・`` ` ``・`$`・`\` は許可の書き方を壊すので使えない。複雑な物はスクリプトにまとめて呼ぶ） |
+| `deploy` | 公開先の配列。同じ種類は最初の1つだけ使う |
+
+AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions/` を触るPRは、どのリポジトリでも自動でマージしない（`ai:hold`）。書き間違いは、CI・公開の最初で `::error::` になり、Doctor でも ❌ で出る。
+
+公開先（`deploy.yml`。main の CI が通ったら動く。パイプラインの更新だけのコミットでは動かない）：
+
+| `kind` | 公開のしかた | 要る設定 | 書く物 |
+| --- | --- | --- | --- |
+| `vercel` | Vercel が自分で公開する（ここでは何もしない）。`pipeline.json` が無いときの既定 | Vercel でリポジトリを読み込む | なし |
+| `aws-apprunner` | Docker のイメージを作って ECR に置き、App Runner で動かす。最初の公開でサービスを作り、2回目から差し替える。言語を選ばない（Web・API） | 下の「AWS App Runner」 | `service`（サービス名・英数字と `-` `_`）、`port`（既定 8080）、`dockerfile`（既定 `Dockerfile`）、`cpu`（既定 256）、`memory`（既定 512）、`health`（HTTPのヘルスチェックのパス。省くとTCP） |
+| `github-release` | OS ごとに配布物（exe など）を作り、GitHub Releases に置く。ファイル名に OS が付く（`hello.exe` → `hello-windows.exe`）。タグは `build-<日時>-<コミット>` | なし | `build`（作るコマンド）、`files`（置くファイル。例 `dist/*`）、`os`（既定 `["windows-latest"]`。`macos-latest`・`ubuntu-latest` も） |
+| `expo` | スマホアプリを Expo（EAS）で配る。既定は `eas update`（アプリを入れ直さずに中身を更新） | Secret の `EXPO_TOKEN` | `command`（既定 `npx --yes eas-cli@latest update --auto --non-interactive`。ストアに出すなら `eas build --auto-submit ...`） |
+| `none` | 公開しない | なし | なし |
+
+結果はコミットの状態（`deploy/<kind>`）に書き、スマホに通知する（`deploy-status.sh`）。
+
+### AWS App Runner（1つの AWS アカウントで1回だけ）
+
+鍵（アクセスキー）は GitHub に置かない。GitHub の OIDC で、main からの実行だけが AWS の役割を一時的に借りる。
+
+1. AWS の画面 → **CloudFormation** → **スタックの作成**（新しいリソースを使用）→ **テンプレートファイルのアップロード** で `.github/deploy/aws-apprunner-setup.yml` を選ぶ
+2. スタックの名前は好きに（例：`github-apprunner`）。`GitHubOwner` は自分の GitHub のユーザー名。このアカウントに GitHub の OIDC（`token.actions.githubusercontent.com`）をもう作ってあれば `CreateOidcProvider` を `false`
+3. 「IAM リソースが作成される場合があることを承認します」にチェックして作成。数十秒で終わる
+4. スタックの **出力** に出る3つを、公開するリポジトリの Settings → Secrets and variables → Actions → **Variables** に入れる：`AWS_ROLE_ARN`・`AWS_APPRUNNER_ACCESS_ROLE_ARN`・`AWS_REGION`
+5. Doctor を実行して「✅ 公開先：AWS App Runner」が出れば完了。次に main にマージされたとき、最初の公開でサービスができる（数分）。URL は通知と agent-desk に出る
+
+料金：App Runner は動いている間（いちばん小さい 0.25 vCPU・0.5 GB）と、イメージの置き場（ECR）の分がかかる。使わないサービスは App Runner の画面で「一時停止」すると、置き場の分だけになる。
+
+### Expo（スマホアプリ）
+
+1. expo.dev にログインし、アプリを作る（`npx eas-cli init` をパソコンで1回）
+2. expo.dev → Account settings → **Access tokens** で作り、Secret の `EXPO_TOKEN` に入れる
+3. `pipeline.json` の `deploy` に `{ "kind": "expo" }`（ストアに出すときは `command` を書く）
 
 ## スクリプトのテスト
 
@@ -117,6 +175,8 @@ AIが正常に終わったのに変更が無いとき（質問した、指摘が
 | `PIPELINE_TOKEN` | Secret | オーナーのFine-grained トークン。ラベル・コメント・PR作成・マージに使う。これで操作すると次のワークフローが動く（Actions標準のトークンだと動かない）。無い間は、PR作成とマージを人間がする |
 | `NTFY_TOPIC` | Secret | スマホ通知（ntfyアプリ）のトピック名。無ければ通知しない |
 | `AGENT_DESK_URL` | Variable | 通知を押したときに開く画面（省略可） |
+| `AWS_ROLE_ARN`・`AWS_APPRUNNER_ACCESS_ROLE_ARN`・`AWS_REGION` | Variable | 公開先が `aws-apprunner` のとき（上の「AWS App Runner」） |
+| `EXPO_TOKEN` | Secret | 公開先が `expo` のとき |
 | `NOTIFY_EVENTS` | Variable | 鳴らす通知の種類（カンマ区切り）。省略時は `stuck,question,hold,manual,deployed,deploy_failed,limit,intake,repeat_fail`。ほかに `merged`・`ci_failed` がある。種類の意味は `.github/scripts/notify.sh` |
 
 ほかに、Settings → General → Pull Requests の「Automatically delete head branches」をオンにする（マージ後のブランチが溜まらない。オンにしなくても、進行役がマージ後に `claude/*` ブランチを消し、見張り役が古い物を掃除する）。

@@ -167,7 +167,7 @@ request_fix_or_stop() {
   fi
   comment "$pr" "@claude ${message}
 ${note}
-直したら、型チェック・リント・テスト・ビルドを通してから、このPRのブランチにpushしてください。（自動の依頼 $((count + 1))/${total}）
+直したら、確認コマンド（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）を全部通してから、このPRのブランチにpushしてください。（自動の依頼 $((count + 1))/${total}）
 
 ${AUTO_FIX_MARK}
 <!-- auto-fix-sha: ${sha} -->
@@ -195,7 +195,7 @@ merge_or_handle() {
   state=$(pr_merge_state "$pr")
   if [ "$state" = dirty ]; then
     # 同時に進めた別の PR が先にマージされ、同じファイルを触っていたとき
-    request_fix_or_stop "$pr" "$sha" "レビューのあとに main が進み、コンフリクトでマージできませんでした。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し（docs/spec.md・docs/design.md も両方の決まりを残す）、どちらかを捨てるときはPRにコメントで理由を書いてください。解消したら型チェック・リント・テスト・ビルドを通して push してください。"
+    request_fix_or_stop "$pr" "$sha" "レビューのあとに main が進み、コンフリクトでマージできませんでした。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し（docs/spec.md・docs/design.md も両方の決まりを残す）、どちらかを捨てるときはPRにコメントで理由を書いてください。解消したら確認コマンド（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）を全部通して push してください。"
     echo "PR #$pr：main と衝突してマージできないので、AIに解消を依頼しました"
   else
     mark_for_retry "$pr" "$kind" "自動でマージできませんでした（状態：${state}。$(printf '%s' "$out" | tail -n 1 | cut -c1-160)）"
