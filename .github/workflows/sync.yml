@@ -1,0 +1,33 @@
+# ai-dev-template の main が更新されたら、アプリのリポジトリへ .github と docs/pipeline.md を自動で配る。
+# 配り先は下の TARGETS。ワークフローも配るため、PIPELINE_TOKEN に Workflows (Read and write) 権限が要る。
+name: Sync to apps
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/**"
+      - "docs/pipeline.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-to-apps
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    # 配り先のリポジトリでは動かさない（ai-dev-template だけ）
+    if: github.repository == 'Gaku1205/ai-dev-template'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: アプリへ配る
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          TARGETS: Gaku1205/agent-desk Gaku1205/ai-company-lab
+        run: |
+          # shellcheck disable=SC2086
+          .github/scripts/sync-to-apps.sh $TARGETS
