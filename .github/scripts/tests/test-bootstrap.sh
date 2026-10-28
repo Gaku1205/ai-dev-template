@@ -12,7 +12,8 @@ cat > "$f" <<'MD'
 
 ## 触ってはいけないもの
 
-- a
+- `.github/` 配下（ワークフロー）。ただし ai-dev-template 自身だけ、下の「ai-dev-template 自身の作業」で許した物は触ってよい
+- `CLAUDE.md`、`docs/pipeline.md`（パイプラインの説明。ai-dev-template 自身だけ、`docs/pipeline.md` は下の節で触ってよい）
 
 ## ai-dev-template 自身の作業（パイプライン本体だけ）
 

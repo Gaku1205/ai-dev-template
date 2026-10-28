@@ -16,6 +16,9 @@ strip_self_edit() {
     /^## / { skip = 0 }
     !skip { print }
   ' "$file" > "$tmp"
+  # 節の外にある、ai-dev-template 自身だけの但し書きも消す
+  sed -i -e 's/。ただし ai-dev-template 自身だけ、下の「ai-dev-template 自身の作業」で許した物は触ってよい//' \
+    -e 's/（パイプラインの説明。ai-dev-template 自身だけ、`docs\/pipeline.md` は下の節で触ってよい）/（パイプラインの説明）/' "$tmp"
   cat "$tmp" > "$file"
   rm -f "$tmp"
 }
