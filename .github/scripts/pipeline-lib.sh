@@ -258,19 +258,31 @@ limit_signal() {
 # AIの実行記録（claude-code-action の execution_file）から、失敗の原因を一言に分類する
 #   使用量の上限 / 許可不足 / 作業回数の上限 / その他 / 不明（記録なし）
 classify_failure() {
-  local f="${1:-}" info subtype denials result
+  local f="${1:-}" info subtype denials first result
   if [ -z "$f" ] || [ ! -s "$f" ]; then
     echo "不明（AIの実行記録がありません）"
     return
   fi
+  # first：許可されなかった最初の操作（例：Bash(git rebase main)）。人間がどの許可を足すか決められるように出す。
+  # 中の | と改行は区切りとぶつかるので置き換え、長い物は60文字で切る
   info=$(jq -r 'if type == "array" then . else [.] end | map(select(.type == "result")) | last // {}
-    | "\(.subtype // "")|\(.permission_denials // [] | length)|\(.result // "" | tostring | .[0:300] | gsub("\n"; " "))"' "$f" 2> /dev/null) || info=""
+    | (.permission_denials // []) as $d
+    | ($d[0] // {}) as $x
+    | (if ($x.tool_name // "") == "" then ""
+       else (($x.tool_input.command // $x.tool_input.file_path // $x.tool_input.pattern // "") | tostring) as $arg
+         | if $arg == "" then $x.tool_name else ($x.tool_name + "(" + $arg + ")") end
+       end | gsub("[|\n\r]"; " ") | if length > 60 then .[0:59] + "…" else . end) as $first
+    | "\(.subtype // "")|\($d | length)|\($first)|\(.result // "" | tostring | .[0:300] | gsub("\n"; " "))"' "$f" 2> /dev/null) || info=""
   # 区切りは | （空白の区切りだと、先頭の項目が空のときに詰められてずれる）。result は最後なので、中に | があってもよい
-  IFS='|' read -r subtype denials result <<< "$info"
+  IFS='|' read -r subtype denials first result <<< "$info"
   if printf '%s' "$result" | grep -qiE 'usage limit|rate limit|limit reached|overloaded|429'; then
     echo "使用量の上限"
   elif [ "${denials:-0}" -gt 0 ]; then
-    echo "許可不足（AIが許可されていない操作を試した：${denials}件）"
+    if [ -n "$first" ]; then
+      echo "許可不足（AIが許可されていない操作を試した：${denials}件。最初の1件：${first}）"
+    else
+      echo "許可不足（AIが許可されていない操作を試した：${denials}件）"
+    fi
   elif [ "$subtype" = "error_max_turns" ]; then
     echo "作業回数の上限（--max-turns）"
   elif [ -n "$subtype" ]; then
