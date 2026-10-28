@@ -44,4 +44,23 @@ age_retry_comments 40
 run_script watchdog.sh > /dev/null
 assert_eq "ai:plan だけが付いている" "ai:plan" "$(labels_of 3)"
 
+echo "== 上限以外の失敗が1時間に2件そろったら、1回だけ通知する（3件目では鳴らさない）"
+init_state '{"labels":{"21":["ai:plan"],"22":["ai:plan"],"23":["ai:plan"]}}'
+before=$(notify_count)
+run_lib 'mark_for_retry 21 plan "企画AIがエラーで止まりました"' > /dev/null
+assert_eq "1件目では鳴らない" "$before" "$(notify_count)"
+out=$(run_lib 'mark_for_retry 22 plan "企画AIがエラーで止まりました"')
+assert_eq "2件目で1回鳴る" "$((before + 1))" "$(notify_count)"
+assert_contains "どれが失敗したか書く" "$(cat "$MOCK_DIR/curl.log")" "#21 #22"
+run_lib 'mark_for_retry 23 plan "企画AIがエラーで止まりました"' > /dev/null
+assert_eq "3件目では鳴らない" "$((before + 1))" "$(notify_count)"
+
+echo "== 1時間より前の失敗は数えない"
+init_state '{"labels":{"31":["ai:plan"],"32":["ai:plan"]}}'
+run_lib 'mark_for_retry 31 plan "x"' > /dev/null
+age_retry_comments 90
+before=$(notify_count)
+run_lib 'mark_for_retry 32 plan "x"' > /dev/null
+assert_eq "古い物と合わせても鳴らない" "$before" "$(notify_count)"
+
 finish

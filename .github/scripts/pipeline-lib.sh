@@ -436,6 +436,31 @@ mark_for_retry() {
   write_retry_record "$num" "$count" "$kind" "$reason"
   add_label "$num" "ai:retry"
   echo "#$num：${reason}。あとで自動でやり直します（${count}/${MAX_RETRY}回やり直し済み）"
+  alert_if_repeated_failures "$num" "$reason"
+}
+
+# 静かな失敗に早く気づくため：使用量の上限以外の理由で、直近 REPEAT_WINDOW_MIN 分のうちに
+# やり直し待ちになった物が REPEAT_ALERT_AT 件そろったら、1回だけ通知する（仕組みそのものが壊れているかもしれないので）
+REPEAT_WINDOW_MIN="${REPEAT_WINDOW_MIN:-60}"
+REPEAT_ALERT_AT="${REPEAT_ALERT_AT:-2}"
+alert_if_repeated_failures() {
+  local num="$1" reason="$2" now n c body updated recent=0 list=""
+  now=$(date +%s)
+  for n in $(gh api "repos/$REPO/issues?state=open&labels=ai%3Aretry&per_page=100" -q '.[].number' 2> /dev/null); do
+    c=$(retry_comment "$n")
+    [ -z "$c" ] && continue
+    body=$(printf '%s' "$c" | jq -r '.body // ""')
+    # 使用量の上限の待ちは、別の通知（limit）があるので数えない
+    [ -n "$(retry_mark_value "$body" limit-until)" ] && continue
+    updated=$(date -d "$(printf '%s' "$c" | jq -r '.updated_at')" +%s 2> /dev/null || echo 0)
+    if [ $(( now - updated )) -le $(( REPEAT_WINDOW_MIN * 60 )) ]; then
+      recent=$((recent + 1)); list="${list} #${n}"
+    fi
+  done
+  if [ "$recent" -eq "$REPEAT_ALERT_AT" ]; then
+    notify repeat_fail "AIの失敗が続いています" "${list# }：${reason}。仕組みの不調かもしれません。確認してください" 4
+    echo "失敗が ${recent} 件続いたので通知しました"
+  fi
 }
 
 

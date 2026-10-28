@@ -15,8 +15,9 @@
 #   ci_failed     CIが失敗した（AIが直す前）
 #   intake        ラベルの無いIssueが受付に拾われないまま放置されていて、見張り役が企画に回した（受付やトークンの不調に気づくため）
 #   limit         使用量の上限で待っている（リセット後に自動で再開する。待ちに入った最初の1回だけ）
+#   repeat_fail   上限以外の理由で、1時間のうちに2件以上がやり直し待ちになった（仕組みの不調に早く気づくため。2件目のときに1回だけ）
 set -uo pipefail
-DEFAULT_EVENTS="stuck,question,hold,manual,deployed,deploy_failed,limit,intake"
+DEFAULT_EVENTS="stuck,question,hold,manual,deployed,deploy_failed,limit,intake,repeat_fail"
 event="$1"
 shift
 events="${NOTIFY_EVENTS:-$DEFAULT_EVENTS}"
