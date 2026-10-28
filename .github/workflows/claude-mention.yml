@@ -9,7 +9,12 @@ on:
 
 jobs:
   claude:
-    if: contains(github.event.comment.body, '@claude')
+    # 公開リポジトリでは誰でもコメントできるので、呼べるのはオーナー・メンバー・共同作業者と、
+    # パイプラインの App（ボット）だけ。AI自身（claude[bot]）は呼べない（自分で自分を呼ぶ繰り返しを防ぐ）
+    if: >-
+      contains(github.event.comment.body, '@claude') &&
+      (contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) ||
+       (github.event.comment.user.type == 'Bot' && github.event.comment.user.login != 'claude[bot]'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency:

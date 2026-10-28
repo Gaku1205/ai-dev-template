@@ -113,4 +113,10 @@ for name in claude-plan.yml claude-implement.yml claude-review.yml claude-mentio
   assert_contains "$name：claude[bot] は許可しない" "$wf" '"$SENDER" != "claude[bot]"'
 done
 
+echo "== @claude を呼べるのは、オーナー・メンバー・共同作業者とパイプラインのボットだけ"
+wf="$(cat "$WORKFLOWS/claude-mention.yml")"
+assert_contains "claude-mention.yml：コメントした人の立場を見る" "$wf" "github.event.comment.author_association"
+assert_contains "claude-mention.yml：OWNER・MEMBER・COLLABORATOR だけ" "$wf" "fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]')"
+assert_contains "claude-mention.yml：ボットは claude[bot] 以外" "$wf" "github.event.comment.user.login != 'claude[bot]'"
+
 finish
