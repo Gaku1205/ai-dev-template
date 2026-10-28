@@ -36,10 +36,21 @@
    | `PIPELINE_TOKEN` | オーナーのFine-grained トークン。ラベル・コメント・PR作成・マージに使う |
    | `NTFY_TOPIC` | スマホ通知（ntfyアプリ）のトピック名。無ければ通知しない |
 
-4. Actions → **Setup Labels** を1回実行して、`ai:` などのラベルを作る
-5. `CLAUDE.md` の1行目と `docs/spec.md`・`docs/design.md` にアプリのことを書く
-6. Vercelでリポジトリを読み込む（mainにマージされるたびに公開される）
-7. Issueの「メモ（AIにおまかせ）」から、やりたいことを書く
+4. **最初の push** で「Bootstrap」が自動で動く。`ai:` などのラベルを作り、`CLAUDE.md` の「ai-dev-template 自身の作業」の節を消し、診断（Doctor）の結果を実行画面の Summary に出す。手で何かを実行する必要はない
+   - Bootstrap は `ai:plan` ラベルが無いときだけ動く。2回目以降の push では何もしない
+5. Actions の **Doctor** を手で実行して、Summary の ✅／⚠️／❌ を確かめる
+   - ❌ は Summary の「→」のとおりに直して、もう一度 Doctor を実行する
+   - ⚠️ は動くが直したほうがよい物（例：通知の Secret が無い、ブランチの自動削除がオフ）
+   - `CLAUDE.md` がテンプレートのままだと ❌ が出る。次の手順6で直す
+6. `CLAUDE.md` の1行目と `docs/spec.md`・`docs/design.md` にアプリのことを書く
+7. Vercelでリポジトリを読み込む（mainにマージされるたびに公開される）
+8. Doctor をもう一度実行して、❌ が無いことを確かめる
+9. Issueの「メモ（AIにおまかせ）」から、やりたいことを書く
+
+**補足：Setup Labels（必要なら）**
+ラベルが足りないときだけ、Actions の **Setup Labels** を手で1回実行する。ただし、Bootstrap より先にこれを実行すると、Bootstrap は「ラベルがもうある」として何もしないので、`CLAUDE.md` の節の削除と診断も飛ばされる。その場合は、`CLAUDE.md` の「ai-dev-template 自身の作業」の節を手で消し、Doctor を手で実行する。
+
+テンプレート（本体）の更新は、本体の main でCIが通った版だけが、本体の `.github/sync-targets` に書いた配り先へ自動で配られる（この自動配布は本体だけが動かす）。
 
 ### Vercelの公開回数について
 
@@ -69,3 +80,4 @@ Vercelの無料プランには、1日に公開できる回数の上限があり�
 | `docs/` | 仕様書・デザイン仕様・パイプラインの説明 |
 | `src/` | 最小の Next.js（App Router）＋TypeScript＋Vitest |
 | `vercel.json` | `claude/*` ブランチのVercelプレビューを作らない設定 |
+| `LICENSE` | MIT License（Copyright (c) 2026 Gaku1205） |
