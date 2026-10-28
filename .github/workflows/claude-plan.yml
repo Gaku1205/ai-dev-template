@@ -11,6 +11,8 @@ jobs:
   plan:
     if: github.event.label.name == 'ai:plan'
     runs-on: ubuntu-latest
+    outputs:
+      outcome: ${{ steps.claude.outcome }}
     timeout-minutes: 15
     concurrency:
       group: claude-plan-${{ github.event.issue.number }}
@@ -74,8 +76,49 @@ jobs:
             - 見た目や挙動を新しく決める・変える作業なら、「やること」の最初に「`docs/spec.md`・`docs/design.md` に○○を書く（そのあと実装する）」を入れる。デザインが決まっていない新しい見た目は、人間に聞かずに既存のルールに合わせて決める前提で、「仮定」に書く
             - コードは変更しない。Issueの更新とコメントだけをする
           claude_args: '--model sonnet --max-turns 30 --allowedTools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh pr list:*),Bash(gh pr diff:*),Read,Glob,Grep,Write"'
-      - name: 次へ進める（実装を依頼する／質問で止まる）
+      # AIの結果（実行記録・plan-result.txt）を、データとして次のジョブに渡す。ここでは Secret を使わない
+      - name: AIの結果を取っておく
         if: ${{ !cancelled() }}
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/ai-result"
+          if [ -n "$EXECUTION_FILE" ] && [ -f "$EXECUTION_FILE" ]; then cp "$EXECUTION_FILE" "$RUNNER_TEMP/ai-result/execution.json"; fi
+          if [ -f plan-result.txt ] && [ ! -L plan-result.txt ]; then cp plan-result.txt "$RUNNER_TEMP/ai-result/plan-result.txt"; fi
+          touch "$RUNNER_TEMP/ai-result/.keep"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: ai-result
+          path: ${{ runner.temp }}/ai-result
+          include-hidden-files: true
+          retention-days: 3
+
+  after-plan:
+    # 安全のため別のジョブにする：AIが作業フォルダのスクリプトを書き換えても、ここでは main の版を動かす。
+    # PIPELINE_TOKEN を使うのはこのジョブだけ（AIのジョブには渡さない）
+    needs: plan
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: ai-result
+          path: ${{ runner.temp }}/ai-result
+      - name: plan-result.txt を作業フォルダに置く（中身はデータとしてだけ読む）
+        run: if [ -f "$RUNNER_TEMP/ai-result/plan-result.txt" ]; then cp "$RUNNER_TEMP/ai-result/plan-result.txt" plan-result.txt; fi
+      - name: 次へ進める（実装を依頼する／質問で止まる）
         env:
           GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
           GITHUB_TOKEN_FOR_LABELS: ${{ github.token }}
@@ -84,6 +127,6 @@ jobs:
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
           ISSUE: ${{ github.event.issue.number }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
-          PLAN_OUTCOME: ${{ steps.claude.outcome }}
-          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+          PLAN_OUTCOME: ${{ needs.plan.outputs.outcome }}
+          EXECUTION_FILE: ${{ runner.temp }}/ai-result/execution.json
         run: .github/scripts/after-plan.sh

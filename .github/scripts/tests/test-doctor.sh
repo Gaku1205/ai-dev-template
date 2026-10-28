@@ -10,6 +10,7 @@ all_labels="ai:plan ai:implement ai:review ai:queue ai:hold ai:stuck ai:skip ai:
 fetch_labels() { printf '%s\n' $LABELS; }
 fetch_delete_branch() { echo "$DELBR"; }
 token_can_push() { echo "$CANPUSH"; }
+is_template_repo() { [ "${IS_TEMPLATE:-false}" = true ]; }
 
 run_doctor() { out="$(main 2>&1)"; rc=$?; }
 workdir="$(mktemp -d)"; cd "$workdir" || exit 1
@@ -42,12 +43,16 @@ echo '{"scripts":{"lint":"x"}}' > package.json
 CANPUSH=true
 run_doctor
 assert_contains "テンプレートのまま" "$out" "CLAUDE.md がテンプレートのまま"
-assert_contains "test が無い" "$out" "test のスクリプトが無い"
+assert_contains "test が無いのは警告" "$out" "⚠️ package.json に test のスクリプトが無い"
+assert_contains "typecheck が無いのは ❌" "$out" "❌ package.json に typecheck のスクリプトが無い"
 
 echo "== セルフ編集の印が他のリポジトリに残っていたら警告"
 echo "<!-- pipeline-self-edit: auto -->" > CLAUDE.md
 run_doctor
 assert_contains "印の警告" "$out" "pipeline-self-edit の印が残っている"
+IS_TEMPLATE=true
+run_doctor
+assert_not_contains "テンプレート自身なら警告しない" "$out" "pipeline-self-edit の印が残っている"
 
 cd /; rm -rf "$workdir"
 finish

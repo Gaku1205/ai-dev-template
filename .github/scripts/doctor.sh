@@ -12,6 +12,7 @@ ng()   { echo "- ❌ $1 → $2"; NG=$((NG + 1)); }
 # 外に出る部分（テストでは差し替える）
 fetch_labels()        { gh api "repos/$REPO/labels?per_page=100" --paginate --jq '.[].name'; }
 fetch_delete_branch() { gh api "repos/$REPO" --jq '.delete_branch_on_merge'; }
+is_template_repo()    { [ "$(gh api "repos/$REPO" --jq '.is_template' 2> /dev/null)" = true ]; }
 token_can_push()      { GH_TOKEN="${PIPELINE_TOKEN:-}" gh api "repos/$REPO" --jq '.permissions.push' 2>/dev/null; }
 
 check_secrets() {
@@ -48,14 +49,17 @@ check_files() {
   if [ -f CLAUDE.md ] && grep -q "（アプリの説明を1〜2行で書く）" CLAUDE.md; then
     ng "CLAUDE.md がテンプレートのまま" "アプリの説明を書き、「ai-dev-template 自身の作業」の節を消す"
   fi
-  if [ -f CLAUDE.md ] && grep -q "pipeline-self-edit: auto" CLAUDE.md && [ "$REPO" != "Gaku1205/ai-dev-template" ]; then
+  if [ -f CLAUDE.md ] && grep -q "pipeline-self-edit: auto" CLAUDE.md && ! is_template_repo; then
     warn "CLAUDE.md に pipeline-self-edit の印が残っている" "ai-dev-template 自身の節ごと消す（残るとパイプラインの変更が自動でマージされる）"
   fi
   if [ -f package.json ]; then
-    for s in typecheck lint test build; do
+    for s in typecheck lint build; do
       if grep -q "\"$s\"[[:space:]]*:" package.json; then ok "npm run $s がある"
-      else ng "package.json に $s のスクリプトが無い" "CLAUDE.md の「終わる前に実行する4つ」と同じ名前で足す"; fi
+      else ng "package.json に $s のスクリプトが無い" "CLAUDE.md の「終わる前に実行する」コマンドと同じ名前で足す"; fi
     done
+    # テストは無くても動く（CIは、無ければ飛ばす）。ただし無いと、AIの変更を確かめる物が減る
+    if grep -q "\"test\"[[:space:]]*:" package.json; then ok "npm run test がある"
+    else warn "package.json に test のスクリプトが無い" "動くが、AIの変更を確かめにくい。vitest を入れて \"test\": \"vitest run\" を足す"; fi
   else
     warn "package.json が無い" "Next.js 以外の構成なら、CLAUDE.md と ci.yml の確認コマンドを合わせる"
   fi

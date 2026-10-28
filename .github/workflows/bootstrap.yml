@@ -13,8 +13,8 @@ permissions:
 
 jobs:
   bootstrap:
-    # ai-dev-template 自身では動かさない
-    if: github.repository != 'Gaku1205/ai-dev-template'
+    # テンプレート（本体）自身では動かさない
+    if: ${{ !github.event.repository.is_template }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

@@ -56,4 +56,29 @@ assert_contains "撮り直しはトークンを残さない" "$(cat "$WORKFLOWS/
 echo "== doctor.yml：診断の失敗（❌）が、tee で隠れず、実行の失敗になる"
 assert_contains "pipefail を使う" "$(cat "$WORKFLOWS/doctor.yml")" "set -o pipefail"
 
+echo "== AIが動くジョブには PIPELINE_TOKEN を渡さない（AIの後の処理は、main の版を別のジョブで動かす）"
+result=$(python3 - "$WORKFLOWS" <<'PY'
+import sys, os, yaml
+bad = []
+for f in sorted(os.listdir(sys.argv[1])):
+    if not f.endswith('.yml'): continue
+    d = yaml.safe_load(open(os.path.join(sys.argv[1], f)))
+    for name, job in (d.get('jobs') or {}).items():
+        text = yaml.dump(job)
+        if 'claude-code-action' in text and 'secrets.PIPELINE_TOKEN' in text:
+            bad.append(f + ':' + name)
+print(','.join(bad) or 'ok')
+PY
+)
+assert_eq "AIのジョブに PIPELINE_TOKEN が無い" "ok" "$result"
+for name in claude-plan.yml claude-implement.yml; do
+  assert_contains "$name：後の処理は main を取り直して動かす" "$(cat "$WORKFLOWS/$name")" "ref: \${{ github.event.repository.default_branch }}"
+done
+
+echo "== sync.yml：CIが通った版だけを配る"
+sync="$(cat "$WORKFLOWS/sync.yml")"
+assert_contains "CIの完了で動く" "$sync" "workflows: [CI]"
+assert_contains "成功のときだけ" "$sync" "conclusion == 'success'"
+assert_not_contains "push では動かない" "$sync" "  push:"
+
 finish
