@@ -143,4 +143,8 @@ assert_contains "claude-mention.yml：差分の画像を取ってくる" "$wf" "
 assert_contains "claude-mention.yml：画像を見る指示" "$wf" "Read で開いて見る"
 assert_contains "claude-mention.yml：artifact を読む権限" "$wf" "actions: read"
 
+echo "== 見張り役は、何もしなかった実行（skipped）の後には動かない"
+wf="$(cat "$WORKFLOWS/watchdog.yml")"
+assert_contains "watchdog.yml：skipped の後は動かない" "$wf" "github.event.workflow_run.conclusion != 'skipped'"
+
 finish

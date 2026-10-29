@@ -22,6 +22,9 @@ concurrency:
 
 jobs:
   watch:
+    # 何もしなかった実行（skipped）の後には動かない。どの Issue・PR にコメントが付いても Claude Mention が起動して
+    # すぐ skipped で終わるので、そのたびに全部を見直すと GitHub API の回数を無駄に使う（定期の30分ごとは今まで通り）
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion != 'skipped'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

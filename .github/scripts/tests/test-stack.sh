@@ -66,7 +66,9 @@ assert_eq "使えない文字のコマンドはAIに許さない" "Bash(pytest)"
 echo '{"checks":[{"run":"pytest"}],"deploy":[{"kind":"heroku"},{"kind":"aws-apprunner","service":"a b"},{"kind":"github-release","build":"x"},{"kind":"github-release","build":"x","files":"d/*","os":["windows-2022","linux"]}]}' > pipeline.json
 out=$(s stack_validate)
 assert_contains "知らない公開先" "$out" "種類「heroku」は知らない"
-assert_contains "サービス名" "$out" "service（サービス名）は英数字"
+assert_contains "サービス名" "$out" "service（サービス名）は小文字の英数字"
+echo '{"checks":[{"run":"pytest"}],"deploy":[{"kind":"aws-apprunner","service":"Hello-Api"}]}' > pipeline.json
+assert_contains "大文字のサービス名は通さない（ECR が受け付けない）" "$(s stack_validate)" "大文字は使えない"
 assert_contains "build と files" "$out" "build（作るコマンド）と files"
 assert_contains "ランナー名" "$out" "os「linux」は GitHub のランナー名"
 assert_not_contains "正しいランナー名は通す" "$out" "windows-2022"
