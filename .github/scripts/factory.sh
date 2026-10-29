@@ -83,17 +83,11 @@ done
 # ---- 3. Vercel ----
 vercel_note=""
 if [ "$APP_STACK" = nextjs ]; then
-  if [ -n "${VERCEL_TOKEN:-}" ]; then
-    q=""; [ -n "${VERCEL_TEAM_ID:-}" ] && q="?teamId=${VERCEL_TEAM_ID}"
-    body=$(jq -nc --arg n "$name" --arg r "$NEW" '{name: $n, framework: "nextjs", gitRepository: {type: "github", repo: $r}}')
-    if res=$(printf '%s' "$body" | curl -sS -f -X POST "$VERCEL_API/v11/projects$q" -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" --data-binary @- 2>&1); then
-      note "✅ Vercel のプロジェクトを作ってつないだ（最初の push で公開が始まる）"
-      vercel_note="Vercel：$(printf '%s' "$res" | jq -r '.name // empty' 2> /dev/null)"
-    else
-      note "⚠️ Vercel のプロジェクトを作れませんでした（Vercel の GitHub 連携が、このリポジトリを見られるか確かめる）。公開は Vercel の画面でつなぐまで動きません"
-    fi
+  if vout=$(REPO_FULL="$NEW" PROJECT="$name" "$HERE/factory-vercel.sh" 2>&1); then
+    note "✅ Vercel のプロジェクトを作ってつないだ（最初の push で公開が始まる）"
+    vercel_note="Vercel：$vout"
   else
-    note "⚠️ VERCEL_TOKEN が無いので、Vercel にはつないでいません（Vercel の画面で Import するまで公開されません）"
+    note "⚠️ $vout"
   fi
 fi
 

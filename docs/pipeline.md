@@ -175,6 +175,7 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 - **パイプラインの GitHub App** を、**All repositories** に入れておく（新しいリポジトリでも、すぐ鍵が使えるように）。App の画面 → Install App → 自分のアカウントの Configure
 - **Next.js を公開するなら**：`VERCEL_TOKEN`（Environment「factory」の Secret。Vercel → Account Settings → Tokens）と、Vercel の GitHub 連携を **All repositories** にしておく。チームで使うなら変数 `VERCEL_TEAM_ID`
 - 無い物があっても、作れる所までは作り、元のIssueに「何が無くて何をしなかったか」を書く
+- あとから Vercel につなぐとき（作ったときに VERCEL_TOKEN が無かった物など）：Actions → **Factory Vercel** → Run workflow で、リポジトリの名前を入れる（つないだあと、main に空のコミットを足して公開を始める）
 
 ## スクリプトのテスト
 

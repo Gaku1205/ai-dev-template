@@ -66,7 +66,8 @@ sys.stderr.write(f"UNHANDLED {method} {path}\n"); sys.exit(1)
 PY
 cat > "$T/bin/curl" <<'SH'
 #!/usr/bin/env bash
-echo "curl $*" >> "$FT/calls.log"; cat > "$FT/vercel-body.json"; echo '{"name":"made"}'
+echo "curl $*" >> "$FT/calls.log"; cat > "$FT/vercel-body.json"
+if [ -n "${VERCEL_FAIL:-}" ]; then echo '{"error":{"message":"repo not found"}}'; else echo '{"name":"made"}'; fi
 SH
 chmod +x "$T/bin/gh" "$T/bin/curl"
 
@@ -99,6 +100,11 @@ assert_eq "見本（examples）は持ち込まない" "" "$(file_in o/morning-bo
 assert_contains "Next.js のまま" "$(file_in o/morning-board package.json)" '"next"'
 assert_contains "元のIssueに結果を書く" "$(cat "$T/comment.txt")" "新しいサービス **morning-board** を作りました"
 assert_contains "元のIssueを閉じる" "$calls" "PATCH repos/o/ai-dev-template/issues/7"
+
+echo "== Vercel が断ったら、理由を書いて先へ進む"
+run_factory vercel-ng nextjs "説明" VERCEL_TOKEN=v VERCEL_FAIL=1 > /dev/null
+assert_contains "理由を書く" "$(cat "$T/comment.txt")" "repo not found"
+assert_contains "最初のIssueまでは作る" "$(cat "$T/calls.log")" "POST repos/o/vercel-ng/issues"
 
 echo "== 同じ名前があれば -2 を付ける。VERCEL_TOKEN が無ければ、つながずに知らせる"
 run_factory morning-board nextjs "説明" EXISTING="o/morning-board" > /dev/null

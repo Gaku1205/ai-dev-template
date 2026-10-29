@@ -1,0 +1,40 @@
+# 工場：もうあるリポジトリを、あとから Vercel につなぐ（工場で作ったとき VERCEL_TOKEN が無かった物など）。
+# Actions → Factory Vercel → Run workflow で、リポジトリの名前を入れる。つないだあと、main に空のコミットを足して公開を始める。
+# テンプレート本体でだけ、強い鍵は Environment「factory」から使う
+name: Factory Vercel
+run-name: Vercel につなぐ ${{ inputs.repo }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: つなぐリポジトリの名前（owner は省く。例：pomodoro-log）
+        required: true
+
+jobs:
+  connect:
+    if: github.event.repository.is_template
+    environment: factory
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - name: Vercel につなぐ
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_TOKEN }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
+          NAME: ${{ inputs.repo }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          [[ "$NAME" =~ ^[A-Za-z0-9._-]{1,100}$ ]] || { echo "::error::リポジトリの名前の形が違います"; exit 1; }
+          name="${NAME,,}"
+          out=$(REPO_FULL="$OWNER/$NAME" PROJECT="$name" .github/scripts/factory-vercel.sh) || { echo "::error::$out"; exit 1; }
+          echo "つないだ：$out"
+          # 空のコミットで公開を始める（main の保護は、FACTORY_TOKEN の持ち主＝管理者なので通れる）
+          git clone -q --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/$OWNER/$NAME.git" app
+          git -C app -c user.name=pipeline-factory -c user.email=noreply@github.com commit -q --allow-empty -m "Vercel につないだので公開を始める"
+          git -C app push -q origin HEAD:main
+          echo "main に空のコミットを足した（Vercel の公開が始まる）"
