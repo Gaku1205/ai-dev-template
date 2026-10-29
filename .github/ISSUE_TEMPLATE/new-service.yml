@@ -1,0 +1,16 @@
+name: 新サービス（1行で作る）
+description: ai-dev-template 本体だけ。作りたいサービスを1行で書くと、工場が新しいリポジトリを作って、公開まで自動で進める
+title: "新サービス："
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **タイトルの「新サービス：」のあとに、作りたいサービスを1行で書いて Submit するだけ。** 下は空でよい。
+        工場（`factory.yml`）が名前・言語・見た目を決めて、新しいリポジトリを作り、最初のIssueとして実装・公開まで進めます。結果はこのIssueにコメントされます。
+  - type: textarea
+    id: note
+    attributes:
+      label: 補足（任意）
+      description: 書いても書かなくてもよい（今は使わない。タイトルの1行だけで作る）
+    validations:
+      required: false
