@@ -29,25 +29,35 @@
 ## 使い方
 
 1. このリポジトリの **Use this template** から新しいリポジトリを作る
-2. GitHubの Claude アプリを、そのリポジトリに入れる
-3. Settings → Secrets and variables → Actions に次の3つのSecretを登録する（詳細は [docs/pipeline.md](docs/pipeline.md#必要な設定リポジトリの-settings--secrets-and-variables--actions)）
+2. **言語を決める**：Next.js ならこのまま。**Python（FastAPI）なら [examples/python/README.md](examples/python/README.md) の手順で切り替える**（ほかの言語も `pipeline.json` に書けば動く。[docs/pipeline.md「言語と公開先」](docs/pipeline.md#言語と公開先pipelinejson)）
+3. GitHubの Claude アプリを、そのリポジトリに入れる
+4. Settings → Secrets and variables → Actions に登録する（詳細は [docs/pipeline.md](docs/pipeline.md#必要な設定リポジトリの-settings--secrets-and-variables--actions)）
 
-   | 名前 | 役割 |
-   | --- | --- |
-   | `CLAUDE_CODE_OAUTH_TOKEN` | `claude setup-token` で作るトークン。ClaudeのサブスクでAIを動かす |
-   | `PIPELINE_TOKEN` | オーナーのFine-grained トークン。ラベル・コメント・PR作成・マージに使う |
-   | `NTFY_TOPIC` | スマホ通知（ntfyアプリ）のトピック名。無ければ通知しない |
+   | 名前 | 種類 | 作り方 |
+   | --- | --- | --- |
+   | `CLAUDE_CODE_OAUTH_TOKEN` | Secret | パソコンに Claude Code を入れ（入れ方は [Claude Code の説明](https://docs.claude.com/en/docs/claude-code/overview)）、ターミナル（Windows なら PowerShell）で `claude setup-token` を実行し、出てきたトークンを貼る。Claude のサブスクで AI を動かす |
+   | パイプラインの鍵 | Secret と Variable | **おすすめは GitHub App**（10分・1回だけ。期限切れなし）：[作り方](docs/pipeline.md#パイプライン用の-github-app-の作り方1回だけ)。手軽に試すなら代わりに Secret `PIPELINE_TOKEN`：GitHub の Settings → Developer settings → Fine-grained tokens で、このリポジトリだけを選び、Actions・Checks・Commit statuses を Read、Contents・Issues・Pull requests・Workflows を Read and write にして作る |
+   | `NTFY_TOPIC` | Secret | スマホ通知（ntfyアプリ）で購読するトピック名（好きな英数字）。無ければ通知しない |
 
-4. **最初の push** で「Bootstrap」が自動で動く。`ai:` などのラベルを作り、`CLAUDE.md` の「ai-dev-template 自身の作業」の節を消し、診断（Doctor）の結果を実行画面の Summary に出す。手で何かを実行する必要はない
+5. **最初の push** で「Bootstrap」が自動で動く。`ai:` などのラベルを作り、`CLAUDE.md` の「ai-dev-template 自身の作業」の節を消し、診断（Doctor）の結果を実行画面の Summary に出す。手で何かを実行する必要はない
    - Bootstrap は `ai:plan` ラベルが無いときだけ動く。2回目以降の push では何もしない
-5. Actions の **Doctor** を手で実行して、Summary の ✅／⚠️／❌ を確かめる
+6. **main を守る**：Settings → Branches → **Add classic branch protection rule** で、Branch name pattern に `main`、「Require a pull request before merging」（承認の人数は 0 のまま）と「Require status checks to pass」（検索欄で `check` を選ぶ。CI のジョブの名前）を付けて Create。無いと、AI が PR とレビューを通さずに main へ入れられてしまう
+7. `CLAUDE.md` の1行目と `docs/spec.md`・`docs/design.md` にアプリのことを書く
+8. 公開先をつなぐ：Next.js なら Vercel でリポジトリを読み込む（main にマージされるたびに公開される）。ほかの公開先（AWS App Runner・exe・スマホ）は [docs/pipeline.md「言語と公開先」](docs/pipeline.md#言語と公開先pipelinejson)。まず試すだけなら、公開はつながなくてよい
+9. Actions の **Doctor** を手で実行して、Summary の ✅／⚠️／❌ を確かめる
    - ❌ は Summary の「→」のとおりに直して、もう一度 Doctor を実行する
    - ⚠️ は動くが直したほうがよい物（例：通知の Secret が無い、ブランチの自動削除がオフ）
-   - `CLAUDE.md` がテンプレートのままだと ❌ が出る。次の手順6で直す
-6. `CLAUDE.md` の1行目と `docs/spec.md`・`docs/design.md` にアプリのことを書く
-7. Vercelでリポジトリを読み込む（mainにマージされるたびに公開される）
-8. Doctor をもう一度実行して、❌ が無いことを確かめる
-9. Issueの「メモ（AIにおまかせ）」から、やりたいことを書く
+10. Issueの「メモ（AIにおまかせ）」から、やりたいことを書く
+
+### 言葉
+
+| 言葉 | 意味 |
+| --- | --- |
+| 進行役 | AIの作業のあいだをつなぐスクリプト（`pipeline.yml`・`.github/scripts/`）。次にどのAIを動かすか、マージするかを決める |
+| 見張り役 | 30分ごとと、ほかの作業が終わるたびに動き、止まった物・取りこぼした物を拾ってやり直す（`watchdog.yml`） |
+| 配る・配り先 | テンプレートの仕組み（`.github/`）の更新を、テンプレートから作ったリポジトリへ PR で届けること |
+| 清書 | 1行のメモを、AIが実装できる Issue（やること・受け入れ条件）に書き直すこと |
+| opus・sonnet・haiku | Claude のモデルの名前。大きい作業ほど強いモデルを使う |
 
 **補足：Setup Labels（必要なら）**
 ラベルが足りないときだけ、Actions の **Setup Labels** を手で1回実行する。ただし、Bootstrap より先にこれを実行すると、Bootstrap は「ラベルがもうある」として何もしないので、`CLAUDE.md` の節の削除と診断も飛ばされる。その場合は、`CLAUDE.md` の「ai-dev-template 自身の作業」の節を手で消し、Doctor を手で実行する。
@@ -61,7 +71,7 @@ Vercelの無料プランには、1日に公開できる回数の上限があり�
 ## 安全のしくみ
 
 - 合否を決めるのはCI。AIの「できました」は信じない
-- `.github/`・`docs/pipeline.md`・`CLAUDE.md`・`AGENTS.md` を変えるPRは、CIとレビューが通っても自動でマージせず、人間に任せて通知する。仕組みそのものがAIの判断だけで書き換わらないようにするため
+- `.github/`・`docs/pipeline.md`・`CLAUDE.md`・`AGENTS.md`・`pipeline.json` を変えるPRは、CIとレビューが通っても自動でマージせず、人間に任せて通知する。仕組みそのものがAIの判断だけで書き換わらないようにするため。例外はテンプレートから配られた更新の PR（人間が書いてテンプレートの CI を通った物なので、配り先の CI が通れば自動でマージする）
 - AIは `.github/`・`docs/pipeline.md`・`CLAUDE.md`・依存パッケージを触らない
 - 進行役（`pipeline.yml`）はmainにある版が動くので、PRの中身で判断を書き換えられない
 - 自動の修正は3回まで（最後の1回は opus）、自動のやり直しは10回まで。無限に回らない。超えたら `ai:stuck` で人間に回す

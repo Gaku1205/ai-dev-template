@@ -17,3 +17,5 @@ files = ["app", "tests", "cli.py"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# FastAPI の TestClient が出す、依存の入れ替えの予告（動きには影響しない）
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient` is deprecated"]

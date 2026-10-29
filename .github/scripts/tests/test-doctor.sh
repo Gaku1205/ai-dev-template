@@ -139,4 +139,16 @@ assert_contains "設定の誤りは ❌" "$out" "❌ pipeline.json：checks が�
 cd /; rm -rf "$wd"
 unset HAS_AWS_ROLE HAS_AWS_REGION HAS_APPRUNNER_ACCESS HAS_EXPO
 
+echo "== AGENTS.md が無いときは、空でよいと言う"
+wd="$(mktemp -d)"; cd "$wd" || exit 1
+mkdir -p docs; echo "# app" > CLAUDE.md; echo x > docs/spec.md
+echo '{"checks":[{"run":"pytest"}],"deploy":[{"kind":"none"}]}' > pipeline.json
+run_doctor
+assert_contains "空でよい" "$out" "AGENTS.md が無い → 空のファイルでよいので作る"
+: > AGENTS.md
+run_doctor
+assert_contains "空のファイルなら ✅" "$out" "✅ AGENTS.md がある"
+assert_contains "公開なしも ✅" "$out" "✅ 公開先：なし"
+cd /; rm -rf "$wd"
+
 finish

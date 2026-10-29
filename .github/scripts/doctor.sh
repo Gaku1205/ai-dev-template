@@ -80,14 +80,16 @@ check_settings() {
   else echo "- ➖ 「Automatically delete head branches」はトークンの権限では見えないので確かめていない（オフでも進行役が掃除はする）"; fi
   v="$(fetch_main_protected)"
   if [ "$v" = true ]; then ok "main が保護されている（PRを通さないと入らない）"
-  elif [ "$v" = false ]; then warn "main が保護されていない（AIが PR とレビューを通さずに main へ push できてしまう）" "Settings → Branches → Add rule で main に「Require a pull request before merging」（承認0人でよい）と「Require status checks to pass」（check）を付ける"
+  elif [ "$v" = false ]; then warn "main が保護されていない（AIが PR とレビューを通さずに main へ push できてしまう）" "Settings → Branches → Add classic branch protection rule で、main に「Require a pull request before merging」（承認0人でよい）と「Require status checks to pass」を付け、検索欄で check（CI のジョブの名前）を選ぶ"
   else echo "- ➖ main の保護は読めなかったので確かめていない"; fi
 }
 
 check_files() {
   local f s
   for f in CLAUDE.md AGENTS.md docs/spec.md; do
-    if [ -f "$f" ]; then ok "$f がある"; else ng "$f が無い" "テンプレートから作り、アプリの説明を書く"; fi
+    if [ -f "$f" ]; then ok "$f がある"
+    elif [ "$f" = AGENTS.md ]; then ng "AGENTS.md が無い" "空のファイルでよいので作る（中身は Next.js 向けの注意。Next.js 以外なら空のままでよい）"
+    else ng "$f が無い" "テンプレートから作り、アプリのことを書く"; fi
   done
   # テンプレート（本体）の CLAUDE.md は、わざと書きかけのまま（作ったリポジトリで書く）
   if [ -f CLAUDE.md ] && grep -q "（アプリの説明を1〜2行で書く）" CLAUDE.md && ! is_template_repo; then
