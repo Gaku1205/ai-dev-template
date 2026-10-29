@@ -117,6 +117,17 @@ s = s.replace("（パイプラインの説明。ai-dev-template 自身だけ、`
 s = re.sub(r"（Next\.js 以外で作るなら[^）]*）", "", s, count=1)
 open("CLAUDE.md", "w", encoding="utf-8").write(s)
 swap("docs/spec.md", "（誰の、どんな困りごとを、どう減らすか）", f"{desc}（元のメモ：{memo}）")
+# README は、テンプレートの説明ではなく、このサービスの説明にする
+template = os.environ["TEMPLATE"]
+open("README.md", "w", encoding="utf-8").write(f"""# {name}
+
+{desc}
+
+- 仕様：[docs/spec.md](docs/spec.md)
+- 見た目：[docs/design.md](docs/design.md)
+
+[{template.split('/')[1]}](https://github.com/{template}) の工場で、1行のメモ（{memo}）から作ったサービスです。Issue を書くと、AI が清書・実装・レビュー・マージまで進めます（[docs/pipeline.md](docs/pipeline.md)）。
+""")
 PY2
   if [ "$APP_STACK" = python ]; then
     "$HERE/factory-python.sh" . || exit 1

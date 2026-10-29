@@ -162,7 +162,7 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 2. `factory.sh` が、テンプレートからリポジトリを作る（同じ名前があれば `-2` …）
 3. パイプラインの秘密（`CLAUDE_CODE_OAUTH_TOKEN`・`PIPELINE_APP_PRIVATE_KEY`・`PIPELINE_TOKEN`・`NTFY_TOPIC`）と変数（`PIPELINE_APP_ID`・`NOTIFY_EVENTS`・`AGENT_DESK_URL`）を、テンプレートの物から写す
 4. Next.js で `VERCEL_TOKEN` があれば、Vercel のプロジェクトを作ってつなぐ
-5. `CLAUDE.md` の1行目と仕様書の「目的」に説明を書き、Python なら見本（`examples/python`）に切り替えて（公開先は none）、main に push する。この push で Bootstrap が動く
+5. `CLAUDE.md` の1行目・仕様書の「目的」・README に説明を書き、Python なら見本（`examples/python`）に切り替えて（公開先は none）、main に push する。この push で Bootstrap が動く
 6. main を守る（PRと CI の `check` を必須にする。管理者は通れる）
 7. 1行のメモを、新しいリポジトリの最初のIssueにする（自動で企画に回る）。元のIssueに結果を書いて閉じる
 
@@ -175,7 +175,7 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 - **パイプラインの GitHub App** を、**All repositories** に入れておく（新しいリポジトリでも、すぐ鍵が使えるように）。App の画面 → Install App → 自分のアカウントの Configure
 - **Next.js を公開するなら**：`VERCEL_TOKEN`（Environment「factory」の Secret。Vercel → Account Settings → Tokens）と、Vercel の GitHub 連携を **All repositories** にしておく。チームで使うなら変数 `VERCEL_TEAM_ID`
 - 無い物があっても、作れる所までは作り、元のIssueに「何が無くて何をしなかったか」を書く
-- あとから Vercel につなぐとき（作ったときに VERCEL_TOKEN が無かった物など）：Actions → **Factory Vercel** → Run workflow で、リポジトリの名前を入れる（つないだあと、main に空のコミットを足して公開を始める）
+- あとから Vercel につなぐとき（作ったときに VERCEL_TOKEN が無かった物など）：Actions → **Factory Vercel** → Run workflow で、リポジトリの名前を入れる（つないだあと、今の main で本番の公開を1回始める）
 
 ## スクリプトのテスト
 
