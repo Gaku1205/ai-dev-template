@@ -165,4 +165,7 @@ assert_contains "watchdog.yml：actions: write" "$(cat "$WORKFLOWS/watchdog.yml"
 assert_contains "retry-timer.yml：新しい物が古い物を止める" "$(cat "$WORKFLOWS/retry-timer.yml")" "cancel-in-progress: true"
 assert_contains "retry-timer.yml：見張り役が探す名前" "$(cat "$WORKFLOWS/retry-timer.yml")" "run-name: やり直しの目覚まし \${{ inputs.at }}"
 
+echo "== 見た目の撮り直しは、通っている画像も含めて全部撮り直す（古い基準の画像を残さない）"
+assert_contains "visual-update.yml：--update-snapshots=all" "$(cat "$WORKFLOWS/visual-update.yml")" "--update-snapshots=all"
+
 finish

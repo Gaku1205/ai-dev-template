@@ -34,7 +34,8 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - name: 基準の画像を撮り直す
-        run: npm run test:visual -- --update-snapshots
+        # all：差が閾値の中で「通っている」画像も含めて全部撮り直す（変わっていない画像は同じ中身になるので、コミットには出ない）
+        run: npm run test:visual -- --update-snapshots=all
       - uses: actions/upload-artifact@v4
         with:
           name: visual-snapshots
