@@ -1,0 +1,88 @@
+# 参考の一覧（brands/ の最初の説明）
+
+元：[awesome-design-md](https://github.com/VoltAgent/awesome-design-md)（MIT、fcc7028、2026-10-28）。公開されているサイトの見た目を、AIが読める形に書き起こした物。使い方は README.md。
+
+- `brands/1win.md`：An analysis of 1win's design language — a near-black crypto casino and sportsbook built on Inter at heavy weights, where a vivid green action color and an electric blue secondary carry every CTA across dense, full-bleed 
+- `brands/airbnb.md`：A warm, generous consumer marketplace anchored on a clean white canvas and Airbnb Rausch (#ff385c), the single brand voltage that carries every primary CTA, search-button orb, and rating dot
+- `brands/airtable.md`：A sober, editorial workflow-software interface anchored on white canvas and dark-ink type, where brand voltage comes from full-bleed signature cards in coral, dark green, peach, and dark navy that punctuate long-scroll e
+- `brands/aljazeera.md`：An analysis of Al Jazeera's design language — a hard-news editorial system built on flat white paper and dense Roboto headline stacks, signed by one saturated orange used as logo block and section-eyebrow bar, punctuated
+- `brands/apple.md`：A photography-first interface that turns marketing into a museum gallery
+- `brands/binance.md`：A confident financial-platform interface anchored on a deep near-black canvas, where Binance's iconic yellow (#FCD535) carries every primary CTA, brand accent, and value-claim moment
+- `brands/bmw-m.md`：A motorsport-engineering interface anchored on a near-black canvas with white BMW Type Next Latin display headlines in confident UPPERCASE
+- `brands/bmw.md`：BMW's corporate site — distinct from BMW M's motorsport-bombastic variant, this is a measured and settled corporate-automotive interface
+- `brands/bugatti.md`：An austere luxury-automotive interface that uses near-pure black canvas, white uppercase letterspaced display, and full-bleed automotive photography as the only voltage
+- `brands/cal.md`：A clean, calendar-software-first interface anchored on white canvas with black primary CTAs and custom Cal Sans display typography
+- `brands/claude.md`：A warm-canvas editorial interface for Anthropic's Claude product
+- `brands/clay.md`：A vibrant claymation-meets-data interface for Clay.com (GTM data-orchestration platform)
+- `brands/clickhouse.md`：A high-performance database interface anchored on near-pure black canvas with electric yellow as the brand voltage
+- `brands/cohere.md`：Cohere's 2026 web system is a controlled enterprise AI interface built from stark white editorial space, deep green-black product bands, soft mineral surfaces, rounded media cards, and a distinctive type split between mo
+- `brands/coinbase.md`：An institutional-grade crypto exchange whose marketing surfaces read like a quietly-confident financial-services brand
+- `brands/composio.md`：A developer-tools brand for AI-agent tool integration whose marketing surfaces lean into a dark, technical aesthetic with a single deep-electric-blue voltage
+- `brands/cursor.md`：An AI-first code editor whose marketing site reads like a quietly-confident developer-tools brand with a warm-cream editorial canvas instead of the typical dark IDE atmosphere
+- `brands/dell-1996.md`：An inspired interpretation of Dell.com's 1996 design language — a catalog-era enterprise web design built around a literal black page frame, vivid flat color-block "ribbon cards" tinted in sage, salmon, periwinkle, sky, 
+- `brands/dji.md`：An analysis of DJI's design language — a product-photography showroom for drones and cameras, where full-bleed studio renders sit in square, gutter-separated tiles on a white canvas, every action is a rounded pill in a s
+- `brands/elevenlabs.md`：A voice-AI brand whose marketing surfaces read like a quietly editorial print magazine
+- `brands/expo.md`：A React Native developer-platform whose marketing site reads like a quietly-confident infrastructure brand
+- `brands/ferrari.md`：A luxury-automotive brand whose marketing surfaces read as cinematic editorial
+- `brands/figma.md`：A confident black-and-white editorial frame interrupted by oversized, hand-cut pastel color blocks
+- `brands/framer.md`：A confident dark-canvas builder marketing site that treats the page like a working artboard — pure black surfaces, white display type set in GT Walsheim Medium with aggressive negative tracking, and a single confident bl
+- `brands/hashicorp.md`：An enterprise-infrastructure marketing canvas built around a near-black ground (#000000) and a system of per-product accent colors — Terraform purple, Vault yellow, Consul pink, Waypoint cyan, Vagrant blue — that act as 
+- `brands/hp.md`：An inspired interpretation of HP's design language — a white-paper enterprise-consumer system anchored by HP Electric Blue as the lone signal CTA, near-black ink for headlines, geometric Forma-DJR sans throughout, and an
+- `brands/ibm.md`：An enterprise-marketing canvas faithful to Carbon Design System: white surfaces, charcoal type, IBM Blue (#0f62fe) as the single confident accent, and a deliberately flat-square aesthetic where corners stay at 0–4px
+- `brands/intercom.md`：An editorial customer-service marketing canvas built around a soft cream-white ground, charcoal type set in Saans (Intercom's proprietary geometric sans), and a single confident Fin Orange (#ff5600) reserved for the Fin 
+- `brands/jobright.md`：An analysis of Jobright's design language — an AI job-hunting platform built on an energetic spring-mint green against black and white, with pale-mint section bands carrying the page rhythm
+- `brands/kraken.md`：Kraken's website is a clean, trustworthy crypto exchange that uses purple as its commanding brand color
+- `brands/lamborghini.md`：Lamborghini's website is a cathedral of darkness — a digital stage where jet-black surfaces stretch infinitely and every element emerges from the void like a machine under a spotlight
+- `brands/linear.app.md`：A near-black product-focused marketing canvas built around #010102 (the deepest dark surface of any tool in this collection), light gray text (#f7f8f8), and the signature Linear lavender-blue (#5e6ad2) used as the single
+- `brands/lovable.md`：Lovable's website radiates warmth through restraint
+- `brands/mastercard.md`：Mastercard's experience reads like a warm, editorial magazine built from soft stone and signal orange
+- `brands/mercury.md`：An analysis of Mercury's design language — a fintech system that moves between a deep ink-violet night world on the homepage and a pale, near-white light world on its product and pricing pages, held together by one confi
+- `brands/meta.md`：Meta's design system spans hardware commerce (Quest VR, Ray-Ban Meta AI glasses) and brand surfaces with a confident product-merchandising voice
+- `brands/minimax.md`：MiniMax presents itself as a premium AI infrastructure brand through a striking duality — bold black-pill CTAs and stark white canvas for marketing, paired with vibrant gradient product cards (orange-red, magenta-pink, p
+- `brands/mintlify.md`：Mintlify presents documentation infrastructure with a dual-mode aesthetic — atmospheric sky-gradient marketing heroes (cloud illustration backdrops, soft cream-to-blue washes) paired with dense developer-grade documentat
+- `brands/miro.md`：Miro presents itself as the AI-powered visual workspace through a confident, almost playful brand voice — anchored by its signature canary yellow wordmark over white canvas, broken open by colorful pastel feature tints (
+- `brands/mistral.ai.md`：Mistral AI brands itself with a singular signature — atmospheric sunset gradients (mustard, orange, deep red) layered over photography of mountains, plus a horizontal "sunset stripe" bar that closes every page
+- `brands/mongodb.md`：MongoDB carries a strong dual-mode visual identity — dark deep-teal hero bands with bright MongoDB green CTAs paired with stark white documentation surfaces
+- `brands/mydealz.md`：An analysis of mydealz's design language — a high-density German deals-community system built on a confident brand green, where a stacked white-card feed carries thousands of deals and every card wears the signature hot/
+- `brands/nerdwallet.md`：An analysis of NerdWallet's design language — a personal-finance comparison platform built almost entirely from one deep green and a ladder of mints beneath it
+- `brands/nike.md`：|
+- `brands/nintendo-2001.md`：An analysis of Nintendo.com's 2001 design language — a brushed-periwinkle "console chrome" interface where every panel is a beveled metal plate, navigation glows amber over a halftone-dotted carbon bar, and bold outlined
+- `brands/notion.md`：Notion presents itself as the all-in-one workspace through a confident, illustration-rich brand voice — anchored by a deep navy hero band decorated with brand-colored sticky-note dots and mesh wire illustrations, a signa
+- `brands/nvidia.md`：|
+- `brands/ollama.md`：|
+- `brands/opencode.ai.md`：|
+- `brands/oracle.md`：An analysis of Oracle's design language — an enterprise system built on a warm neutral ladder rather than a colour palette
+- `brands/oura.md`：An analysis of Oura's design language — a warm-paper wellness system that pairs a high-contrast Editorial serif with a quiet grotesque sans, wraps every surface in a cream-and-earth palette drawn from mustard, clay and o
+- `brands/pinterest.md`：|
+- `brands/playstation.md`：|
+- `brands/posthog.md`：|
+- `brands/raycast.md`：|
+- `brands/renault.md`：|
+- `brands/replicate.md`：|
+- `brands/resend.md`：|
+- `brands/revolut.md`：|
+- `brands/runwayml.md`：Runway's interface is a cinematic reel brought to life as a website — a dark, editorial, film-production-grade design where full-bleed photography and video ARE the primary UI elements
+- `brands/sanity.md`：Sanity's website is a developer-content platform rendered as a nocturnal command center -- dark, precise, and deeply structured
+- `brands/sap.md`：An analysis of SAP's design language — an enterprise system that keeps almost everything on white and spends its structure on two greys and one blue
+- `brands/sentry.md`：An inspired interpretation of Sentri's design language — a developer-tools brand built on a deep purple-violet midnight canvas, electric lime accents, and a slightly subversive illustrated personality
+- `brands/shopify.md`：An inspired interpretation of Shopifi's design language — a cinematic commerce platform that runs two parallel design tracks
+- `brands/slack.md`：An inspired interpretation of Slacc's design language — a workplace messaging brand built on a deep aubergine primary, with cream-lavender hero gradients, blue inline links, and pill CTAs
+- `brands/spacex.md`：An inspired interpretation of Spasex's design language — a mission-oriented aerospace brand built on pure black canvas, full-bleed photographic and video heroes of rockets and Mars landscapes, and uppercase D-DIN display
+- `brands/spotify.md`：Spotify's web interface is a dark, immersive music player that wraps listeners in a near-black cocoon where album art and content become the primary source of color
+- `brands/starbucks.md`：Starbucks' design system is a **warm, confident retail flagship** wearing the green of their storefront apron across every surface
+- `brands/stripe.md`：An inspired interpretation of Stripi's design language — a financial-infrastructure brand built on a deep navy ink, an electric indigo primary, and a recurring atmospheric gradient mesh that occupies the upper third of n
+- `brands/supabase.md`：An inspired interpretation of Supabaze's design language — an open-source database platform built on a clean white-and-near-black system with a single signature emerald-green CTA, a custom humanist sans display tier, and
+- `brands/superhuman.md`：An inspired interpretation of Superhumon's design language — a fast-email productivity brand split between an editorial dark hero (deep indigo navy with violet-sky atmospheric backdrop and a portrait subject) and a quiet
+- `brands/tesla.md`：Tesla's website is an exercise in radical subtraction — a digital showroom where the product is everything and the interface is almost nothing
+- `brands/theverge.md`：The Verge's 2024 redesign feels like somebody wired a Condé Nast magazine to a chiptune soundboard
+- `brands/together.ai.md`：An inspired interpretation of Together AI's design language — an AI infrastructure platform whose surface alternates between near-black hero bands (with a three-color orange-magenta-periwinkle gradient as the single piec
+- `brands/uber.md`：An inspired interpretation of Uber's design language — a transportation-and-delivery super-app brand whose web surface is a black-and-white duet, framed by a custom geometric display sans, accented by a single signature 
+- `brands/vercel.md`：An inspired interpretation of Vercel's design language — a developer-platform brand whose surface is a stark black-and-ink duet on near-white canvas, broken at hero scale by a multi-color mesh gradient (cyan / blue / mag
+- `brands/vodafone.md`：An inspired interpretation of Vodafone's design language — a telecom super-brand whose web surface alternates between editorial photography hero bands with massive uppercase display headlines and clean white content band
+- `brands/voltagent.md`：An inspired interpretation of Voltagent's design language — a developer-focused AI agent engineering platform whose surface is an unrelenting near-black canvas broken only by a single electric-green brand accent, code-ed
+- `brands/warp.md`：An inspired interpretation of Warp's design language — an agentic terminal-and-development-environment brand whose surface is a warm near-charcoal canvas (a tint warmer than pure black), broken only by clean Inter typogr
+- `brands/webflow.md`：An inspired interpretation of Webflow's design language — a visual web development platform whose surface contrasts a deep near-black `#080808` primary against a generous white canvas, broken by a five-stop chromatic acc
+- `brands/wired.md`：An inspired interpretation of Wired's design language — a flagship technology-magazine brand whose surface is a strict editorial duet of stark black wordmark on white canvas, anchored by a tall narrow custom display seri
+- `brands/wise.md`：An inspired interpretation of Wise's design language — a global money-transfer brand whose surface combines an unusually heavy near-black display sans (weight 900 at 64–126 px) with a vivid lime-green brand accent, sage-
+- `brands/x.ai.md`：An inspired interpretation of xAI's design language — Elon Musk's frontier-AI company whose web surface is a strict near-black canvas broken only by white pill outlines, occasional warm sunset / dusk gradient accents, a 
+- `brands/zapier.md`：An inspired interpretation of Zapier's design language — a workflow-automation platform whose surface combines warm-cream neutrals with deep coffee ink and a single saturated orange CTA accent; typography pairs the propr
