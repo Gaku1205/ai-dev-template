@@ -69,12 +69,12 @@ assert_not_contains "画像だけ：止めない" "$(labels_of 58)" "ai:stuck"
 assert_contains "画像だけ：理由をコメントする" "$(comments_of 58)" "文字で読めない変更だけ"
 review_missing_case '[{"filename":"assets/readme/home.png","changes":0},"src/app/page.tsx"]'
 assert_eq "文字のファイルが混ざる：マージしない" "" "$(merged)"
-assert_contains "文字のファイルが混ざる：人間に回す" "$(labels_of 58)" "ai:stuck"
+assert_contains "文字のファイルが混ざる：まず自動でやり直す（レビューの結果が無いので）" "$(labels_of 58)" "ai:retry"
 review_missing_case '[{"filename":"src/big.ts","changes":5000}]'
 assert_eq "大きすぎて patch が無い文字のファイル：マージしない" "" "$(merged)"
-assert_contains "大きすぎて patch が無い文字のファイル：人間に回す" "$(labels_of 58)" "ai:stuck"
+assert_contains "大きすぎて patch が無い文字のファイル：まず自動でやり直す" "$(labels_of 58)" "ai:retry"
 review_missing_case '[]'
-assert_contains "変更ファイルが読めない・無い：人間に回す" "$(labels_of 58)" "ai:stuck"
+assert_contains "変更ファイルが読めない・無い：まず自動でやり直す" "$(labels_of 58)" "ai:retry"
 
 echo "== マージできなかった：main と衝突なら AI に解消させ、それ以外はやり直し待ち（黙って終わらない）"
 export MERGE_STATE_WAIT_SEC=0
@@ -141,5 +141,19 @@ s['review_comments']=[{'user':{'login':'claude[bot]'},'original_commit_id':'abc'
 CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
 assert_eq "マージされない" "" "$(merged)"
 assert_contains "直す依頼" "$(comments_of 58)" "auto-fix"
+
+echo "== レビューAIが何も書かずに終わった：2回までは自動でやり直し、そのあとは人間に回す"
+init_state "$base"
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+assert_contains "1回目：ai:retry" "$(labels_of 58)" "ai:retry"
+assert_not_contains "1回目：人間には回さない" "$(labels_of 58)" "ai:stuck"
+state_py "
+import re
+for c in s['comments']:
+    if 'auto-retry' in c['body']: c['body']=re.sub(r'count=[0-9]+ kind=','count=2 kind=',c['body'])
+s['labels']['58']=[]"
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+assert_contains "やり直しが2回を超えたら人間に回す" "$(labels_of 58)" "ai:stuck"
+assert_eq "マージされない" "" "$(merged)"
 
 finish

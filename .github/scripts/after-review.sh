@@ -63,7 +63,12 @@ if [ -z "$review" ]; then
   fi
 fi
 if [ -z "$review" ]; then
-  stop_for_human "$pr" "レビューAIの結果のコメントが見つかりませんでした"
+  # レビューAIが、エラーにならずに何も書かずに終わることがある（一時的な不調）。2回までは自動でやり直し、続くなら人間に回す
+  if [ "$(retry_count "$pr")" -lt 2 ]; then
+    mark_for_retry "$pr" review "レビューAIが、結果のコメントを書かずに終わりました"
+  else
+    stop_for_human "$pr" "レビューAIの結果のコメントが見つかりませんでした（自動のやり直しでも書かれませんでした）"
+  fi
   exit 0
 fi
 
