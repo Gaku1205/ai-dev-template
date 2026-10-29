@@ -36,4 +36,11 @@ init_state '{"labels":{"1":["ai:stuck"]}}'
 out=$(run_script queue-next.sh)
 assert_contains "「ありません」と出る" "$out" "順番待ちはありません"
 
+echo "== 同時に2回進めても、順番待ちは1回だけ始まる（コメントも1回）"
+init_state '{"labels":{"30":["ai:queue"]}}'
+run_lib "start_next_in_queue" > /dev/null
+run_lib "start_next_in_queue" > /dev/null
+assert_eq "実装に回る" "ai:implement" "$(labels_of 30)"
+assert_eq "コメントは1回" "1" "$(comments_of 30 | grep -c '順番が来たので')"
+
 finish

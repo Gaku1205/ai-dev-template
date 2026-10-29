@@ -61,7 +61,9 @@ m=re.match(r'issues/(\d+)/labels/(.+)$',base)
 if m and method=='DELETE':
     from urllib.parse import unquote
     n=m.group(1); l=unquote(m.group(2)); L=st['labels'].setdefault(n,[])
-    if l in L: L.remove(l)
+    # 本物と同じく、付いていないラベルを外そうとしたら失敗（404）
+    if l not in L: sys.stderr.write('HTTP 404: Label does not exist\n'); sys.exit(1)
+    L.remove(l)
     save(); sys.exit(0)
 m=re.match(r'issues/(\d+)$',base)
 if m:

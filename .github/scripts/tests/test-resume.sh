@@ -58,4 +58,10 @@ init_state '{"labels":{"7":["ai:implement"]},"pulls":[{"number":9,"head":{"ref":
 out=$(run_resume 7 false)
 assert_contains "やり直さない" "$out" "PRがあるので、実装はやり直しません"
 
+echo "== 再開で回数を0に戻すとき、「AIが止まった」とは書かない"
+run_lib "write_retry_record 40 0 implement '人間が再開しました'" > /dev/null
+assert_contains "再開の文" "$(comments_of 40)" "▶ 人間が再開しました。自動のやり直しの回数を0に戻しました。"
+assert_not_contains "止まったとは書かない" "$(comments_of 40)" "AIが止まったので"
+assert_contains "印は残る（次のやり直しで書き換える）" "$(comments_of 40)" "<!-- count=0 kind=implement -->"
+
 finish

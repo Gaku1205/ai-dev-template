@@ -54,6 +54,11 @@ remove_label() {
   gh api -X DELETE "repos/$REPO/issues/$1/labels/$(urlencode "$2")" > /dev/null 2>&1 || true
 }
 
+# ラベルを「取る」：自分が外せたときだけ成功（もう外れていたら失敗）。同時に動いた2つの処理の片方だけを進めるのに使う
+take_label() {
+  gh api -X DELETE "repos/$REPO/issues/$1/labels/$(urlencode "$2")" > /dev/null 2>&1
+}
+
 has_label() {
   gh api "repos/$REPO/issues/$1/labels" -q '.[].name' | grep -qx "$2"
 }
@@ -225,9 +230,13 @@ start_next_in_queue() {
     echo "順番待ちはありません"
     return 0
   fi
-  remove_label "$next" "ai:queue"
+  # PRが閉じたとき（queue.yml）と見張り役が同時に進めることがある。ai:queue を外せた方だけが進める（コメントが2回出ないように）
+  if ! take_label "$next" "ai:queue"; then
+    echo "#$next はほかの処理がもう始めたので、何もしません"
+    return 0
+  fi
   # 企画AIの「待ち」のコメントを読んだ実装AIが、前の作業が終わったか確かめられずに止まらないよう、先に伝えておく
-  comment "$next" "▶ 順番が来たので実装を始めます。この作業の前に待っていた作業は、すべて終わっています（進行中の作業・openのPRはありません）。上の「待ち」のコメントは気にせず、このIssueの内容を実装してください。" || true
+  comment "$next" "▶ 順番が来たので実装を始めます（前の作業は全部終わっています）。" || true
   add_label "$next" "ai:implement" || return 1
   echo "順番待ちの #$next を実装に回しました"
 }
@@ -260,8 +269,13 @@ write_retry_record() {
 <!-- limit-until=${until_at} -->"
   [ -n "$first" ] && marks="${marks}
 <!-- limit-first=${first} -->"
-  body=$(printf '🔁 AIが止まったので、時間をおいて自動でやり直します（やり直し %s/%s回）。\n理由：%s\n\n%s\n<!-- count=%s kind=%s -->%s' \
-    "$count" "$MAX_RETRY" "$reason" "$RETRY_MARK" "$count" "$kind" "$marks")
+  if [ "$count" -eq 0 ]; then
+    # 人間が再開したとき（resume.sh）：回数を0に戻しただけ。「AIが止まった」とは書かない
+    body=$(printf '▶ %s。自動のやり直しの回数を0に戻しました。\n\n%s\n<!-- count=0 kind=%s -->%s' "$reason" "$RETRY_MARK" "$kind" "$marks")
+  else
+    body=$(printf '🔁 AIが止まったので、時間をおいて自動でやり直します（やり直し %s/%s回）。\n理由：%s\n\n%s\n<!-- count=%s kind=%s -->%s' \
+      "$count" "$MAX_RETRY" "$reason" "$RETRY_MARK" "$count" "$kind" "$marks")
+  fi
   c=$(retry_comment "$num")
   if [ -n "$c" ]; then
     id=$(printf '%s' "$c" | jq -r .id)
