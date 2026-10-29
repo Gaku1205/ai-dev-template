@@ -159,7 +159,7 @@ AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions
 ai-dev-template に、タイトルが **`新サービス：`** で始まるIssueを書くと（例：「新サービス：毎朝の天気と予定を1枚で見られるページ」）、`factory.yml` が新しいサービスのリポジトリを作って、いつものパイプラインに渡す。テンプレート本体で、オーナーが書いたIssueでだけ動く。
 
 1. AIが、名前（英語の小文字と -）・言語（画面のあるWebなら Next.js、処理が中心なら Python）・1行の説明を決める（AIは名前を書くだけで、鍵は持たない）
-2. **見た目の段**（Next.js のとき）：強いモデル（opus）が、オーナーの見た目の基準（`.github/factory/design-guide.md`）を読んで、このサービスだけのデザイン仕様（`docs/design.md`）を書く。構図・色・動きは題材から決める（ほかのサービスと同じ見た目にしない）。形が違えば雛形のまま進める
+2. **デザイン部門**（Next.js のとき）：好みではなく、**使う場面の分析**から始める（`.github/factory/design-department.md`）。使う人・場面・端末・やりたいことの優先順を推定し、サービスの型（管理の道具・調べる・作品・読む・手続き）で何を優先するかを決めて（道具なら操作のしやすさと見やすさが先）、デザイン仕様（`docs/design.md`）を書く。見た目の作り方はスキル frontend-design（`.claude/skills/frontend-design/`）に従う。書いたあと、別の担当（検査役）が、場面とのつながり・最初の1画面・コントラスト・押す所の大きさ・空の状態・型との合い方を確かめて直す。使う人・場面は仕様書の「前提」にも入る。形が違えば雛形のまま進める
 3. `factory.sh` が、テンプレートからリポジトリを作る（同じ名前があれば `-2` …）
 4. パイプラインの秘密（`CLAUDE_CODE_OAUTH_TOKEN`・`PIPELINE_APP_PRIVATE_KEY`・`PIPELINE_TOKEN`・`NTFY_TOPIC`）と変数（`PIPELINE_APP_ID`・`NOTIFY_EVENTS`・`AGENT_DESK_URL`）を、テンプレートの物から写す
 5. Next.js で `VERCEL_TOKEN` があれば、Vercel のプロジェクトを作ってつなぐ
