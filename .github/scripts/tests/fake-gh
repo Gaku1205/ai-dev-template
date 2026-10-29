@@ -36,6 +36,7 @@ def out(obj):
         print(json.dumps(obj))
 def save(): json.dump(st,open(ST,'w'))
 base=path.split('?')[0]
+if re.match(r'repos/[^/]+/[^/]+$',base): out({'is_template':st.get('is_template',False)}); sys.exit(0)
 m=re.match(r'issues/(\d+)/comments$',base)
 if m:
     n=m.group(1)

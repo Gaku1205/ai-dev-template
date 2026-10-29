@@ -154,6 +154,27 @@ AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions
 2. expo.dev → Account settings → **Access tokens** で作り、Secret の `EXPO_TOKEN` に入れる
 3. `pipeline.json` の `deploy` に `{ "kind": "expo" }`（ストアに出すときは `command` を書く）
 
+## 工場（1行から新しいサービスを作る）
+
+ai-dev-template に、タイトルが **`新サービス：`** で始まるIssueを書くと（例：「新サービス：毎朝の天気と予定を1枚で見られるページ」）、`factory.yml` が新しいサービスのリポジトリを作って、いつものパイプラインに渡す。テンプレート本体で、オーナーが書いたIssueでだけ動く。
+
+1. AIが、名前（英語の小文字と -）・言語（画面のあるWebなら Next.js、処理が中心なら Python）・1行の説明を決める（AIは名前を書くだけで、鍵は持たない）
+2. `factory.sh` が、テンプレートからリポジトリを作る（同じ名前があれば `-2` …）
+3. パイプラインの秘密（`CLAUDE_CODE_OAUTH_TOKEN`・`PIPELINE_APP_PRIVATE_KEY`・`PIPELINE_TOKEN`・`NTFY_TOPIC`）と変数（`PIPELINE_APP_ID`・`NOTIFY_EVENTS`・`AGENT_DESK_URL`）を、テンプレートの物から写す
+4. Next.js で `VERCEL_TOKEN` があれば、Vercel のプロジェクトを作ってつなぐ
+5. `CLAUDE.md` の1行目と仕様書の「目的」に説明を書き、Python なら見本（`examples/python`）に切り替えて（公開先は none）、main に push する。この push で Bootstrap が動く
+6. main を守る（PRと CI の `check` を必須にする。管理者は通れる）
+7. 1行のメモを、新しいリポジトリの最初のIssueにする（自動で企画に回る）。元のIssueに結果を書いて閉じる
+
+テンプレートの受付（intake）は、`新サービス：` のIssueを企画に回さない。
+
+### 最初の1回だけの準備
+
+- **`FACTORY_TOKEN`**（Secret）：リポジトリを作れる鍵。github.com → Settings → Developer settings → Fine-grained tokens で作る。Resource owner は自分、Repository access は **All repositories**、Permissions（Repository）は **Administration・Contents・Secrets・Variables・Issues を Read and write**（Metadata は自動で Read）
+- **パイプラインの GitHub App** を、**All repositories** に入れておく（新しいリポジトリでも、すぐ鍵が使えるように）。App の画面 → Install App → 自分のアカウントの Configure
+- **Next.js を公開するなら**：`VERCEL_TOKEN`（Secret。Vercel → Account Settings → Tokens）と、Vercel の GitHub 連携を **All repositories** にしておく。チームで使うなら変数 `VERCEL_TEAM_ID`
+- 無い物があっても、作れる所までは作り、元のIssueに「何が無くて何をしなかったか」を書く
+
 ## スクリプトのテスト
 
 `.github/scripts/tests/` に、進行役のスクリプトのテストがある。本物の GitHub には触らず、疑似の `gh`（`tests/fake-gh`）が状態をファイルに持つ。
@@ -178,6 +199,7 @@ AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions
 | `AGENT_DESK_URL` | Variable | 通知を押したときに開く画面（省略可） |
 | `AWS_ROLE_ARN`・`AWS_APPRUNNER_ACCESS_ROLE_ARN`・`AWS_REGION` | Variable | 公開先が `aws-apprunner` のとき（上の「AWS App Runner」） |
 | `EXPO_TOKEN` | Secret | 公開先が `expo` のとき |
+| `FACTORY_TOKEN`・`VERCEL_TOKEN` | Secret | 工場（1行から新しいサービスを作る）。ai-dev-template にだけ入れる（上の「工場」） |
 | `RETRY_TIMER` | Variable | `off` にすると、やり直しの目覚まし（retry-timer.yml）を使わない（定期の見張りだけでやり直す）。目覚ましは待つあいだランナーを使うので、公開していないリポジトリで Actions の時間を節約したいとき |
 | `NOTIFY_EVENTS` | Variable | 鳴らす通知の種類（カンマ区切り）。省略時は `stuck,question,hold,manual,deployed,deploy_failed,limit,intake,repeat_fail`。ほかに `merged`・`ci_failed` がある。種類の意味は `.github/scripts/notify.sh` |
 

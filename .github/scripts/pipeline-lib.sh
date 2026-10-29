@@ -107,9 +107,15 @@ linked_issue() {
 
 # まだパイプラインに乗っていないIssueか（ai: で始まるラベルが1つも無い。ai:skip も ai: なので「まだ動かさない」になる）
 needs_intake() {
-  local labels
+  local labels title
   labels=$(gh api "repos/$REPO/issues/$1/labels" -q '.[].name') || return 1
-  ! printf '%s\n' "$labels" | grep -q '^ai:'
+  printf '%s\n' "$labels" | grep -q '^ai:' && return 1
+  # テンプレート本体の「新サービス：〜」は、工場（factory.yml）が受け持つので企画に回さない
+  title=$(gh api "repos/$REPO/issues/$1" -q '.title' 2> /dev/null)
+  case "$title" in
+    新サービス：* | 新サービス:*) [ "$(gh api "repos/$REPO" -q .is_template 2> /dev/null)" = "true" ] && return 1 ;;
+  esac
+  return 0
 }
 
 # ---- 判断 ----

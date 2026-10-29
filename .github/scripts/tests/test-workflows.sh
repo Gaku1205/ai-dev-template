@@ -95,7 +95,8 @@ for f in sorted(os.listdir(sys.argv[1])):
     if not f.endswith('.yml'): continue
     d = yaml.safe_load(open(os.path.join(sys.argv[1], f)))
     for name, job in (d.get('jobs') or {}).items():
-        text = yaml.dump(job)
+        # 工場（factory.yml）は PIPELINE_TOKEN を新しいリポジトリへ写すだけで、使わない（S_ で始まる名前で渡す）
+        text = yaml.dump(job).replace('S_PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN }}', '')
         if 'secrets.PIPELINE_TOKEN' in text and 'create-github-app-token' not in text:
             bad.append(f + ':' + name)
         for st in job.get('steps') or []:

@@ -38,4 +38,12 @@ assert_eq "ai:skip の物は触らない" "ai:skip" "$(labels_of 14)"
 assert_contains "知らせが出る" "$(cat "$MOCK_DIR/curl.log")" "頼まれていないIssueがありました"
 assert_eq "知らせは1件だけ" "1" "$(notify_count)"
 
+echo "== テンプレート本体の「新サービス：〜」は工場が受け持つので、企画に回さない（アプリのリポジトリでは今まで通り）"
+init_state '{"labels":{"9":[]},"authors":{"9":"o"},"is_template":true,"issues_meta":{"9":{"title":"新サービス：毎朝の天気","state":"open"}}}'
+NUMBER=9 ACTION=opened run_script intake.sh > /dev/null
+assert_eq "テンプレート：ラベルを付けない" "" "$(labels_of 9)"
+init_state '{"labels":{"9":[]},"authors":{"9":"o"},"is_template":false,"issues_meta":{"9":{"title":"新サービス：毎朝の天気","state":"open"}}}'
+NUMBER=9 ACTION=opened run_script intake.sh > /dev/null
+assert_eq "アプリ：企画に回す" "ai:plan" "$(labels_of 9)"
+
 finish
