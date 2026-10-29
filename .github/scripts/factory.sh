@@ -181,7 +181,14 @@ first=$(gh api "repos/$NEW/issues" -f title="$MEMO" -f "labels[]=size:L" \
   -f body="工場（${TEMPLATE}#${ISSUE}）で作ったサービスの、最初のメモです。企画AIが清書して、そのまま実装まで進めます。最初の画面を一から作る大きい作業なので size:L（強いモデル）にしています。見た目は docs/design.md のとおりに作ってください。" -q .number 2>&1) \
   || fail "最初のIssueを作れませんでした"
 note "✅ 最初のIssue：https://github.com/$NEW/issues/$first（自動で企画に回る）"
-[ -n "$vercel_note" ] && note "$vercel_note"
+# 公開アドレス：Vercel が最初の公開でアドレスを決めるまで待って調べる（同じ名前がほかの人に使われていると、名前の後ろに文字が付く）
+if [ -n "$vercel_note" ]; then
+  if site=$(PROJECT="${vercel_note#Vercel：}" REPO_FULL="$NEW" "$HERE/factory-vercel-url.sh"); then
+    note "🌐 公開アドレス：$site（リポジトリの Website 欄にも入れた。最初の画面は、最初のIssueがマージされると出る）"
+  else
+    note "⚠️ 公開アドレスがまだ決まっていません（Vercel の画面の Domains で確かめる）"
+  fi
+fi
 
 # ---- 7. 結果 ----
 say_result "🏭 新しいサービス **${name}** を作りました。ここから先は、いつものパイプラインが進めます。"

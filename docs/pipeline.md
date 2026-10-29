@@ -165,7 +165,7 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 5. Next.js で `VERCEL_TOKEN` があれば、Vercel のプロジェクトを作ってつなぐ
 6. `CLAUDE.md` の1行目・仕様書の「目的」・README に説明を書き、見た目の段のデザイン仕様を入れ、Python なら見本（`examples/python`）に切り替えて（公開先は none）、main に push する。この push で Bootstrap が動く
 7. main を守る（PRと CI の `check` を必須にする。管理者は通れる）
-8. 1行のメモを、新しいリポジトリの最初のIssueにする（自動で企画に回る。最初の画面を一から作るので `size:L`＝強いモデルで実装する）。元のIssueに結果を書いて閉じる
+8. 1行のメモを、新しいリポジトリの最初のIssueにする（自動で企画に回る。最初の画面を一から作るので `size:L`＝強いモデルで実装する）。Vercel につないだときは、本番の公開アドレスを調べて報告に書き、リポジトリの Website 欄にも入れる（同じ名前がほかの人に使われていると、アドレスの後ろに文字が付く）。元のIssueに結果を書いて閉じる
 
 テンプレートの受付（intake）は、`新サービス：` のIssueを企画に回さない。
 
@@ -176,7 +176,7 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 - **パイプラインの GitHub App** を、**All repositories** に入れておく（新しいリポジトリでも、すぐ鍵が使えるように）。App の画面 → Install App → 自分のアカウントの Configure
 - **Next.js を公開するなら**：`VERCEL_TOKEN`（Environment「factory」の Secret。Vercel → Account Settings → Tokens）と、Vercel の GitHub 連携を **All repositories** にしておく。チームで使うなら変数 `VERCEL_TEAM_ID`
 - 無い物があっても、作れる所までは作り、元のIssueに「何が無くて何をしなかったか」を書く
-- あとから Vercel につなぐとき（作ったときに VERCEL_TOKEN が無かった物など）：Actions → **Factory Vercel** → Run workflow で、リポジトリの名前を入れる（つないだあと、今の main で本番の公開を1回始める）
+- あとから Vercel につなぐとき（作ったときに VERCEL_TOKEN が無かった物など）：Actions → **Factory Vercel** → Run workflow で、リポジトリの名前を入れる（つないだあと、今の main で本番の公開を1回始め、公開アドレスを Website 欄に入れる。もうつないであるリポジトリなら、公開とアドレスの調べ直しだけ）
 
 ## スクリプトのテスト
 

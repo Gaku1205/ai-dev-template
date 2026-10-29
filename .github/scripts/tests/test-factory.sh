@@ -41,6 +41,8 @@ def out(o):
 base = path.split("?")[0]
 log.write(f"{method} {base} {json.dumps(fields(), ensure_ascii=False)}\n")
 m = re.match(r"repos/([^/]+)/([^/]+)$", base)
+if m and method == "PATCH":
+    open(f"{T}/homepage.txt", "w").write(fields().get("homepage", "")); print("{}"); sys.exit(0)
 if m and method == "GET":
     name = f"{m.group(1)}/{m.group(2)}"
     sys.exit(0 if name in st["repos"] or name in os.environ.get("EXISTING", "").split() else 1)
@@ -66,7 +68,11 @@ sys.stderr.write(f"UNHANDLED {method} {path}\n"); sys.exit(1)
 PY
 cat > "$T/bin/curl" <<'SH'
 #!/usr/bin/env bash
-echo "curl $*" >> "$FT/calls.log"; cat > "$FT/vercel-body.json"
+echo "curl $*" >> "$FT/calls.log"
+case "$*" in
+  */domains*) echo '{"domains":[{"name":"made-git-x.vercel.app","gitBranch":"x"},{"name":"made-abc.vercel.app","gitBranch":null}]}'; exit 0 ;;
+esac
+cat > "$FT/vercel-body.json"
 if [ -n "${VERCEL_FAIL:-}" ]; then echo '{"error":{"message":"repo not found"}}'; else echo '{"name":"made"}'; fi
 SH
 chmod +x "$T/bin/gh" "$T/bin/curl"
@@ -88,6 +94,8 @@ assert_contains "秘密を写す" "$calls" "secret CLAUDE_CODE_OAUTH_TOKEN o/mor
 assert_contains "変数を写す" "$calls" "variable PIPELINE_APP_ID o/morning-board len=3"
 assert_not_contains "空の秘密は写さない" "$calls" "secret NTFY_TOPIC"
 assert_contains "Vercel のプロジェクト" "$(cat "$T/vercel-body.json")" '"repo":"o/morning-board"'
+assert_contains "本番の公開アドレスを報告する（ブランチの物ではない方）" "$(cat "$T/comment.txt")" "公開アドレス：https://made-abc.vercel.app"
+assert_eq "Website 欄に入れる" "https://made-abc.vercel.app" "$(cat "$T/homepage.txt")"
 assert_contains "main を守る：check が必須" "$(cat "$T/ruleset.json")" '"context":"check"'
 assert_contains "main を守る：PR が必須" "$(cat "$T/ruleset.json")" '"pull_request"'
 assert_contains "最初のIssueはメモの1行" "$calls" '"title": "毎朝の天気と予定を1枚で見たい"'

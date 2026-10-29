@@ -16,6 +16,10 @@ if ! res=$(printf '%s' "$body" | curl -sS -X POST "$VERCEL_API/v11/projects$q" -
   exit 1
 fi
 name=$(printf '%s' "$res" | jq -r '.name // empty' 2> /dev/null)
+# もうつないである（同じ名前のプロジェクトがある）なら、それを使う（あとからアドレスだけ調べ直すとき）
+if [ -z "$name" ] && [ "$(printf '%s' "$res" | jq -r '.error.code // empty' 2> /dev/null)" = "conflict" ]; then
+  name="$PROJECT"
+fi
 if [ -z "$name" ]; then
   msg=$(printf '%s' "$res" | jq -r '.error.message // empty' 2> /dev/null)
   echo "Vercel のプロジェクトを作れませんでした（${msg:-理由不明}）。Vercel の GitHub 連携が、このリポジトリを見られるか確かめる"

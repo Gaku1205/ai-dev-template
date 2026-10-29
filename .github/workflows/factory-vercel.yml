@@ -1,5 +1,6 @@
 # 工場：もうあるリポジトリを、あとから Vercel につなぐ（工場で作ったとき VERCEL_TOKEN が無かった物など）。
-# Actions → Factory Vercel → Run workflow で、リポジトリの名前を入れる。つないだあと、今の main で本番の公開を1回始める。
+# Actions → Factory Vercel → Run workflow で、リポジトリの名前を入れる。つないだあと、今の main で本番の公開を1回始め、
+# 本番の公開アドレスをリポジトリの Website 欄に入れる（もうつないであるリポジトリなら、公開とアドレスの調べ直しだけをする）。
 # テンプレート本体でだけ、強い鍵は Environment「factory」から使う
 name: Factory Vercel
 run-name: Vercel につなぐ ${{ inputs.repo }}
@@ -42,4 +43,10 @@ jobs:
             echo "公開を始めた：https://$url"
           else
             echo "::warning::公開を始められませんでした（$(printf '%s' "$res" | jq -r '.error.message // "理由不明"' 2> /dev/null)）。次に main が変わったときに公開されます"
+          fi
+          # 本番の公開アドレスを調べて、リポジトリの Website 欄に入れる
+          if site=$(PROJECT="$out" REPO_FULL="$OWNER/$NAME" .github/scripts/factory-vercel-url.sh); then
+            echo "公開アドレス：$site（Website 欄に入れた）"
+          else
+            echo "::warning::公開アドレスがまだ決まっていません（Vercel の画面の Domains で確かめる）"
           fi
