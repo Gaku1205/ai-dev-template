@@ -87,4 +87,17 @@ RUN_STARTED=$(ago 1) CONCLUSION=success run_script after-mention.sh > /dev/null
 assert_contains "変更が入りませんでした、の文言" "$(comments_of 58)" "変更が入りませんでした"
 assert_not_contains "許可の候補は出さない" "$(comments_of 58)" "足りない許可"
 
+echo "== 多すぎる不足：記録は3件まで、コメントは「ほかN件」。先に止めてから記録する"
+init_state '{"labels":{"7":["ai:implement"]}}'
+many=$(python3 -c "import json;print(json.dumps([{'type':'result','subtype':'error_during_execution','result':'','permission_denials':[{'tool_name':'Bash','tool_input':{'command':f'tool{i} x'}} for i in range(8)]}]))")
+printf '%s' "$many" > "$MOCK_DIR/many.json"
+run_lib "handle_ai_failure 7 implement '実装AIが止まりました' '$MOCK_DIR/many.json'" > /dev/null
+assert_contains "止める" "$(labels_of 7)" "ai:stuck"
+assert_contains "コメントは3件と、ほか5件" "$(comments_of 7)" "Bash(tool0:*)、Bash(tool1:*)、Bash(tool2:*)、ほか5件"
+ledger_comments=$(python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print(sum(1 for c in s['comments'] if 'perm-gap:' in c['body']))")
+assert_eq "記録は3件まで" "3" "$ledger_comments"
+first_stop=$(python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));b=[c['body'] for c in s['comments']];print(next(i for i,x in enumerate(b) if '自動で進めるのを止めました' in x) < next(i for i,x in enumerate(b) if 'perm-gap:' in x))")
+assert_eq "止めるコメントが記録より先" "True" "$first_stop"
+assert_eq "permission_list_short：3件以下はそのまま" "a、b" "$(run_lib "permission_list_short \"\$(printf 'a\\nb')\"")"
+
 finish

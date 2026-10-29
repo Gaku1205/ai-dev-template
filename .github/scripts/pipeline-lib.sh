@@ -372,6 +372,16 @@ denied_tools() {
     done | sort -u
 }
 
+# 許可の一覧を、コメント・通知に書く短い形にする（最初の3件。残りは「ほかN件」）
+permission_list_short() {
+  local all n
+  all=$(printf '%s\n' "$1" | awk 'NF')
+  n=$(printf '%s\n' "$all" | awk 'NF' | wc -l | tr -d ' ')
+  printf '%s' "$(printf '%s\n' "$all" | head -n 3 | paste -sd, - | sed 's/,/、/g')"
+  [ "$n" -gt 3 ] && printf '、ほか%s件' "$((n - 3))"
+  return 0
+}
+
 # AIのコメントの文章から、「許可されていない」と書いてある行と、そこに出てくるコマンド（`...`）の許可の書き方を出す
 #   1行目以降：許可の不足を言っている行（最大3行）。最後に「KEY: …」の行で、許可の書き方
 permission_hints_from_text() {
@@ -387,7 +397,9 @@ permission_hints_from_text() {
 # 許可の不足を、記録用のIssue（閉じたまま）にコメントで残し、同じ不足が2回目なら、直すためのIssueを自動で作る
 #   使い方：report_permission_gap 番号 "許可の書き方（改行区切り）"
 report_permission_gap() {
-  local from="$1" keys="$2" key ledger n title existing created
+  local from="$1" keys key ledger n title existing created
+  # 1回に記録するのは最初の PERM_REPORT_MAX 件まで（多すぎると、1件ずつのAPI呼び出しでジョブが時間切れになる）
+  keys=$(printf '%s\n' "$2" | awk 'NF' | head -n "${PERM_REPORT_MAX:-3}")
   while IFS= read -r key; do
     [ -z "$key" ] && continue
     ledger=$(gh api "repos/$REPO/issues?state=all&per_page=100" -q ".[] | select(.title == \"$PERM_LEDGER_TITLE\") | .number" | head -1) || return 0
@@ -423,13 +435,14 @@ handle_ai_failure() {
   local num="$1" kind="$2" label="$3" file="${4:-}" denied reason
   denied=$(denied_tools "$file")
   if [ -n "$denied" ]; then
-    report_permission_gap "$num" "$denied"
-    reason="$(failure_reason "$label" "$file")。足りない許可：$(printf '%s' "$denied" | paste -sd, - | sed 's/,/、/g')（docs/pipeline.md の「AIの許可」の表と、ワークフローの --allowedTools を見てください）"
+    reason="$(failure_reason "$label" "$file")。足りない許可：$(permission_list_short "$denied")（docs/pipeline.md の「AIの許可」の表と、ワークフローの --allowedTools を見てください）"
+    # 先に人間に回す（ラベル・コメント・通知）。記録は後。記録が遅くてジョブが時間切れになっても、宙に浮かないように
     case "$kind" in
       plan) remove_label "$num" "ai:plan"; stop_issue_for_human "$num" "$reason" ;;
       implement) stop_issue_for_human "$num" "$reason" ;;
       *) stop_for_human "$num" "$reason" ;;
     esac
+    report_permission_gap "$num" "$denied"
     return 0
   fi
   mark_for_retry "$num" "$kind" "$(failure_reason "$label" "$file")" "$(limit_signal "$file")"

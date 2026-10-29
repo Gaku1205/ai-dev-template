@@ -137,4 +137,10 @@ for name in claude-implement.yml claude-mention.yml; do
   assert_contains "$name：push の前に main を取り込む指示" "$wf" "git merge origin/main で最新の main を取り込んでから"
 done
 
+echo "== 修正AIは、見た目のテストの差分の画像を見てから決める"
+wf="$(cat "$WORKFLOWS/claude-mention.yml")"
+assert_contains "claude-mention.yml：差分の画像を取ってくる" "$wf" ".github/scripts/fetch-visual-diff.sh"
+assert_contains "claude-mention.yml：画像を見る指示" "$wf" "Read で開いて見る"
+assert_contains "claude-mention.yml：artifact を読む権限" "$wf" "actions: read"
+
 finish

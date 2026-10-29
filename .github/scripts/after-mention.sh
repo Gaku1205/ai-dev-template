@@ -40,8 +40,9 @@ for pr in $(gh api "repos/$REPO/pulls?state=open&per_page=100" -q '.[].number');
       # AIが「許可されていない」と報告していたら、足りない許可を書く（人間が何を足せばいいか分かるように）
       hints=$(all_comments "$pr" | jq -r '[.[] | select(.user.login == "claude[bot]")] | last | .body // ""' | permission_hints_from_text)
       if [ -n "$hints" ]; then
+        # 先に人間に回し、記録は後（記録が遅くて時間切れになっても宙に浮かないように）
+        stop_for_human "$pr" "AIが許可されていない操作で止まったようです。AIの報告：$(printf '%s\n' "$hints" | grep -v '^KEY: ' | tr '\n' ' ')／足りない許可の候補：$(permission_list_short "$(printf '%s\n' "$hints" | sed -n 's/^KEY: //p')")（docs/pipeline.md の「AIの許可」の表を見てください）"
         report_permission_gap "$pr" "$(printf '%s\n' "$hints" | sed -n 's/^KEY: //p')"
-        stop_for_human "$pr" "AIが許可されていない操作で止まったようです。AIの報告：$(printf '%s\n' "$hints" | grep -v '^KEY: ' | tr '\n' ' ')／足りない許可の候補：$(printf '%s\n' "$hints" | sed -n 's/^KEY: //p' | paste -sd, - | sed 's/,/、/g')（docs/pipeline.md の「AIの許可」の表を見てください）"
       else
         stop_for_human "$pr" "AIに直すよう頼みましたが、変更が入りませんでした（AIのコメントを確認してください）"
       fi
