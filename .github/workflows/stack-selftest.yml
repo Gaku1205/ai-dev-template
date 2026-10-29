@@ -33,7 +33,7 @@ jobs:
           dir: examples/python
       - name: 確認
         working-directory: examples/python
-        run: "$GITHUB_WORKSPACE/.github/scripts/run-checks.sh"
+        run: '"$GITHUB_WORKSPACE/.github/scripts/run-checks.sh"'
 
   exe:
     if: github.event.repository.is_template
@@ -83,7 +83,7 @@ jobs:
       - name: 起動して答えるか
         run: |
           docker run -d --name hello -p 8000:8000 hello-python:selftest
-          for i in $(seq 1 30); do curl -fsS localhost:8000/health && break; sleep 1; done
+          for _ in $(seq 1 30); do curl -fsS localhost:8000/health && break; sleep 1; done
           health=$(curl -fsS localhost:8000/health)
           hello=$(curl -fsS "localhost:8000/hello?name=Hakata")
           echo "$health $hello"

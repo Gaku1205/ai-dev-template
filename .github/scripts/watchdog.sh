@@ -7,9 +7,10 @@
 #   5. 使い終わった claude/* ブランチを掃除する
 #   6. ラベルの矛盾（ai:queue と ai:implement など）を直す
 #   7. 順番待ち（ai:queue）を進める
+#   8. 次のやり直しの時刻に、自分を起こす目覚まし（retry-timer.yml）をかける
 # 人間の確認待ち（ai:stuck）の物は触らない。
 #
-# 環境変数：READ_TOKEN（ワークフローのトークン、actions: read）
+# 環境変数：READ_TOKEN（ワークフローのトークン、actions: write。CIの実行を読む・目覚ましを動かす）、RETRY_TIMER（off で目覚ましを使わない）
 source "$(dirname "$0")/pipeline-lib.sh"
 
 has_pipeline_token || { echo "PIPELINE_TOKEN が無いので何もしません"; exit 0; }
@@ -239,3 +240,37 @@ done <<< "$closed_items"
 
 # ---- 4. 順番待ちを進める ----
 start_next_in_queue || echo "順番待ちを進められませんでした"
+
+# ---- 8. 次のやり直しの時刻に、見張り役を起こす目覚ましをかける ----
+# GitHub の定期の起動（30分ごと）は、混んでいると数時間遅れる。待ちが明ける時刻が分かっているので、
+# その時刻に retry-timer.yml（待ってから見張り役を動かすだけ）を動かしておく。目覚ましは1つだけ（新しい物が古い物を止める）。
+# 公開していないリポジトリでは待つあいだも Actions の時間を使うので、変数 RETRY_TIMER に off を入れれば止められる
+set_retry_timer() {
+  local earliest="" n t now_s runs
+  [ "${RETRY_TIMER:-on}" = "off" ] && return 0
+  now_s=$(date +%s)
+  for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry" -q '.[].number'); do
+    has_label "$n" "ai:stuck" && continue
+    t=$(retry_due_at "$n")
+    [ "$t" -gt "$now_s" ] || continue
+    if [ -z "$earliest" ] || [ "$t" -lt "$earliest" ]; then earliest="$t"; fi
+  done
+  [ -z "$earliest" ] && return 0
+  # 1回の待ちは最大 RETRY_TIMER_MAX_MIN 分（ジョブの時間の上限 6時間に収める）。それより先なら、起きた見張り役がかけ直す
+  local cap=$(( now_s + ${RETRY_TIMER_MAX_MIN:-340} * 60 ))
+  [ "$earliest" -gt "$cap" ] && earliest="$cap"
+  # もう同じかそれより早い時刻の目覚ましが待っていれば、かけ直さない
+  runs=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/workflows/retry-timer.yml/runs?per_page=20" \
+    -q '[.workflow_runs[] | select(.status != "completed") | .display_title | capture("目覚まし (?<at>[0-9]+)") | .at | tonumber]' 2> /dev/null) || runs="[]"
+  if printf '%s' "${runs:-[]}" | jq -e --argjson e "$earliest" --argjson n "$now_s" 'any(.[]; . > $n and . <= $e + 120)' > /dev/null 2>&1; then
+    echo "次のやり直しの目覚ましは、もうかかっています"
+    return 0
+  fi
+  if GH_TOKEN="$READ_TOKEN" gh api -X POST "repos/$REPO/actions/workflows/retry-timer.yml/dispatches" \
+       -f ref="${GITHUB_REF_NAME:-main}" -f "inputs[at]=$earliest" > /dev/null 2>&1; then
+    echo "次のやり直しの目覚ましを $(TZ=Asia/Tokyo date -d "@$earliest" +%H:%M) にかけました"
+  else
+    echo "::warning::やり直しの目覚まし（retry-timer.yml）を動かせませんでした。定期の見張りでやり直します"
+  fi
+}
+set_retry_timer

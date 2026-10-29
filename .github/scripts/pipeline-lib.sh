@@ -543,26 +543,30 @@ limit_until_text() {
   fi
 }
 
-# 記録のコメントが最後に書き換えられてから、待ち時間が過ぎたか
-#   上限で待っているとき：リセット時刻（の1分後）か、時刻が分からないときは LIMIT_UNKNOWN_WAIT_MIN 分
-retry_due() {
-  local c updated until_at now
+# やり直してよくなる時刻（エポック秒）。記録が無ければ 0（すぐ）
+#   上限で待っているとき：リセット時刻の1分後か、時刻が分からないときは記録の更新から LIMIT_UNKNOWN_WAIT_MIN 分
+#   それ以外：記録の更新から RETRY_COOLDOWN_MIN 分
+retry_due_at() {
+  local c updated until_at
   c=$(retry_comment "$1")
-  [ -z "$c" ] && return 0
-  now=$(date +%s)
+  if [ -z "$c" ]; then echo 0; return; fi
   until_at=$(retry_mark_value "$(printf '%s' "$c" | jq -r .body)" limit-until)
   if [ -n "$until_at" ] && [ "$until_at" != "unknown" ]; then
-    [ "$now" -ge $(( until_at + 60 )) ]
+    echo $(( until_at + 60 ))
     return
   fi
   updated=$(date -d "$(printf '%s' "$c" | jq -r .updated_at)" +%s)
   if [ "$until_at" = "unknown" ]; then
-    [ $(( now - updated )) -ge $(( LIMIT_UNKNOWN_WAIT_MIN * 60 )) ]
+    echo $(( updated + LIMIT_UNKNOWN_WAIT_MIN * 60 ))
   else
-    [ $(( now - updated )) -ge $(( RETRY_COOLDOWN_MIN * 60 )) ]
+    echo $(( updated + RETRY_COOLDOWN_MIN * 60 ))
   fi
 }
 
+# 待ち時間が過ぎたか
+retry_due() {
+  [ "$(date +%s)" -ge "$(retry_due_at "$1")" ]
+}
 
 # AI（claude[bot]）がpushしたコミットのCIは、GitHubが「承認待ち（action_required）」で止めることがある。
 # そうなっていたら、オーナーのトークンで空のコミットを1つ足して、CIを動かし直す（オーナーのpushなら承認は要らない）。

@@ -50,7 +50,7 @@ Issueを作る（メモ）。ラベルが無ければ自動で ai:plan が付く
 
 ## 自動でやり直す（人間に回さない）とき
 
-次は一時的な失敗かもしれないので、すぐ人間に回さず `ai:retry` を付ける。見張り役（watchdog.yml）が、失敗から30分以上あけてやり直す。見張り役は、定期の起動（GitHubの都合で数時間あくことがある）に加えて、AIやCIのワークフローが終わるたびにも動く。10回やり直しても直らなければ `ai:stuck` で人間に回す。
+次は一時的な失敗かもしれないので、すぐ人間に回さず `ai:retry` を付ける。見張り役（watchdog.yml）が、失敗から30分以上あけてやり直す。見張り役は、定期の起動（GitHubの都合で数時間あくことがある）に加えて、AIやCIのワークフローが終わるたびにも動く。さらに、待ちが明ける時刻に目覚まし（retry-timer.yml）をかけておき、その時刻に自分を起こす（使用量の上限のリセットを待っているときも、定期の起動の遅れに左右されない）。10回やり直しても直らなければ `ai:stuck` で人間に回す。
 
 使用量の上限が原因と分かったとき（企画AI・実装AIの実行記録に「usage limit」などが出ているとき）は、回数を使わずに待つ。リセット時刻が読めれば、その1分後にやり直す。読めなければ60分あけてやり直す。待ちに入った最初の1回だけ、スマホに「使用量の上限で待っています」と通知する（通知の種類 `limit`）。上限が24時間以上続いたら、本物のエラーと同じに数えて、10回で `ai:stuck` にする。レビューAI・修正AIは、実行記録をこの段階では読めないので、これまでどおり30分あけて、回数に数える。
 
@@ -177,6 +177,7 @@ AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions
 | `AGENT_DESK_URL` | Variable | 通知を押したときに開く画面（省略可） |
 | `AWS_ROLE_ARN`・`AWS_APPRUNNER_ACCESS_ROLE_ARN`・`AWS_REGION` | Variable | 公開先が `aws-apprunner` のとき（上の「AWS App Runner」） |
 | `EXPO_TOKEN` | Secret | 公開先が `expo` のとき |
+| `RETRY_TIMER` | Variable | `off` にすると、やり直しの目覚まし（retry-timer.yml）を使わない（定期の見張りだけでやり直す）。目覚ましは待つあいだランナーを使うので、公開していないリポジトリで Actions の時間を節約したいとき |
 | `NOTIFY_EVENTS` | Variable | 鳴らす通知の種類（カンマ区切り）。省略時は `stuck,question,hold,manual,deployed,deploy_failed,limit,intake,repeat_fail`。ほかに `merged`・`ci_failed` がある。種類の意味は `.github/scripts/notify.sh` |
 
 ほかに、Settings → General → Pull Requests の「Automatically delete head branches」をオンにする（マージ後のブランチが溜まらない。オンにしなくても、進行役がマージ後に `claude/*` ブランチを消し、見張り役が古い物を掃除する）。

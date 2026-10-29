@@ -100,6 +100,11 @@ if m:
 m=re.match(r'commits/([^/]+)/check-runs$',base)
 if m: out({'check_runs':st.get('checks',[])}); sys.exit(0)
 if re.match(r'actions/runs/\d+/jobs$',base): out({'jobs':st.get('jobs',[])}); sys.exit(0)
+m=re.match(r'actions/workflows/([^/]+)/runs$',base)
+if m: out({'workflow_runs':st.get('wf_runs',{}).get(m.group(1),[])}); sys.exit(0)
+m=re.match(r'actions/workflows/([^/]+)/dispatches$',base)
+if m and method=='POST':
+    st.setdefault('dispatches',[]).append({'workflow':m.group(1),**fields}); save(); sys.exit(0)
 if base=='actions/runs': out({'workflow_runs':st.get('runs',[])}); sys.exit(0)
 if base.startswith('compare/'): out({'ahead_by':0}); sys.exit(0)
 if re.match(r'commits/[^/]+$',base): out({'commit':{'committer':{'date':'2026-01-01T00:00:00Z'}}}); sys.exit(0)

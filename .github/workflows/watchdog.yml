@@ -29,7 +29,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      actions: read
+      # actions: write は、次のやり直しの時刻に目覚まし（retry-timer.yml）を動かすため
+      actions: write
     steps:
       # 秘密鍵を PKCS#8 にそろえる（create-github-app-token は Node 24 だと「BEGIN RSA PRIVATE KEY」の形式を読めず Invalid keyData になる）
       - name: パイプラインの鍵の秘密鍵をそろえる
@@ -68,4 +69,5 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
+          RETRY_TIMER: ${{ vars.RETRY_TIMER }}
         run: .github/scripts/watchdog.sh
