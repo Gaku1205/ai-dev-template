@@ -13,17 +13,37 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: sync-to-apps
-  cancel-in-progress: false
-
 jobs:
-  sync:
-    # テンプレート（本体）でだけ動かす。配り先・テンプレートから作ったリポジトリでは動かない
+  # テンプレート（本体）でだけ動かす（wait の if）。配り先・テンプレートから作ったリポジトリでは動かない。
+  # 少し待ってから配る。待っている間に main がまた更新されたら、古い方の待ちは止まり、新しい方だけが配る
+  # （続けてマージすると、そのたびに配り先へPRができて、配り先のCIと進行役を何度も動かすため）
+  wait:
     if: >-
       github.event.repository.is_template &&
       (github.event_name == 'workflow_dispatch' ||
        (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: sync-to-apps-wait
+      cancel-in-progress: true
+    steps:
+      - name: 続けての更新を待つ
+        env:
+          # 手で動かしたときは待たない。待つ分は変数 SYNC_DELAY_MIN で変えられる（既定 15 分）
+          DELAY: ${{ vars.SYNC_DELAY_MIN }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          case "$DELAY" in ''|*[!0-9]*) DELAY=15 ;; esac
+          [ "$EVENT" = "workflow_dispatch" ] && DELAY=0
+          echo "${DELAY} 分待ってから配ります（その間に main が更新されたら、新しい方が配ります）"
+          sleep $(( DELAY * 60 ))
+
+  sync:
+    needs: wait
+    concurrency:
+      group: sync-to-apps
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
       # 秘密鍵を PKCS#8 にそろえる（create-github-app-token は Node 24 だと「BEGIN RSA PRIVATE KEY」の形式を読めず Invalid keyData になる）

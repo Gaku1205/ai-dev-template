@@ -147,4 +147,22 @@ echo "== 見張り役は、何もしなかった実行（skipped）の後には�
 wf="$(cat "$WORKFLOWS/watchdog.yml")"
 assert_contains "watchdog.yml：skipped の後は動かない" "$wf" "github.event.workflow_run.conclusion != 'skipped'"
 
+echo "== 配る（sync.yml）は、待ってから。新しい方が来たら古い待ちは止まり、配る本体は途中で止めない"
+result=$(python3 - "$WORKFLOWS/sync.yml" <<'PY2'
+import sys, yaml
+j = yaml.safe_load(open(sys.argv[1]))['jobs']
+w, s = j['wait'], j['sync']
+print('wait-cancel' if w['concurrency']['cancel-in-progress'] is True else 'wait-no-cancel')
+print('sync-needs-wait' if s.get('needs') == 'wait' else 'sync-no-needs')
+print('sync-no-cancel' if s['concurrency']['cancel-in-progress'] is False else 'sync-cancel')
+print('template-only' if 'is_template' in str(w.get('if', '')) else 'any-repo')
+PY2
+)
+assert_eq "sync.yml の待ちと配る本体" "$(printf 'wait-cancel\nsync-needs-wait\nsync-no-cancel\ntemplate-only')" "$result"
+
+echo "== やり直しの目覚まし：見張り役は目覚ましを動かせる（actions: write）。目覚ましは1つだけ"
+assert_contains "watchdog.yml：actions: write" "$(cat "$WORKFLOWS/watchdog.yml")" "actions: write"
+assert_contains "retry-timer.yml：新しい物が古い物を止める" "$(cat "$WORKFLOWS/retry-timer.yml")" "cancel-in-progress: true"
+assert_contains "retry-timer.yml：見張り役が探す名前" "$(cat "$WORKFLOWS/retry-timer.yml")" "run-name: やり直しの目覚まし \${{ inputs.at }}"
+
 finish
