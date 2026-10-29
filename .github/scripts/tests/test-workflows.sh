@@ -169,4 +169,18 @@ assert_contains "retry-timer.yml：見張り役が探す名前" "$(cat "$WORKFLO
 echo "== 見た目の撮り直しは、通っている画像も含めて全部撮り直す（古い基準の画像を残さない）"
 assert_contains "visual-update.yml：--update-snapshots=all" "$(cat "$WORKFLOWS/visual-update.yml")" "--update-snapshots=all"
 
+echo "== 工場：強い鍵は Environment「factory」のジョブだけ。AIのジョブには渡さない。オーナーのIssueでだけ動く"
+result=$(python3 - "$WORKFLOWS/factory.yml" <<'PY2'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1])); j = d["jobs"]
+out = []
+out.append("build-env" if j["build"].get("environment") == "factory" else "build-no-env")
+out.append("plan-no-factory" if "FACTORY_TOKEN" not in yaml.dump(j["plan"]) else "plan-has-factory")
+out.append("owner-only" if "github.event.issue.user.login == github.repository_owner" in j["plan"]["if"] else "anyone")
+out.append("template-only" if "is_template" in j["plan"]["if"] else "any-repo")
+print(",".join(out))
+PY2
+)
+assert_eq "factory.yml の守り" "build-env,plan-no-factory,owner-only,template-only" "$result"
+
 finish

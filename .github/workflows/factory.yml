@@ -1,7 +1,7 @@
 # 工場：ai-dev-template に「新サービス：〜」で始まるIssueを1行書くと、新しいサービスのリポジトリを作って、いつものパイプラインに渡す。
 #   例：「新サービス：毎朝の天気と予定を1枚で見られるページ」
 # 名前・言語（Next.js か Python）・1行の説明だけをAIが決め、あとは factory.sh が行う（リポジトリ作成・秘密と変数のコピー・
-# Vercel・main の保護・最初のIssue）。最初の1回だけ、FACTORY_TOKEN（と、Next.js を公開するなら VERCEL_TOKEN）の登録が要る（docs/pipeline.md「工場」）。
+# Vercel・main の保護・最初のIssue）。最初の1回だけ、Environment「factory」に FACTORY_TOKEN（と、Next.js を公開するなら VERCEL_TOKEN）の登録が要る（docs/pipeline.md「工場」）。
 # テンプレート本体でだけ、オーナーが書いたIssueでだけ動く（公開リポジトリなので、ほかの人のIssueでは動かない）。
 name: Factory
 
@@ -75,8 +75,10 @@ jobs:
             echo "memo<<MEMO_END"; printf '%s\n' "$MEMO"; echo "MEMO_END"; } >> "$GITHUB_OUTPUT"
 
   build:
-    # 安全のため別のジョブにする：強い鍵（FACTORY_TOKEN）は、AIが動いたジョブには渡さない。スクリプトは main の物を動かす
+    # 安全のため別のジョブにする：強い鍵（FACTORY_TOKEN）は、AIが動いたジョブには渡さない。スクリプトは main の物を動かす。
+    # 強い鍵は Environment「factory」（main からだけ使える）に置く。AIが作ったブランチのワークフローからは読めない
     needs: plan
+    environment: factory
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -91,7 +93,7 @@ jobs:
           ISSUE: ${{ github.event.issue.number }}
         run: |
           if [ "$HAS_FACTORY" != true ]; then
-            gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" -f body="⚠️ 新しいサービスを作るには、最初の1回だけ Secret の FACTORY_TOKEN が要ります（作り方は docs/pipeline.md の「工場」）。登録したら、このIssueを閉じて、同じ1行でもう一度作ってください。" > /dev/null
+            gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" -f body="⚠️ 新しいサービスを作るには、最初の1回だけ、Environment「factory」の Secret に FACTORY_TOKEN が要ります（作り方は docs/pipeline.md の「工場」）。登録したら、このIssueを閉じて、同じ1行でもう一度作ってください。" > /dev/null
             echo "::error::FACTORY_TOKEN がありません"; exit 1
           fi
       - name: 新しいサービスを作る

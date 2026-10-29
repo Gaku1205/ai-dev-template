@@ -170,9 +170,10 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 
 ### 最初の1回だけの準備
 
-- **`FACTORY_TOKEN`**（Secret）：リポジトリを作れる鍵。github.com → Settings → Developer settings → Fine-grained tokens で作る。Resource owner は自分、Repository access は **All repositories**、Permissions（Repository）は **Administration・Contents・Secrets・Variables・Issues を Read and write**（Metadata は自動で Read）
+- **Environment「factory」**を作る：ai-dev-template の Settings → Environments → New environment で名前 `factory`。Deployment branches and tags を **Selected branches and tags** にして `main` だけを足す（強い鍵を、main のワークフローからだけ使えるようにする。AIが作ったブランチからは読めない）。下の2つの Secret は、リポジトリではなくこの Environment の Secrets に入れる
+- **`FACTORY_TOKEN`**：リポジトリを作れる鍵。github.com → Settings → Developer settings → Fine-grained tokens で作る。Resource owner は自分、Expiration は **90日くらい**（切れたら作り直して入れ直す）、Repository access は **All repositories**、Permissions（Repository）は **Administration・Contents・Secrets・Variables・Issues を Read and write**（Metadata は自動で Read）。Administration は、リポジトリの削除までできる強い権限なので、この鍵はほかに使わない
 - **パイプラインの GitHub App** を、**All repositories** に入れておく（新しいリポジトリでも、すぐ鍵が使えるように）。App の画面 → Install App → 自分のアカウントの Configure
-- **Next.js を公開するなら**：`VERCEL_TOKEN`（Secret。Vercel → Account Settings → Tokens）と、Vercel の GitHub 連携を **All repositories** にしておく。チームで使うなら変数 `VERCEL_TEAM_ID`
+- **Next.js を公開するなら**：`VERCEL_TOKEN`（Environment「factory」の Secret。Vercel → Account Settings → Tokens）と、Vercel の GitHub 連携を **All repositories** にしておく。チームで使うなら変数 `VERCEL_TEAM_ID`
 - 無い物があっても、作れる所までは作り、元のIssueに「何が無くて何をしなかったか」を書く
 
 ## スクリプトのテスト
@@ -199,7 +200,7 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 | `AGENT_DESK_URL` | Variable | 通知を押したときに開く画面（省略可） |
 | `AWS_ROLE_ARN`・`AWS_APPRUNNER_ACCESS_ROLE_ARN`・`AWS_REGION` | Variable | 公開先が `aws-apprunner` のとき（上の「AWS App Runner」） |
 | `EXPO_TOKEN` | Secret | 公開先が `expo` のとき |
-| `FACTORY_TOKEN`・`VERCEL_TOKEN` | Secret | 工場（1行から新しいサービスを作る）。ai-dev-template にだけ入れる（上の「工場」） |
+| `FACTORY_TOKEN`・`VERCEL_TOKEN` | Environment「factory」の Secret | 工場（1行から新しいサービスを作る）。ai-dev-template にだけ入れる（上の「工場」） |
 | `RETRY_TIMER` | Variable | `off` にすると、やり直しの目覚まし（retry-timer.yml）を使わない（定期の見張りだけでやり直す）。目覚ましは待つあいだランナーを使うので、公開していないリポジトリで Actions の時間を節約したいとき |
 | `NOTIFY_EVENTS` | Variable | 鳴らす通知の種類（カンマ区切り）。省略時は `stuck,question,hold,manual,deployed,deploy_failed,limit,intake,repeat_fail`。ほかに `merged`・`ci_failed` がある。種類の意味は `.github/scripts/notify.sh` |
 
