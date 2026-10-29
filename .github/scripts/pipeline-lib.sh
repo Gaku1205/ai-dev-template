@@ -563,6 +563,17 @@ retry_due_at() {
   fi
 }
 
+# そのコミットの CI（PRの物）で、いちばん新しい失敗が「見た目のテスト」だけで落ちているか（READ_TOKEN で読む）
+ci_only_visual_failed() {
+  local sha="$1" run steps
+  run=$(GH_TOKEN="${READ_TOKEN:-$GH_TOKEN}" gh api "repos/$REPO/actions/runs?head_sha=$sha&event=pull_request&per_page=20" \
+    -q '[.workflow_runs[] | select(.name == "CI" and .conclusion == "failure")] | sort_by(.created_at) | last | .id // empty' 2> /dev/null)
+  [ -z "$run" ] && return 1
+  steps=$(GH_TOKEN="${READ_TOKEN:-$GH_TOKEN}" gh api "repos/$REPO/actions/runs/$run/jobs?per_page=50" \
+    -q '[.jobs[].steps[] | select(.conclusion == "failure") | .name]' 2> /dev/null) || return 1
+  [ "$(printf '%s' "$steps" | jq 'length > 0 and all(.[]; . == "見た目のテスト")')" = "true" ]
+}
+
 # 待ち時間が過ぎたか
 retry_due() {
   [ "$(date +%s)" -ge "$(retry_due_at "$1")" ]

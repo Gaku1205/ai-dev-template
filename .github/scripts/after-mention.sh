@@ -44,6 +44,18 @@ for pr in $(gh api "repos/$REPO/pulls?state=open&per_page=100" -q '.[].number');
         stop_for_human "$pr" "AIが許可されていない操作で止まったようです。AIの報告：$(printf '%s\n' "$hints" | grep -v '^KEY: ' | tr '\n' ' ')／足りない許可の候補：$(permission_list_short "$(printf '%s\n' "$hints" | sed -n 's/^KEY: //p')")（docs/pipeline.md の「AIの許可」の表を見てください）"
         report_permission_gap "$pr" "$(printf '%s\n' "$hints" | sed -n 's/^KEY: //p')"
       else
+        # 修正AIが「基準の画像が古い。visual:update で撮り直して」と答え、落ちているのが見た目のテストだけなら、
+        # 人間に回さず撮り直す（1つのPRで2回まで。撮り直した画像はレビューAIが前と後で見比べる）
+        ai_text=$(all_comments "$pr" | jq -r '[.[] | select(.user.login == "claude[bot]")] | last | .body // ""')
+        updated=$(all_comments "$pr" | jq --arg m "$VISUAL_MARK" '[.[] | select(.body | contains($m))] | length')
+        if printf '%s' "$ai_text" | grep -q 'visual:update' && [ "$updated" -lt 2 ] && ci_only_visual_failed "$head"; then
+          comment "$pr" "修正AIが「見た目の基準の画像が古い」と判断し、落ちているのは見た目のテストだけなので、基準の画像をCIの環境で撮り直します（自動、$((updated + 1))回目）。
+
+${VISUAL_MARK}"
+          add_label "$pr" "visual:update"
+          echo "PR #$pr：修正AIの判断で、基準の画像の撮り直しを依頼しました"
+          continue
+        fi
         stop_for_human "$pr" "AIに直すよう頼みましたが、変更が入りませんでした（AIのコメントを確認してください）"
       fi
     fi
