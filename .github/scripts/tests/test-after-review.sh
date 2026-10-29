@@ -113,4 +113,33 @@ export CLAUDE_MD="$MOCK_DIR/CLAUDE_default.md"
 run_case "docs/pipeline.json.md src/pipeline.json" ""
 assert_eq "似た名前（直下の pipeline.json 以外）はマージする" "58" "$(merged)"
 
+echo "== PRの説明だけを直して、もう一度レビューで「指摘なし」：前の回の行への指摘（同じコミット）は数えずにマージする"
+base='{"labels":{"58":[]},"files":["src/a.ts"],"pulls":[{"number":58,"state":"open","body":"Closes #54","head":{"sha":"abc","ref":"claude/issue-54-x"},"updated_at":"2026-01-01T00:00:00Z"}],"checks":[{"name":"check","status":"completed","conclusion":"success","app":{"slug":"github-actions"}}],"branches":[{"name":"claude/issue-54-x","date":"2026-01-01T00:00:00Z"}]}'
+init_state "$base"
+state_py "
+s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\n1 issues found.','user':{'login':'claude[bot]'},'created_at':'$(ago 10)','updated_at':'$(ago 10)'})
+s['comments'].append({'id':2,'issue':'58','body':'## Code review\n\nNo issues found.','user':{'login':'claude[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})
+s['review_comments']=[{'user':{'login':'claude[bot]'},'original_commit_id':'abc','created_at':'$(ago 10)','body':'説明が足りない'}]"
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+assert_eq "マージされる" "58" "$(merged)"
+
+echo "== この回のレビューで行への指摘がある：直すよう頼む"
+init_state "$base"
+state_py "
+s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\nNo issues found.','user':{'login':'claude[bot]'},'created_at':'$(ago 10)','updated_at':'$(ago 10)'})
+s['comments'].append({'id':2,'issue':'58','body':'## Code review\n\nNo issues found.','user':{'login':'claude[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})
+s['review_comments']=[{'user':{'login':'claude[bot]'},'original_commit_id':'abc','created_at':'$(ago 2)','body':'ここがバグ'}]"
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+assert_eq "マージされない" "" "$(merged)"
+assert_contains "直す依頼" "$(comments_of 58)" "auto-fix"
+
+echo "== まとめを書かず、行への指摘だけ（この回）：直すよう頼む"
+init_state "$base"
+state_py "
+s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\nNo issues found.','user':{'login':'claude[bot]'},'created_at':'$(ago 10)','updated_at':'$(ago 10)'})
+s['review_comments']=[{'user':{'login':'claude[bot]'},'original_commit_id':'abc','created_at':'$(ago 1)','body':'ここがバグ'}]"
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+assert_eq "マージされない" "" "$(merged)"
+assert_contains "直す依頼" "$(comments_of 58)" "auto-fix"
+
 finish

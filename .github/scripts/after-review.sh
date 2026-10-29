@@ -36,9 +36,15 @@ head_date=$(gh api "repos/$REPO/commits/$HEAD_SHA" -q .commit.committer.date)
 review=$(all_comments "$pr" | jq -r --arg since "$head_date" \
   'map(select((.user.login == "claude[bot]" or .user.login == "github-actions[bot]") and (.body | startswith("## Code review")) and .created_at >= $since)) | last | .body // ""')
 
-# 指摘があるとき、レビューAIはまとめのコメントを書かず、コードの行への指摘（インラインコメント）だけを残すことがある
+# 指摘があるとき、レビューAIはまとめのコメントを書かず、コードの行への指摘（インラインコメント）だけを残すことがある。
+# 数えるのは、この回のレビューで書かれた行への指摘だけ。PRの説明だけを直したときは先頭コミットが変わらないので、
+# 前の回の行への指摘も同じコミットに付いたまま残る（それを数えると、直ったのにまた直すよう頼んでしまう）。
+#   この回の区切り：最新のまとめがこの回の物なら、その1つ前のまとめの時刻。まとめが無ければ、最後のまとめの時刻
+cutoff=$(all_comments "$pr" | jq -r --arg has "$([ -n "$review" ] && echo 1)" \
+  '[.[] | select((.user.login == "claude[bot]" or .user.login == "github-actions[bot]") and (.body | startswith("## Code review"))) | .created_at] | sort
+   | if $has == "1" then (.[-2] // "") else (.[-1] // "") end')
 inline=$(gh api "repos/$REPO/pulls/$pr/comments?per_page=100" --paginate --slurp \
-  | jq --arg sha "$HEAD_SHA" 'add // [] | map(select(.user.login == "claude[bot]" and .original_commit_id == $sha)) | length')
+  | jq --arg sha "$HEAD_SHA" --arg cut "$cutoff" 'add // [] | map(select(.user.login == "claude[bot]" and .original_commit_id == $sha and .created_at > $cut)) | length')
 
 if [ "$inline" -gt 0 ] || { [ -n "$review" ] && ! printf '%s' "$review" | grep -q "No issues found"; }; then
   request_fix_or_stop "$pr" "$HEAD_SHA" "レビューで指摘がありました。このPRの「Code review」のコメントと、コードの行に付いた指摘を読んで直してください。指摘が間違っていると判断した場合は、直さずにその理由をこのPRにコメントしてください。"
