@@ -80,7 +80,7 @@ run_factory() { # 名前 言語 説明 [追加の環境変数...]
 file_in() { git --git-dir="$T/remotes/$1.git" show "main:$2" 2> /dev/null; }
 
 echo "== Next.js：リポジトリを作り、秘密と変数を写し、Vercel につなぎ、main を守り、最初のIssueを作る"
-run_factory morning-board nextjs "毎朝の天気と予定を1枚で見るページ" VERCEL_TOKEN=v > /dev/null
+run_factory morning-board nextjs "毎朝の天気と予定を1枚で見るページ。" VERCEL_TOKEN=v > /dev/null
 calls=$(cat "$T/calls.log")
 assert_contains "テンプレートから作る" "$calls" "POST repos/o/ai-dev-template/generate"
 assert_contains "秘密を写す" "$calls" "secret CLAUDE_CODE_OAUTH_TOKEN o/morning-board len=7"
@@ -90,7 +90,10 @@ assert_contains "Vercel のプロジェクト" "$(cat "$T/vercel-body.json")" '"
 assert_contains "main を守る：check が必須" "$(cat "$T/ruleset.json")" '"context":"check"'
 assert_contains "main を守る：PR が必須" "$(cat "$T/ruleset.json")" '"pull_request"'
 assert_contains "最初のIssueはメモの1行" "$calls" '"title": "毎朝の天気と予定を1枚で見たい"'
-assert_contains "CLAUDE.md に説明" "$(file_in o/morning-board CLAUDE.md | sed -n 3p)" "morning-board：毎朝の天気と予定を1枚で見るページ"
+claude=$(file_in o/morning-board CLAUDE.md)
+assert_eq "CLAUDE.md の説明（句点は1つ・言語の案内は消す）" "morning-board：毎朝の天気と予定を1枚で見るページ。Next.js（App Router）＋TypeScript。" "$(printf '%s\n' "$claude" | sed -n 3p)"
+assert_not_contains "テンプレート本体だけの節を消す（自動マージの印も）" "$claude" "pipeline-self-edit"
+assert_not_contains "その但し書きも消す" "$claude" "ai-dev-template 自身"
 assert_contains "仕様書の目的に説明とメモ" "$(file_in o/morning-board docs/spec.md)" "（元のメモ：毎朝の天気と予定を1枚で見たい）"
 assert_eq "見本（examples）は持ち込まない" "" "$(file_in o/morning-board examples/python/README.md)"
 assert_contains "Next.js のまま" "$(file_in o/morning-board package.json)" '"next"'
@@ -114,6 +117,7 @@ assert_not_contains "pyinstaller は入れない" "$(file_in $r requirements-dev
 assert_eq "AGENTS.md は空で残る" "0" "$(file_in $r AGENTS.md | wc -c | tr -d ' ')"
 claude=$(file_in $r CLAUDE.md)
 assert_contains "CLAUDE.md：Python（FastAPI）" "$claude" "receipt-api：レシートの写真から金額を取り出すAPI。Python（FastAPI）。"
+assert_not_contains "CLAUDE.md：テンプレート本体だけの節を消す" "$claude" "pipeline-self-edit"
 assert_not_contains "CLAUDE.md：Next.js の注意の行は消す" "$claude" "Next.js固有の注意"
 assert_contains "CLAUDE.md：コードの書き方も Python" "$claude" "ロジックは \`app/\`、テストは \`tests/\`"
 assert_contains "仕様書の技術の欄" "$(file_in $r docs/spec.md)" "Python（FastAPI）、テストは pytest"
@@ -121,7 +125,7 @@ assert_not_contains "Python では Vercel を呼ばない" "$(cat "$T/calls.log"
 
 echo "== 説明に記号があっても壊れない（& / | \\ など）"
 run_factory odd-chars nextjs 'A&B / C|D \ E' > /dev/null
-assert_contains "そのまま書かれる" "$(file_in o/odd-chars CLAUDE.md | sed -n 3p)" 'odd-chars：A&B / C|D \ E'
+assert_contains "そのまま書かれる" "$(file_in o/odd-chars CLAUDE.md | sed -n 3p)" 'odd-chars：A&B / C|D \ E。'
 
 echo "== AIが決めた形が違えば、何も作らずに止める"
 run_factory "Bad_Name" nextjs "x" > /dev/null

@@ -111,7 +111,17 @@ name, desc, memo = os.environ["NAME"], os.environ["APP_DESC"], os.environ["MEMO"
 def swap(path, old, new):
     s = open(path, encoding="utf-8").read()
     open(path, "w", encoding="utf-8").write(s.replace(old, new, 1))
-swap("CLAUDE.md", "（アプリの説明を1〜2行で書く）", f"{name}：{desc}")
+swap("CLAUDE.md", "（アプリの説明を1〜2行で書く）。", f"{name}：{desc.rstrip('。')}。")
+# テンプレート本体だけの物を消す：「ai-dev-template 自身の作業」の節（自分のスクリプトを自動でマージしてよい印を含む）、その但し書き、
+# Next.js 以外の言語への案内（工場が言語を決めて切り替えるので要らない）。Bootstrap も消すが、作った直後の Bootstrap は
+# 鍵が写される前に動いてコミットできないことがあるので、ここで確実に消す
+import re
+s = open("CLAUDE.md", encoding="utf-8").read()
+s = re.sub(r"\n## ai-dev-template 自身の作業.*?(?=\n## )", "\n", s, count=1, flags=re.S)
+s = s.replace("。ただし ai-dev-template 自身だけ、下の「ai-dev-template 自身の作業」で許した物は触ってよい", "")
+s = s.replace("（パイプラインの説明。ai-dev-template 自身だけ、`docs/pipeline.md` は下の節で触ってよい）", "（パイプラインの説明）")
+s = re.sub(r"（Next\.js 以外で作るなら[^）]*）", "", s, count=1)
+open("CLAUDE.md", "w", encoding="utf-8").write(s)
 swap("docs/spec.md", "（誰の、どんな困りごとを、どう減らすか）", f"{desc}（元のメモ：{memo}）")
 PY2
   if [ "$APP_STACK" = python ]; then
