@@ -46,6 +46,40 @@ jobs:
           if [ "$lines" -gt 300 ] || [ "${risky:-0}" -gt 0 ]; then model=opus; else model=sonnet; fi
           echo "変更 ${lines} 行・危ない場所 ${risky:-0} ファイル → $model"
           echo "model=$model" >> "$GITHUB_OUTPUT"
+      # 見た目の画像（*.png）が変わっていたら、前（PRの元）と後（PRの先頭）を .review-images/ に取ってくる。
+      # レビューAIが、画像を見て「Issue どおりの変化か・崩れていないか」を確かめられるように。
+      # PRのコードは動かさない（PRで書き換えられる .github/scripts/ ではなく、ここに直接書く）。APIでファイルを読むだけ
+      - name: 見た目の画像の前と後を用意する
+        id: images
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          DIR: .review-images
+          MAX: "12"
+        run: |
+          enc() { python3 -c 'import sys, urllib.parse; print("/".join(urllib.parse.quote(p, safe="") for p in sys.argv[1].split("/")))' "$1"; }
+          get() { gh api -H "Accept: application/vnd.github.raw" "repos/$GITHUB_REPOSITORY/contents/$(enc "$1")?ref=$2" > "$3" 2> /dev/null && [ -s "$3" ] || { rm -f "$3"; return 1; }; }
+          files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files?per_page=100" --paginate \
+            --jq '.[] | select(.filename | test("\\.png$"; "i")) | [.status, .filename, (.previous_filename // .filename)] | @tsv') || files=""
+          count=0; skipped=0; : > "$RUNNER_TEMP/review-images-list"
+          while IFS=$'\t' read -r status path before; do
+            [ -z "$path" ] && continue
+            if [ "$count" -ge "$MAX" ]; then skipped=$((skipped + 1)); continue; fi
+            mkdir -p "$DIR"
+            name=$(printf '%s' "$path" | sed 's|/|__|g; s|\.[Pp][Nn][Gg]$||')
+            line="- $path（$status）："
+            if [ "$status" != added ] && get "$before" "$BASE" "$DIR/$name.before.png"; then line="$line 前 $DIR/$name.before.png"; else line="$line 前 なし"; fi
+            if [ "$status" != removed ] && get "$path" "$HEAD" "$DIR/$name.after.png"; then line="$line ・ 後 $DIR/$name.after.png"; else line="$line ・ 後 なし"; fi
+            echo "$line" >> "$RUNNER_TEMP/review-images-list"
+            count=$((count + 1))
+          done <<< "$files"
+          if [ "$count" -eq 0 ]; then echo "見た目の画像の変更はありません"; echo "list=" >> "$GITHUB_OUTPUT"; exit 0; fi
+          [ -d .git/info ] && echo "/$DIR/" >> .git/info/exclude
+          [ "$skipped" -gt 0 ] && echo "- ほか ${skipped} 枚は数が多いので取っていません（gh pr diff で名前だけ確かめる）" >> "$RUNNER_TEMP/review-images-list"
+          echo "見た目の画像を ${count} 組用意しました"; cat "$RUNNER_TEMP/review-images-list"
+          { echo 'list<<LIST_END'; cat "$RUNNER_TEMP/review-images-list"; echo 'LIST_END'; } >> "$GITHUB_OUTPUT"
       # パイプラインの App（ボット）がラベル・コメントで起こした実行を、AIのアクションが断らないようにする。
       # AI自身（claude[bot]）は許さない（自分のコメントで自分を呼ぶ繰り返しを防ぐ）。Secret は使わない
       - name: 起こしたボットを許可に入れる
@@ -80,8 +114,9 @@ jobs:
                - `docs/spec.md`・`docs/design.md` が変わっているときは、Issueの範囲の内容か、関係ない既存の決まりを書き換えていないか、実装がその文章どおりか。`docs/pipeline.md` が変わっていたら指摘する
                - セキュリティ（トークンや秘密情報の扱い、権限の確認漏れ）
             4. 前のレビューの指摘（このPRのコメントや、コードの行に付いた指摘）があれば、それが直っているかも確かめる
-            5. 問題が見つかったら、該当するコードの行に `mcp__github_inline_comment__create_inline_comment` で指摘を書く（何が問題で、どう直すか）
-            6. 最後に必ず `gh pr comment ${{ github.event.pull_request.number }} --body-file <ファイル>` で、まとめのコメントを1つ書く。形は次のどちらか
+            5. 見た目の画像（スクショ）：${{ steps.images.outputs.list != '' && format('このPRは画像を変えています。次の前と後を、Read で全部開いて見比べる。変わった所がIssueの「やること」どおりか、頼まれていない所が変わっていないか、崩れ（文字の重なり・はみ出し・切れ・ずれ・余白の消え・色の違い）が無いかを確かめる。崩れや頼まれていない変化は問題として指摘する（画像の名前と、どこがどう違うかを書く）。Issueの範囲どおりなら、まとめのコメントに「画像を見た」と1行書く{0}{1}', fromJSON('"\n"'), steps.images.outputs.list) || 'このPRでは変わっていないので、何もしない' }}
+            6. 問題が見つかったら、該当するコードの行に `mcp__github_inline_comment__create_inline_comment` で指摘を書く（何が問題で、どう直すか）
+            7. 最後に必ず `gh pr comment ${{ github.event.pull_request.number }} --body-file <ファイル>` で、まとめのコメントを1つ書く。形は次のどちらか
                - 問題なし：1行目 `## Code review`、空行、`No issues found.`、そのあとに確かめた内容を1〜3行
                - 問題あり：1行目 `## Code review`、空行、`N issues found.`（Nは件数）、そのあとに指摘を箇条書き（行への指摘と同じ内容でよい）
 
