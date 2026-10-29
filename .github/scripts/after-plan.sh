@@ -30,7 +30,8 @@ title=$(issue_title "$ISSUE")
 case "$result" in
   READY*)
     size=$(printf '%s' "$result" | grep -oE 'size:(S|L)' || true)
-    if [ -n "$size" ]; then
+    # 人間や工場が先にサイズを決めていれば（最初の画面を作る Issue の size:L など）、そちらを残す
+    if [ -n "$size" ] && ! has_label "$ISSUE" "size:S" && ! has_label "$ISSUE" "size:L"; then
       add_label "$ISSUE" "$size"
     fi
     if [ -n "$pipeline_token" ]; then

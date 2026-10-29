@@ -175,7 +175,7 @@ import sys, yaml
 d = yaml.safe_load(open(sys.argv[1])); j = d["jobs"]
 out = []
 out.append("build-env" if j["build"].get("environment") == "factory" else "build-no-env")
-out.append("plan-no-factory" if "FACTORY_TOKEN" not in yaml.dump(j["plan"]) else "plan-has-factory")
+out.append("plan-no-factory" if "FACTORY_TOKEN" not in yaml.dump(j["plan"]) + yaml.dump(j["design"]) else "plan-has-factory")
 out.append("owner-only" if "github.event.issue.user.login == github.repository_owner" in j["plan"]["if"] else "anyone")
 out.append("template-only" if "is_template" in j["plan"]["if"] else "any-repo")
 print(",".join(out))

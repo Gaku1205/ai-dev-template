@@ -132,13 +132,27 @@ PY2
   if [ "$APP_STACK" = python ]; then
     "$HERE/factory-python.sh" . || exit 1
   fi
+  # 見た目の段が書いたデザイン仕様（形が正しいときだけ。だめなら雛形のまま）
+  if [ -n "${DESIGN_FILE:-}" ] && [ -f "$DESIGN_FILE" ] && [ ! -L "$DESIGN_FILE" ]; then
+    size=$(wc -c < "$DESIGN_FILE")
+    if [ "$(head -1 "$DESIGN_FILE")" = "# デザイン仕様" ] && [ "$size" -ge 800 ] && [ "$size" -le 60000 ]; then
+      cp "$DESIGN_FILE" docs/design.md
+      echo "DESIGN=yes" > "$work/design.flag"
+    else
+      echo "DESIGN=bad" > "$work/design.flag"
+    fi
+  fi
   # 工場は テンプレートの例（examples/）を新しいサービスには持ち込まない
   rm -rf examples
   git add -A
   git -c user.name="pipeline-factory" -c user.email="noreply@github.com" commit -q -m "工場：${name} の最初の準備（${APP_STACK}）"
   git push -q origin HEAD:main
 ) || fail "最初の準備を push できませんでした"
-note "✅ CLAUDE.md・仕様書に説明を書いて push した（Bootstrap が動く）"
+note "✅ CLAUDE.md・仕様書・README に説明を書いて push した（Bootstrap が動く）"
+case "$(cat "$work/design.flag" 2> /dev/null)" in
+  DESIGN=yes) note "✅ 見た目の段：このサービスのデザイン仕様（docs/design.md）を書いた" ;;
+  DESIGN=bad) note "⚠️ 見た目の段が書いたデザイン仕様の形が違ったので、雛形のままにした" ;;
+esac
 
 # ---- 5. main を守る ----
 ruleset=$(jq -nc '{
@@ -163,8 +177,8 @@ for _ in $(seq 1 36); do
   sleep "$WAIT"
 done
 [ "$labels" = yes ] || note "⚠️ Bootstrap のラベルがまだできていません（Actions の Bootstrap を見る）。Issue は先に作ります"
-first=$(gh api "repos/$NEW/issues" -f title="$MEMO" \
-  -f body="工場（${TEMPLATE}#${ISSUE}）で作ったサービスの、最初のメモです。企画AIが清書して、そのまま実装まで進めます。" -q .number 2>&1) \
+first=$(gh api "repos/$NEW/issues" -f title="$MEMO" -f "labels[]=size:L" \
+  -f body="工場（${TEMPLATE}#${ISSUE}）で作ったサービスの、最初のメモです。企画AIが清書して、そのまま実装まで進めます。最初の画面を一から作る大きい作業なので size:L（強いモデル）にしています。見た目は docs/design.md のとおりに作ってください。" -q .number 2>&1) \
   || fail "最初のIssueを作れませんでした"
 note "✅ 最初のIssue：https://github.com/$NEW/issues/$first（自動で企画に回る）"
 [ -n "$vercel_note" ] && note "$vercel_note"

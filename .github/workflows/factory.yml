@@ -74,10 +74,66 @@ jobs:
           { echo "name=$name"; echo "stack=$stack"; echo "desc<<DESC_END"; echo "$desc"; echo "DESC_END";
             echo "memo<<MEMO_END"; printf '%s\n' "$MEMO"; echo "MEMO_END"; } >> "$GITHUB_OUTPUT"
 
+  # 見た目の段（Next.js のときだけ）：強いモデルが、オーナーの見た目の基準（.github/factory/design-guide.md）を読んで、
+  # このサービスだけのデザイン仕様（docs/design.md）を書く。実装AIは、この仕様どおりに最初の画面を作る。
+  # AIはファイルを書くだけ（鍵は持たない）。書いた物は build ジョブが形を確かめてから使う
+  design:
+    needs: plan
+    if: needs.plan.outputs.stack == 'nextjs'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: anthropics/claude-code-action@v1
+        id: claude
+        continue-on-error: true
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            あなたはトップクラスのプロダクトデザイナーです。新しく作るWebサービスの、デザイン仕様を書いてください。
+            - サービス名：${{ needs.plan.outputs.name }}
+            - 説明：${{ needs.plan.outputs.desc }}
+            - 元のメモ：${{ needs.plan.outputs.memo }}
+
+            手順：
+            1. `.github/factory/design-guide.md`（オーナーの見た目の基準と、実際の判定）を全部読む
+            2. `docs/design.md`（今の雛形。書き方の形）を読む
+            3. `factory-design.md` に、このサービスのデザイン仕様を書く（ほかのファイルは作らない）。中身：
+               - 1行目は `# デザイン仕様`
+               - 体験の核（最初の5秒で何を感じさせるか。動きと手触りで1文）
+               - 構図（PCとスマホ。何をどこに置くか。PCは 1024〜2560 の幅で崩れない割り方、スマホは最初の1画面に主役が入る）
+               - 色（4〜6色に名前と値と用途。表で）、文字（Google Fonts にある書体で、見出しと本文の2役。大きさの段）
+               - 動き（何が・いつ・何秒で・どんな曲線で。生きている映像は1か所だけ。canvas か WebGL で作れる物）
+               - 部品（ボタン・入力欄など、標準の部品をそのまま並べない作り方）と、画面の文言（短く、日本語）
+               - 避けること（基準の「AIが作った感の正体」から、このサービスで特に気をつける物）
+               誰が読んでも同じ画面が作れる具体さで書く。依存パッケージを増やさずに、Next.js と素の CSS・canvas・WebGL で作れる物にする。
+               構図・色・動きは、このサービスの題材から決める（ほかのサービスと同じ見た目にしない）
+          claude_args: '--model opus --max-turns 15 --allowedTools "Read,Write"'
+      - name: 書いた物を取っておく
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/design"
+          if [ -f factory-design.md ] && [ ! -L factory-design.md ]; then cp factory-design.md "$RUNNER_TEMP/design/design.md"; fi
+          touch "$RUNNER_TEMP/design/.keep"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: factory-design
+          path: ${{ runner.temp }}/design
+          include-hidden-files: true
+          retention-days: 3
+
   build:
     # 安全のため別のジョブにする：強い鍵（FACTORY_TOKEN）は、AIが動いたジョブには渡さない。スクリプトは main の物を動かす。
     # 強い鍵は Environment「factory」（main からだけ使える）に置く。AIが作ったブランチのワークフローからは読めない
-    needs: plan
+    needs: [plan, design]
+    # 見た目の段が飛ばされた（Python）・失敗した（雛形のまま進める）ときも作る
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
     environment: factory
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -86,6 +142,12 @@ jobs:
       issues: write
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        if: needs.design.result == 'success'
+        continue-on-error: true
+        with:
+          name: factory-design
+          path: ${{ runner.temp }}/design
       - name: 鍵があるか確かめる
         env:
           HAS_FACTORY: ${{ secrets.FACTORY_TOKEN != '' }}
@@ -115,6 +177,7 @@ jobs:
           V_AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
+          DESIGN_FILE: ${{ runner.temp }}/design/design.md
         run: .github/scripts/factory.sh
 
   # AIが名前を決められなかったときも、黙って終わらない

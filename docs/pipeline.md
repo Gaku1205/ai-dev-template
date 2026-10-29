@@ -159,12 +159,13 @@ AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions
 ai-dev-template に、タイトルが **`新サービス：`** で始まるIssueを書くと（例：「新サービス：毎朝の天気と予定を1枚で見られるページ」）、`factory.yml` が新しいサービスのリポジトリを作って、いつものパイプラインに渡す。テンプレート本体で、オーナーが書いたIssueでだけ動く。
 
 1. AIが、名前（英語の小文字と -）・言語（画面のあるWebなら Next.js、処理が中心なら Python）・1行の説明を決める（AIは名前を書くだけで、鍵は持たない）
-2. `factory.sh` が、テンプレートからリポジトリを作る（同じ名前があれば `-2` …）
-3. パイプラインの秘密（`CLAUDE_CODE_OAUTH_TOKEN`・`PIPELINE_APP_PRIVATE_KEY`・`PIPELINE_TOKEN`・`NTFY_TOPIC`）と変数（`PIPELINE_APP_ID`・`NOTIFY_EVENTS`・`AGENT_DESK_URL`）を、テンプレートの物から写す
-4. Next.js で `VERCEL_TOKEN` があれば、Vercel のプロジェクトを作ってつなぐ
-5. `CLAUDE.md` の1行目・仕様書の「目的」・README に説明を書き、Python なら見本（`examples/python`）に切り替えて（公開先は none）、main に push する。この push で Bootstrap が動く
-6. main を守る（PRと CI の `check` を必須にする。管理者は通れる）
-7. 1行のメモを、新しいリポジトリの最初のIssueにする（自動で企画に回る）。元のIssueに結果を書いて閉じる
+2. **見た目の段**（Next.js のとき）：強いモデル（opus）が、オーナーの見た目の基準（`.github/factory/design-guide.md`）を読んで、このサービスだけのデザイン仕様（`docs/design.md`）を書く。構図・色・動きは題材から決める（ほかのサービスと同じ見た目にしない）。形が違えば雛形のまま進める
+3. `factory.sh` が、テンプレートからリポジトリを作る（同じ名前があれば `-2` …）
+4. パイプラインの秘密（`CLAUDE_CODE_OAUTH_TOKEN`・`PIPELINE_APP_PRIVATE_KEY`・`PIPELINE_TOKEN`・`NTFY_TOPIC`）と変数（`PIPELINE_APP_ID`・`NOTIFY_EVENTS`・`AGENT_DESK_URL`）を、テンプレートの物から写す
+5. Next.js で `VERCEL_TOKEN` があれば、Vercel のプロジェクトを作ってつなぐ
+6. `CLAUDE.md` の1行目・仕様書の「目的」・README に説明を書き、見た目の段のデザイン仕様を入れ、Python なら見本（`examples/python`）に切り替えて（公開先は none）、main に push する。この push で Bootstrap が動く
+7. main を守る（PRと CI の `check` を必須にする。管理者は通れる）
+8. 1行のメモを、新しいリポジトリの最初のIssueにする（自動で企画に回る。最初の画面を一から作るので `size:L`＝強いモデルで実装する）。元のIssueに結果を書いて閉じる
 
 テンプレートの受付（intake）は、`新サービス：` のIssueを企画に回さない。
 
