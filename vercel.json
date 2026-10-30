@@ -2,7 +2,10 @@
   "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ':(exclude).github' ':(exclude)docs/pipeline.md'",
   "git": {
     "deploymentEnabled": {
-      "claude/*": false
+      "claude/*": false,
+      "claude/**": false,
+      "pipeline-sync/*": false,
+      "pipeline-sync/**": false
     }
   }
 }
