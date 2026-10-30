@@ -156,4 +156,18 @@ CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-r
 assert_contains "やり直しが2回を超えたら人間に回す" "$(labels_of 58)" "ai:stuck"
 assert_eq "マージされない" "" "$(merged)"
 
+echo "== レビューAIがエラーで終わったが、結果のコメントは書けている：その結果で進める（マージ）"
+init_state "$base"
+state_py "
+s['comments'].append({'id':1,'issue':'58','body':'## Code review\\n\\nNo issues found.','user':{'login':'github-actions[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})"
+CONCLUSION=failure HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+assert_eq "マージされる" "58" "$(merged)"
+assert_not_contains "やり直しにしない" "$(labels_of 58)" "ai:retry"
+
+echo "== レビューAIがエラーで終わり、結果のコメントも無い：やり直し"
+init_state "$base"
+CONCLUSION=failure HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+assert_contains "ai:retry" "$(labels_of 58)" "ai:retry"
+assert_eq "マージされない" "" "$(merged)"
+
 finish
