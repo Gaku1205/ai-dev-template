@@ -119,7 +119,7 @@ init_state "$base"
 state_py "
 s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\n1 issues found.','user':{'login':'claude[bot]'},'created_at':'$(ago 10)','updated_at':'$(ago 10)'})
 s['comments'].append({'id':2,'issue':'58','body':'## Code review\n\nNo issues found.','user':{'login':'claude[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})
-s['review_comments']=[{'user':{'login':'claude[bot]'},'original_commit_id':'abc','created_at':'$(ago 10)','body':'説明が足りない'}]"
+s['review_comments']=[{'user':{'login':'claude[bot]'},'original_commit_id':'abc','created_at':'$(ago 11)','body':'説明が足りない'}]"
 CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
 assert_eq "マージされる" "58" "$(merged)"
 
