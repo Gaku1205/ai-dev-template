@@ -15,3 +15,74 @@ body {
   margin: 0 auto;
   padding: 48px 20px;
 }
+
+.breathing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+}
+
+.breathing-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 240px;
+  height: 240px;
+}
+
+.breathing-light {
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  background: var(--text);
+  transform: scale(var(--light-scale));
+  opacity: var(--light-opacity);
+}
+
+.breathing-text {
+  min-height: 96px;
+  text-align: center;
+  word-break: auto-phrase;
+}
+
+.breathing-text p {
+  margin: 0;
+}
+
+.breathing-phase {
+  font-size: 28px;
+}
+
+.breathing-sub {
+  margin-top: 6px;
+  font-size: 13.5px;
+  opacity: 0.7;
+}
+
+.breathing-done {
+  font-size: 20px;
+}
+
+.breathing-button {
+  padding: 10px 24px;
+  border: 1px solid var(--text);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.breathing-button:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .breathing-light {
+    transform: scale(0.65);
+    opacity: 0.6;
+  }
+}
