@@ -202,4 +202,19 @@ PY2
 )
 assert_eq "factory.yml のデザイン部門" "bash=node .claude/skills/taste-skill/scripts/draw.mjs:*,ro-first,chmod" "$result"
 
+echo "== 「新サービス：」のIssue：テンプレート自身の企画・実装には回さない（工場が受け持つ）"
+result=$(python3 - "$WORKFLOWS" <<'PY2'
+import sys, yaml
+w = sys.argv[1]
+out = []
+for f, job in (("claude-plan.yml", "plan"), ("claude-implement.yml", "implement")):
+    cond = yaml.safe_load(open(f"{w}/{f}"))["jobs"][job]["if"]
+    out.append(f"{job}:" + ("guarded" if "is_template" in cond and "新サービス：" in cond and "新サービス:" in cond else "open"))
+fj = yaml.safe_load(open(f"{w}/claude-plan.yml"))["jobs"].get("factory-issue")
+out.append("factory-issue:" + ("yes" if fj and "is_template" in fj["if"] else "no"))
+print(",".join(out))
+PY2
+)
+assert_eq "企画・実装は受けず、ラベルを外す" "plan:guarded,implement:guarded,factory-issue:yes" "$result"
+
 finish

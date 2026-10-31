@@ -15,7 +15,10 @@ on:
 
 jobs:
   implement:
-    if: github.event.label.name == 'ai:implement'
+    # テンプレート本体の「新サービス：」のIssueは工場（factory.yml）が受け持つ。ラベルが付いても、テンプレート自身には作らない
+    if: >-
+      github.event.label.name == 'ai:implement' &&
+      !(github.event.repository.is_template && (startsWith(github.event.issue.title, '新サービス：') || startsWith(github.event.issue.title, '新サービス:')))
     runs-on: ubuntu-latest
     outputs:
       outcome: ${{ steps.claude.outcome }}
