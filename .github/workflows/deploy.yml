@@ -2,6 +2,8 @@
 #   aws-apprunner   Docker のイメージを作り、AWS App Runner で動かす（Web・API。言語を選ばない）
 #   github-release  OS ごとに配布物（exe など）を作り、GitHub Releases に置く（外部のアカウント不要）
 #   expo            スマホアプリを Expo（EAS）で配る
+#   github-pages    静的なサイトを作って GitHub Pages に出す（build：作るコマンド、既定 npm run build。dir：出すフォルダ、既定 out。
+#                   Next.js なら next.config で output: "export" にしておく。Settings → Pages の Source を「GitHub Actions」にしておく）
 #   vercel          ここでは何もしない（deploy-vercel.yml が、マージが落ち着いてから最新の main を1回だけ公開する。VERCEL_TOKEN が無ければ Vercel が自分で公開する。pipeline.json が無いときの既定）
 # 結果はコミットの状態（deploy/<種類>）に書き、スマホに通知する。パイプラインの更新だけのコミットは公開しない。
 name: Deploy
@@ -38,6 +40,8 @@ jobs:
       release_os: ${{ steps.plan.outputs.release_os }}
       expo: ${{ steps.plan.outputs.expo }}
       expo_config: ${{ steps.plan.outputs.expo_config }}
+      pages: ${{ steps.plan.outputs.pages }}
+      pages_config: ${{ steps.plan.outputs.pages_config }}
     steps:
       - id: sha
         env:
@@ -215,3 +219,54 @@ jobs:
         run: .github/scripts/deploy-status.sh expo success "Expo で配りました" "https://expo.dev"
       - if: failure() && steps.token.outcome == 'success'
         run: .github/scripts/deploy-status.sh expo failure "Expo での配布が失敗しました" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+  pages:
+    needs: plan
+    if: needs.plan.outputs.pages == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      statuses: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SHA: ${{ needs.plan.outputs.sha }}
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - run: .github/scripts/deploy-status.sh pages pending "GitHub Pages に公開中"
+      - name: 実行環境をそろえる
+        uses: ./.github/actions/setup-stack
+      - name: サイトを作る
+        id: build
+        env:
+          CONFIG: ${{ needs.plan.outputs.pages_config }}
+        run: |
+          cmd=$(jq -r '.build // "npm run build"' <<< "$CONFIG")
+          dir=$(jq -r '.dir // "out"' <<< "$CONFIG")
+          echo "作る：$cmd（出すフォルダ：$dir）"
+          bash -eo pipefail -c "$cmd"
+          if [ ! -f "$dir/index.html" ]; then
+            echo "::error::$dir/index.html がありません（Next.js なら next.config で output: \"export\" にする）"
+            exit 1
+          fi
+          touch "$dir/.nojekyll"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: ${{ steps.build.outputs.dir }}
+      - id: deploy
+        uses: actions/deploy-pages@v4
+      - if: success()
+        run: .github/scripts/deploy-status.sh pages success "GitHub Pages に公開しました" "${{ steps.deploy.outputs.page_url }}"
+      - if: failure()
+        run: .github/scripts/deploy-status.sh pages failure "GitHub Pages への公開が失敗しました（Settings → Pages の Source が「GitHub Actions」か確かめる）" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

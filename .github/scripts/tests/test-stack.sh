@@ -78,4 +78,12 @@ assert_eq "公開先なし" "" "$(s stack_deploy_kinds)"
 assert_eq "実行環境なし" "" "$(s stack_tools)"
 
 cd /; rm -rf "$dir"
+echo "== github-pages：dir は相対のフォルダだけ（.. は使えない）"
+echo '{"checks":[{"run":"npm run lint"}],"deploy":[{"kind":"github-pages","dir":"out"}]}' > pipeline.json
+assert_eq "正しい形" "" "$(s stack_validate)"
+echo '{"checks":[{"run":"npm run lint"}],"deploy":[{"kind":"github-pages","dir":"../secret"}]}' > pipeline.json
+assert_contains ".. は使えない" "$(s stack_validate)" "github-pages の build"
+echo '{"checks":[{"run":"npm run lint"}],"deploy":[{"kind":"github-pages","build":3}]}' > pipeline.json
+assert_contains "build は文字" "$(s stack_validate)" "github-pages の build"
+
 finish

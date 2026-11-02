@@ -55,6 +55,16 @@ assert_contains "OS の一覧" "$out" 'release_os=["windows-latest","macos-lates
 assert_contains "App Runner の設定" "$out" '"service":"hello-api"'
 assert_contains "Expo は動かさない" "$out" "expo=false"
 
+echo "== 計画：GitHub Pages（作るコマンドと出すフォルダは既定がある）"
+echo '{"checks":[{"run":"npm run lint"}],"deploy":[{"kind":"github-pages"}]}' > pipeline.json
+out=$(plan "src/app/page.tsx")
+assert_contains "Pages を動かす" "$out" "pages=true"
+assert_contains "Pages の設定" "$out" 'pages_config={"kind":"github-pages"}'
+assert_contains "App Runner は動かさない" "$out" "apprunner=false"
+out=$(plan ".github/workflows/ci.yml")
+assert_contains "パイプラインだけの更新では出さない" "$out" "pages=false"
+echo '{"checks":[{"run":"pytest"}],"deploy":[{"kind":"aws-apprunner","service":"hello-api","port":8000},{"kind":"github-release","os":["windows-latest","macos-latest"],"build":"make","files":"dist/*"}]}' > pipeline.json
+
 echo "== 計画：パイプラインの更新だけのコミットは公開しない"
 out=$(plan "$(printf '.github/workflows/ci.yml\ndocs/pipeline.md')")
 assert_contains "App Runner は動かさない" "$out" "apprunner=false"

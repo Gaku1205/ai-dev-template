@@ -22,7 +22,7 @@ STACK_FILE="${STACK_FILE:-pipeline.json}"
 
 # 確認コマンドに使えない文字：AIの許可の書き方（--allowedTools "Bash(..),Bash(..)"）を壊すので
 STACK_BAD_CHARS='[",()`$\\]'
-STACK_KINDS='vercel aws-apprunner github-release expo none'
+STACK_KINDS='vercel github-pages aws-apprunner github-release expo none'
 STACK_TOOL_NAMES='node python go java dotnet'
 
 _stack_has_file() { [ -f "$STACK_FILE" ]; }
@@ -63,6 +63,7 @@ stack_validate() {
       (.deploy // [] | if type != "array" then ["deploy は配列にする"] else
         [.[] | select((.kind | type) != "string" or (.kind as $k | $K | index($k) | not)) | "deploy の種類「\(.kind // "なし")」は知らない（使えるのは \($kinds)）"]
         + [.[] | select(.kind == "aws-apprunner") | select((.service | type) != "string" or (.service | test("^[a-z0-9][a-z0-9_-]{3,39}$") | not)) | "aws-apprunner の service（サービス名）は小文字の英数字と - _ で4〜40文字（イメージの置き場 ECR の名前にも使うので、大文字は使えない）"]
+        + [.[] | select(.kind == "github-pages") | select(((.build // "npm run build") | type) != "string" or ((.dir // "out") | type) != "string" or ((.dir // "out") | test("^[A-Za-z0-9_][A-Za-z0-9_./-]*$") | not) or ((.dir // "out") | test("\\.\\.")) ) | "github-pages の build（作るコマンド。既定 npm run build）と dir（公開するフォルダ。既定 out。.. は使えない）は文字で書く"]
         + [.[] | select(.kind == "github-release") | select((.build | type) != "string" or (.files | type) != "string") | "github-release には build（作るコマンド）と files（置くファイル。例：dist/*）が要る"]
         + [.[] | select(.kind == "github-release") | (.os // ["windows-latest"]) | select(type != "array") | "github-release の os は配列にする（例：[\"windows-latest\", \"macos-latest\"]）"]
         + [.[] | select(.kind == "github-release") | (.os // ["windows-latest"]) | select(type == "array") | .[] | select(test("^(ubuntu|windows|macos)-[a-z0-9.]+$") | not) | "github-release の os「\(.)」は GitHub のランナー名にする（ubuntu-latest / windows-latest / macos-latest）"] end)
