@@ -30,7 +30,7 @@
 
 最初の1回だけ準備（[docs/pipeline.md「工場」](docs/pipeline.md#工場1行から新しいサービスを作る)）をしたら、あとはこのリポジトリに **「新サービス：〜」というタイトルのIssueを1行書くだけ**。リポジトリの作成・鍵の登録・main の保護・Vercel・最初のIssueまで自動で進み、そこからはいつものパイプラインが実装・公開まで進める。下の「使い方」は、手で1つずつ作るときの手順。
 
-見た目は、デザイン部門のAIが使う場面を分析して決める。道具は frontend-design・[taste-skill](https://github.com/Leonxlnx/taste-skill)・[Web Interface Guidelines](https://github.com/vercel-labs/web-interface-guidelines)・[awesome-design-md](https://github.com/VoltAgent/awesome-design-md)（仕組みだけを参考にする）、作品や体験のサイトなら [GSAP](https://gsap.com)・[Lenis](https://github.com/darkroomengineering/lenis) も入れる（どれも元のライセンスのまま同梱。`.claude/skills/` と `.github/factory/references/`）。
+見た目は、デザイン部門のAIが使う場面を分析して決める。道具は frontend-design・[taste-skill](https://github.com/Leonxlnx/taste-skill)・[Web Interface Guidelines](https://github.com/vercel-labs/web-interface-guidelines)・[awesome-design-md](https://github.com/VoltAgent/awesome-design-md)（仕組みだけを参考にする）、作品や体験のサイトなら [GSAP](https://gsap.com)・[Lenis](https://github.com/darkroomengineering/lenis) も入れる（どれも元のライセンスのまま同梱。`.claude/skills/` と `.github/factory/references/`）。文字だけで決めず、主な場面の試作を描いて本物のブラウザで撮り、画像を見て直してから仕様にする（その画像は `docs/design-ref/` に入る）。実装AIも、作った画面を撮って目標の絵と見比べて直す（`docs/pipeline.md`「撮って見て直す」）。
 
 ## 使い方
 
