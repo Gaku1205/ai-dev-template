@@ -1,6 +1,7 @@
 # 言語と公開先のしくみの自己テスト（テンプレート本体だけ）：見本（examples/python）を、本物の GitHub のランナーで通す。
 #   python   実行環境をそろえる（setup-stack）→ 確認コマンド（run-checks）
 #   exe      Windows・Mac で pipeline.json の github-release の build を動かし、できた exe を動かして確かめる（Artifacts から落とせる）
+#   game     ゲームの見本（examples/game）を Windows で確認し、npm run dist で exe（Electron）ができるか確かめる（Artifacts から落とせる）
 #   docker   App Runner に載せるのと同じイメージを作り、起動して /health と /hello に答えるか確かめる（AWS には出さない）
 # setup-stack・stack.sh・run-checks.sh・公開のスクリプト・見本を変えたPRで動く。手でも動かせる。
 name: Stack Selftest
@@ -69,6 +70,35 @@ jobs:
         with:
           name: hello-${{ matrix.os }}
           path: examples/python/dist/*
+          retention-days: 7
+
+  game:
+    if: github.event.repository.is_template
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - name: 実行環境をそろえる
+        uses: ./.github/actions/setup-stack
+        with:
+          dir: examples/game
+      - name: 確認
+        shell: bash
+        working-directory: examples/game
+        run: '"$GITHUB_WORKSPACE/.github/scripts/run-checks.sh"'
+      - name: exe を作る（deploy.yml と同じく、pipeline.json の build）
+        shell: bash
+        working-directory: examples/game
+        run: |
+          build=$(jq -r '.deploy[] | select(.kind == "github-release") | .build' pipeline.json)
+          echo "作る：$build"
+          bash -eo pipefail -c "$build"
+          ls -la release
+          [ -f release/Game.exe ] || { echo "::error::release/Game.exe ができていない"; exit 1; }
+      - uses: actions/upload-artifact@v6
+        with:
+          name: game-windows
+          path: examples/game/release/*.exe
           retention-days: 7
 
   docker:

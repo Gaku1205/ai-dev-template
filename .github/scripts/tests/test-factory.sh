@@ -146,6 +146,41 @@ assert_contains "CLAUDE.md：コードの書き方も Python" "$claude" "ロジ�
 assert_contains "仕様書の技術の欄" "$(file_in $r docs/spec.md)" "Python（FastAPI）、テストは pytest"
 assert_not_contains "Python では Vercel を呼ばない" "$(cat "$T/calls.log")" "curl"
 
+echo "== ゲーム：雛形（TypeScript・Vite・Electron の exe）に切り替え、公開先は GitHub Releases の Windows の exe。Vercel は使わない"
+run_factory star-drift game "流れ星を集める短いアクションゲーム" VERCEL_TOKEN=v S_VERCEL_TOKEN=vt > /dev/null
+r=o/star-drift
+assert_contains "package.json はゲームの物" "$(file_in $r package.json)" '"dist": "npm run build && electron-builder --win portable --publish never"'
+assert_contains "入口は src/main.ts" "$(file_in $r src/main.ts)" "canvas"
+assert_contains "exe のウィンドウ" "$(file_in $r electron/main.cjs)" "loadFile"
+assert_eq "公開先は Windows の exe" '[{"kind":"github-release","os":["windows-latest"],"build":"npm run dist","files":"release/*.exe"}]' "$(file_in $r pipeline.json | jq -c .deploy)"
+assert_eq "Next.js の物は消える" "" "$(file_in $r next.config.ts)"
+assert_eq "見本は持ち込まない" "" "$(file_in $r examples/game/package.json)"
+assert_contains "dist・release は入れない" "$(file_in $r .gitignore)" "release/"
+claude=$(file_in $r CLAUDE.md)
+assert_contains "CLAUDE.md：ゲーム" "$claude" "Electron で Windows の exe にして配るゲーム。"
+assert_not_contains "CLAUDE.md：Next.js の注意の行は消す" "$claude" "Next.js固有の注意"
+assert_contains "AGENTS.md：撮り方" "$(file_in $r AGENTS.md)" "/?scene=play"
+assert_contains "仕様書の技術の欄" "$(file_in $r docs/spec.md)" "Electron で Windows の exe にして GitHub Releases で配る"
+assert_not_contains "Vercel を呼ばない" "$(cat "$T/calls.log")" "curl"
+assert_not_contains "Vercel の鍵も写さない" "$(cat "$T/calls.log")" "secret VERCEL_TOKEN"
+assert_contains "結果に exe の置き場を書く" "$(cat "$T/comment.txt")" "https://github.com/o/star-drift/releases/latest"
+
+echo "== ゲーム：デザイン担当が作ったゲーム（入口は src/main.ts、index.html も）を入れる"
+{ echo "# デザイン仕様"; for i in $(seq 1 60); do echo "- 色や文字の決まり その$i：夜の地に光る数字"; done; } > "$T/design-ok.md"
+G="$T/game-site"; rm -rf "$G"; mkdir -p "$G/src/lib" "$G/public"
+echo 'import "./lib/stars";' > "$G/src/main.ts"
+echo 'export const n = 1;' > "$G/src/lib/stars.ts"
+echo '<!doctype html><title>STAR DRIFT</title><canvas id="game"></canvas>' > "$G/index.html"
+touch "$G/.checks-ok"
+run_factory star-site game "説明" DESIGN_FILE="$T/design-ok.md" SITE_DIR="$G" > /dev/null
+assert_contains "ゲームの本体が入る" "$(file_in o/star-site src/lib/stars.ts)" "export const n"
+assert_contains "index.html も入る" "$(file_in o/star-site index.html)" "STAR DRIFT"
+assert_eq "雛形の src/lib は置き換わる" "" "$(file_in o/star-site src/lib/clamp.ts)"
+assert_contains "入れたと書く" "$(cat "$T/comment.txt")" "確認コマンドも通った"
+rm "$G/src/main.ts"
+run_factory star-noentry game "説明" DESIGN_FILE="$T/design-ok.md" SITE_DIR="$G" > /dev/null
+assert_contains "入口が無ければ入れない" "$(cat "$T/comment.txt")" "src/main.ts がありません"
+
 echo "== 説明に記号があっても壊れない（& / | \\ など）"
 run_factory odd-chars nextjs 'A&B / C|D \ E' > /dev/null
 assert_contains "そのまま書かれる" "$(file_in o/odd-chars CLAUDE.md | sed -n 3p)" 'odd-chars：A&B / C|D \ E。'
@@ -155,7 +190,7 @@ run_factory "Bad_Name" nextjs "x" > /dev/null
 assert_not_contains "作らない" "$(cat "$T/calls.log" 2> /dev/null)" "generate"
 assert_contains "理由を書く" "$(cat "$T/comment.txt")" "名前「Bad_Name」"
 run_factory good-name ruby "x" > /dev/null
-assert_contains "知らない言語" "$(cat "$T/comment.txt")" "nextjs か python"
+assert_contains "知らない言語" "$(cat "$T/comment.txt")" "nextjs・python・game のどれか"
 run_factory good-name nextjs 'x $(id)' > /dev/null
 assert_contains "危ない記号" "$(cat "$T/comment.txt")" "記号"
 
@@ -183,7 +218,7 @@ assert_not_contains "決まった物以外は入れない" "$calls" "left-pad"
 pkg=$(file_in o/libs-ok package.json)
 assert_contains "package.json に入って push される" "$pkg" "// lenis@^1"
 assert_contains "結果に書く" "$(cat "$T/comment.txt")" "使った道具を入れた：@gsap/react@^2 gsap@^3 lenis@^1"
-assert_contains "入れなかった物も書く" "$(cat "$T/comment.txt")" "決まった物（gsap・@gsap/react・lenis・motion・three・@react-three/fiber・@react-three/drei）以外"
+assert_contains "入れなかった物も書く" "$(cat "$T/comment.txt")" "決まった物（gsap・@gsap/react・lenis・motion・three・@react-three/fiber・@react-three/drei・pixi.js）以外"
 run_factory libs-nodesign nextjs "説明" DESIGN_FILE="$T/design-bad.md" LIBS_FILE="$T/libs.txt" > /dev/null
 assert_not_contains "デザイン仕様が雛形のままなら入れない" "$(cat "$T/calls.log")" "npm install"
 run_factory libs-py python "説明" LIBS_FILE="$T/libs.txt" > /dev/null

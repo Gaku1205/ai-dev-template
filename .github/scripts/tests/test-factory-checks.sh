@@ -33,4 +33,10 @@ assert_eq "失敗した所で止める" "run typecheck run lint" "$(paste -sd ' 
 assert_contains "記録を残す" "$(cat "$W/factory-checks.log")" "Type error: src/app/page.tsx"
 assert_contains "何が通らなかったか書く" "$out" "npm run lint が通りませんでした"
 
+echo "== package.json に無い確認コマンドは飛ばす（ゲームの雛形には lint が無い）"
+echo '{"scripts":{"typecheck":"x","test":"x","build":"x"}}' > "$W/package.json"
+out=$(run)
+assert_eq "出力" "site=true ok=true" "$(paste -sd ' ' "$T/out")"
+assert_eq "lint を飛ばす" "run typecheck run test run build" "$(paste -sd ' ' "$T/npm.log")"
+
 finish

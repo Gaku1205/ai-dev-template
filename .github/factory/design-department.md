@@ -38,7 +38,7 @@
 - 写真：`.github/scripts/fetch-photos.sh "<英語の検索語>" <枚数>` で、自由に使える写真（CC0・パブリックドメイン）が `public/photos/` に入る（`/photos/…` で使える）。Read で見て、良い物だけ使う。使わない写真は新しいリポジトリには入らない。検索語は何回変えてもよい（合わせて 20 枚まで）
 - 実在のページの画面をサイトの画像として載せるとき（作品紹介など）は、`node .github/scripts/shot.mjs --scale 2 --format webp --out public/<置き場> <URL>` で撮る（高精細な画面でもぼやけず、軽い）。スマホの画面はスマホの輪郭、PC の画面はブラウザの枠に入れて見せると、何の画面かが一目で分かる
 - シェーダー・canvas・SVG は、道具なしで書いてよい
-- 動き・3D の道具：`.github/scripts/factory-add-lib.sh <名前>` で入る（gsap・@gsap/react・lenis・motion・three・@react-three/fiber・@react-three/drei）。ほかの道具は入れられない
+- 動き・3D の道具：`.github/scripts/factory-add-lib.sh <名前>` で入る（gsap・@gsap/react・lenis・motion・three・@react-three/fiber・@react-three/drei・pixi.js）。ほかの道具は入れられない
 - 触らない物：`.github/`、`package.json` を手で書き換えること（道具は上のコマンドだけで入れる）、`next.config.*`、`CLAUDE.md`、`AGENTS.md`。外のサイトの画像・フォントを直接読み込まない（写真は `public/` に入れて使う）
 
 ### 4. 撮って、実例と見比べて直す（最低3回）
@@ -54,3 +54,14 @@
 - `factory-context.md`：使う人と使う場面を、2〜4行の箇条書きで
 - `factory-todo.md`（あれば）：時間が足りず作れなかった物を、1行1つ `- ` で最大3個（あとで Issue になる）
 - `factory-pages.txt`（あれば）：`/` 以外のページのパスを1行1つ（最後の画像を撮る）
+
+## ゲームのとき
+
+種類が「ゲーム」のときは、上の進め方を次のように読み替える（外さないことは同じ。390px のスマホは要らない。1280×720 と 1920×1080 の画面で成立させる）。
+
+- **目標**：遊んだ人が「最後までやりたい」と思い、録画して人に見せたくなるゲーム。小さく、磨き込む（作りかけの大作より、手触りの良い1本）
+- **実例を集める**：近いジャンルの、評価の高いゲーム（Steam・itch.io の人気作など）の画面写真やトレーラーの静止画を WebSearch で探して見る。Web で遊べる物は撮る。「何が気持ちいいか」（操作への反応・当たった時の揺れや光・音・テンポ・難しさの上がり方）を `board.md` に書く
+- **作る**：`src/` に、タイトル → 遊ぶ → 終わり（結果・もう一度）の流れを全部作る。キーボード（と、できればゲームパッド）で遊べる。音は Web Audio API で作る（外の音のファイルは使わない）。60fps で滑らかに動くこと。描画は Canvas 2D か WebGL（`pixi.js`・`three` も入れられる）
+- **撮れるようにする**：`/?scene=play` のように URL で途中の場面を直接開けるようにし、`factory-pages.txt` に書く（タイトルだけでなく、遊んでいる最中の一番派手な場面が最後の画像に残るように）
+- **撮って直す**：`npm run build` → `node .github/scripts/shot.mjs --serve --widths 1280,1920 / /?scene=play`。`--steps` でキーを押した後も撮れる
+- exe は `npm run dist` で、GitHub の Windows のランナーが作る（ここでは作らない）。`electron/`・`vite.config.ts` は変えない

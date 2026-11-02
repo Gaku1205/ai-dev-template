@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 工場の design ジョブ：デザイン担当（AI）が作った画面で、確認コマンドを AI とは別にもう一度動かす。
+# 工場の design ジョブ：デザイン担当（AI）が作った画面で、確認コマンド（package.json にある typecheck・lint・test・build）を AI とは別にもう一度動かす。
 #   出力（GITHUB_OUTPUT）：site=true|false（src/ を作り変えたか）、ok=true|false（作り変えていて、全部通ったか）
 #   失敗したときは、出力の最後（20KB）を factory-checks.log に書く（直す AI が読む）
 # 環境変数（テスト用）：NPM（既定 npm）
@@ -17,6 +17,8 @@ log=$(mktemp)
 trap 'rm -f "$log"' EXIT
 code=0
 for c in typecheck lint test build; do
+  # package.json に無い物は飛ばす（ゲームの雛形には lint が無い）
+  if [ -f package.json ] && ! jq -e --arg c "$c" '.scripts[$c] != null' package.json > /dev/null 2>&1; then continue; fi
   echo "== npm run $c" >> "$log"
   if ! "$NPM" run "$c" >> "$log" 2>&1; then
     echo "npm run $c が通りませんでした"

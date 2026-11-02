@@ -1,0 +1,32 @@
+{
+  "name": "game",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "ブラウザの技術で作り、Electron で Windows の exe にするゲーム",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "start": "node scripts/serve.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dist": "npm run build && electron-builder --win portable --publish never"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "electron": "^45",
+    "electron-builder": "^26",
+    "typescript": "^5",
+    "vite": "^8",
+    "vitest": "^5"
+  },
+  "build": {
+    "appId": "com.example.game",
+    "productName": "Game",
+    "files": ["dist/**", "electron/**"],
+    "directories": { "output": "release" },
+    "win": { "target": "portable" },
+    "portable": { "artifactName": "${productName}.exe" }
+  }
+}

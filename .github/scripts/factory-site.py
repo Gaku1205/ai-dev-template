@@ -4,7 +4,8 @@
 factory.sh が呼ぶ。AIが書いた物なので、決まった形の物だけを入れる。
 - src/：全部が決まった形でなければ、1つも入れない（一部だけ入れると、ビルドが壊れるため）。
   名前は英数字と . _ - @ ( ) [ ] だけ（. で始まるフォルダ・.. は不可。. で始まるファイル（.gitkeep など）は黙って飛ばす）、拡張子は決まった物、1つ 300KB・合わせて 400 個・4MB まで。
-  src/app/page.tsx が要る。入れるときは、テンプレートの src/ を置き換える
+  入口（SITE_ENTRY。既定 src/app/page.tsx、ゲームは src/main.ts）が要る。入れるときは、テンプレートの src/ を置き換える
+- index.html（ゲームの入口。SITE_DIR の直下にあれば）：100KB までの HTML なら、リポジトリの直下に入れる
 - public/：形が違う物は飛ばす。1つ 10MB・合わせて 150 個・60MB まで。
   public/photos/ の写真は、src/ のどこかで名前が使われている物だけ（使わない写真は入れない）。CREDITS.md はその写真の行だけ残す
 - リンク（シンボリックリンク）は入れない
@@ -16,6 +17,7 @@ import shutil
 import sys
 
 SITE = os.environ.get("SITE_DIR", "")
+ENTRY = os.environ.get("SITE_ENTRY", "src/app/page.tsx")
 DEST = sys.argv[1] if len(sys.argv) > 1 else "."
 SEG = re.compile(r"^[A-Za-z0-9_@()\[\]-][A-Za-z0-9._@()\[\]-]{0,79}$")
 SRC_EXT = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".css", ".json", ".md", ".svg", ".glsl", ".frag", ".vert", ".wgsl"}
@@ -53,8 +55,8 @@ def die(msg):
 src = os.path.join(SITE, "src")
 if not SITE or not os.path.isdir(src) or os.path.islink(src) or os.path.islink(SITE):
     die("src/ がありません")
-if not os.path.isfile(os.path.join(src, "app", "page.tsx")):
-    die("src/app/page.tsx がありません")
+if not ENTRY.startswith("src/") or ".." in ENTRY or not os.path.isfile(os.path.join(SITE, ENTRY)):
+    die(f"{ENTRY} がありません")
 src_files, total = [], 0
 for kind, rel in walk(src):
     if kind == "link":
@@ -115,6 +117,10 @@ for rel in pub_files:
                 f.write("\n".join(keep) + "\n")
         continue
     shutil.copyfile(os.path.join(pub, rel), target)
+
+index = os.path.join(SITE, "index.html")
+if os.path.isfile(index) and not os.path.islink(index) and os.path.getsize(index) <= 100 * 1024:
+    shutil.copyfile(index, os.path.join(DEST, "index.html"))
 
 summary = f"画面のファイル {len(src_files)} 個"
 if photos:

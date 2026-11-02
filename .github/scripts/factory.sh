@@ -13,7 +13,7 @@
 # 環境変数：
 #   GH_TOKEN（FACTORY_TOKEN：リポジトリを作れる鍵）、TEMPLATE（owner/repo）、ISSUE（元のIssueの番号）、MEMO（1行のメモ）
 #   MEMO_DETAIL（任意）：元のIssueの本文（詳しいメモ：載せたい中身・見た目のスタイルなど）。最初のIssueの本文に添える
-#   APP_NAME・APP_STACK（nextjs か python）・APP_DESC（1行の説明）：AIが決めた物
+#   APP_NAME・APP_STACK（nextjs・python・game）・APP_DESC（1行の説明）：AIが決めた物
 #   S_<名前>：写す秘密の値（S_CLAUDE_CODE_OAUTH_TOKEN など）、V_<名前>：写す変数の値（V_PIPELINE_APP_ID など）
 #   DESIGN_FILE・CONTEXT_FILE・LIBS_FILE（任意）：デザイン担当が書いたデザイン仕様・使う人と場面・入れた道具（1行1つ）
 #   SITE_DIR（任意）：デザイン担当が作った画面（src/ と public/）。確認コマンドが通った印（.checks-ok）があり、形が正しいときだけ入れる
@@ -50,7 +50,7 @@ $(printf -- '- %s\n' "${report[@]}")${gallery}"
 # ---- 0. AIが決めた物の形を確かめる（ここで使う値は、この形の物だけ） ----
 valid_plan() {
   [[ "$APP_NAME" =~ ^[a-z][a-z0-9-]{2,38}$ ]] || { echo "名前「$APP_NAME」は小文字の英数字と - で3〜39文字にする"; return 1; }
-  case "$APP_STACK" in nextjs | python) ;; *) echo "言語「$APP_STACK」は nextjs か python"; return 1 ;; esac
+  case "$APP_STACK" in nextjs | python | game) ;; *) echo "言語「$APP_STACK」は nextjs・python・game のどれか"; return 1 ;; esac
   [ -n "$APP_DESC" ] && [ "${#APP_DESC}" -le 120 ] || { echo "説明は1〜120文字"; return 1; }
   case "$APP_DESC" in *$'\n'* | *'`'* | *'$('*) echo "説明に改行・記号（\` \$( ）は使わない"; return 1 ;; esac
 }
@@ -143,6 +143,10 @@ PY2
   if [ "$APP_STACK" = python ]; then
     "$HERE/factory-python.sh" . || exit 1
   fi
+  # ゲーム：ブラウザの技術で作り、Electron で Windows の exe にする雛形（examples/game）に切り替える
+  if [ "$APP_STACK" = game ]; then
+    "$HERE/factory-game.sh" . || exit 1
+  fi
   # デザイン担当が書いた「使う人・使う場面」を、仕様書の「前提」の「使う人：」に入れる（短い箇条書きだけ）
   if [ -n "${CONTEXT_FILE:-}" ] && [ -f "$CONTEXT_FILE" ] && [ ! -L "$CONTEXT_FILE" ] && [ "$(wc -c < "$CONTEXT_FILE")" -le 2000 ]; then
     CONTEXT_FILE="$CONTEXT_FILE" python3 - <<'PY3'
@@ -166,9 +170,11 @@ PY3
     fi
   fi
   # デザイン担当が作った画面（src/ と public/）。デザイン仕様を使うときで、確認コマンドが通った印があり、形が正しいときだけ入れる
-  if [ "$(cat "$work/design.flag" 2> /dev/null)" = DESIGN=yes ] && [ "$APP_STACK" = nextjs ] && [ -n "${SITE_DIR:-}" ] &&
+  if [ "$(cat "$work/design.flag" 2> /dev/null)" = DESIGN=yes ] && [ "$APP_STACK" != python ] && [ -n "${SITE_DIR:-}" ] &&
     [ -d "$SITE_DIR" ] && [ ! -L "$SITE_DIR" ] && [ -f "$SITE_DIR/.checks-ok" ]; then
-    if result=$(SITE_DIR="$SITE_DIR" python3 "$HERE/factory-site.py" . 2>&1); then
+    entry=src/app/page.tsx
+    [ "$APP_STACK" = game ] && entry=src/main.ts
+    if result=$(SITE_DIR="$SITE_DIR" SITE_ENTRY="$entry" python3 "$HERE/factory-site.py" . 2>&1); then
       echo "SITE=yes $result" > "$work/site.flag"
     else
       echo "SITE=bad $(printf '%s' "$result" | tail -1 | cut -c1-200)" > "$work/site.flag"
@@ -192,7 +198,7 @@ PY3
   fi
   # デザイン担当が入れた動き・3D の道具（GSAP・Lenis・three.js など）。デザイン仕様を使うときだけ、決まった物の中からだけ入れる（factory-libs.sh）
   # （アプリの AI は依存パッケージを足せないので、作るときに工場が入れておく）
-  if [ "$APP_STACK" = nextjs ] && [ "$(cat "$work/design.flag" 2> /dev/null)" = DESIGN=yes ] &&
+  if [ "$APP_STACK" != python ] && [ "$(cat "$work/design.flag" 2> /dev/null)" = DESIGN=yes ] &&
     [ -n "${LIBS_FILE:-}" ] && [ -f "$LIBS_FILE" ] && [ ! -L "$LIBS_FILE" ] && [ "$(wc -c < "$LIBS_FILE")" -le 200 ]; then
     pkgs=()
     while IFS= read -r lib; do
@@ -239,6 +245,7 @@ if [ -n "$vercel_note" ] && [ -n "${S_VERCEL_TOKEN:-}" ]; then
   fi
 fi
 site_flag=$(cat "$work/site.flag" 2> /dev/null)
+[ "$APP_STACK" = game ] && note "🎮 ゲームは Windows の exe（1ファイル）にして、公開のたびに GitHub Releases に置く：https://github.com/$NEW/releases/latest（最初の公開が終わると出る）"
 case "$(cat "$work/design.flag" 2> /dev/null)" in
   DESIGN=yes) note "✅ デザイン担当：実例を集めて撮り、方向を決めて、デザイン仕様（docs/design.md）を書いた" ;;
   DESIGN=bad) note "⚠️ デザイン担当が書いたデザイン仕様の形が違ったので、雛形のままにした" ;;
@@ -252,7 +259,7 @@ ref_line=$(grep '^REF=' "$work/ref.flag" 2> /dev/null | head -1)
 # 結果のコメントに画面の画像を貼る（公開を待たずに、どんな画面かを見られるように）。PC の最初の1画面とスクロールした所、スマホの最初の1画面
 if [ -n "$ref_line" ]; then
   shots=""
-  for want in top-1440.png top-1440-s2.png top-1440-s3.png top-1440-s4.png top-390.png top-390-s2.png; do
+  for want in top-1440.png top-1440-s2.png top-1440-s3.png top-1440-s4.png scene-play-1440.png top-390.png top-390-s2.png; do
     [ -f "$work/app/docs/design-ref/$want" ] || continue
     case "$want" in *-390*) width=260 ;; *) width=720 ;; esac
     shots="${shots}<img src=\"https://raw.githubusercontent.com/${NEW}/main/docs/design-ref/${want}\" width=\"${width}\" alt=\"${want%.png}\"> "
