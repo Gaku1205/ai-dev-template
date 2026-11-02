@@ -218,7 +218,11 @@ for n in (1, 2, 3):
     out.append(f"critic{n}:" + ("ok" if ok else "ng"))
 for n in (1, 2):
     f = steps[ids.index(f"fix{n}")]
-    out.append(f"fix{n}:" + ("ok" if f["if"] == f"steps.judge{n}.outputs.redo == 'true'" else "ng"))
+    # 直しが作業回数を超えて「失敗」でも、直した物は残る。次の審査は conclusion（continue-on-error 後）で決める
+    h = steps[ids.index(f"hide{n + 1}")]
+    ok = (f["if"] == f"steps.judge{n}.outputs.redo == 'true'" and f.get("continue-on-error") is True
+          and h["if"] == f"steps.fix{n}.conclusion == 'success'")
+    out.append(f"fix{n}:" + ("ok" if ok else "ng"))
 j = yaml.safe_load(open(f"{w}/claude-implement.yml"))["jobs"]["implement"]["steps"]
 jid = [st.get("id") for st in j]
 c = j[jid.index("critic")]

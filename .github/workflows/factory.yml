@@ -198,11 +198,12 @@ jobs:
                方向そのものが弱いと言われたら、小手先で直さず、方向から描き直してよい（写真・シェーダー・3D も使ってよい）
             3. `factory-design.md` を、最後の試作に合わせて直す。`factory-libs.txt` も要れば直す
             ほかのファイルは作らない（`factory-critique.md` は消さない・書き換えない）。
-          claude_args: '--model opus --max-turns 70 --allowedTools "Read,Write,Edit,Glob,Grep,Skill,WebSearch,WebFetch,Bash(node .claude/skills/taste-skill/scripts/draw.mjs:*),Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*),Bash(node .github/scripts/shot.mjs:*),Bash(.github/scripts/fetch-photos.sh:*)"'
+          claude_args: '--model opus --max-turns 100 --allowedTools "Read,Write,Edit,Glob,Grep,Skill,WebSearch,WebFetch,Bash(node .claude/skills/taste-skill/scripts/draw.mjs:*),Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*),Bash(node .github/scripts/shot.mjs:*),Bash(.github/scripts/fetch-photos.sh:*)"'
       # 審査役 2 回目：仕様・試作の HTML・前の採点を隠して、画像だけを見せる（作った側の意図を読み込ませない）
       - name: 審査役に見せない物を隠す（2 回目）
         id: hide2
-        if: steps.fix1.outcome == 'success'
+        # 直しは continue-on-error なので、作業回数を超えて「失敗」になっても直した物は残っている。動いたなら審査する
+        if: steps.fix1.conclusion == 'success'
         run: .github/scripts/factory-blind.sh hide
       - uses: anthropics/claude-code-action@v1
         id: critic2
@@ -258,11 +259,11 @@ jobs:
                方向そのものが弱いと言われたら、小手先で直さず、方向から描き直してよい（写真・シェーダー・3D も使ってよい）
             3. `factory-design.md` を、最後の試作に合わせて直す。`factory-libs.txt` も要れば直す
             ほかのファイルは作らない（`factory-critique.md` は消さない・書き換えない）。
-          claude_args: '--model opus --max-turns 70 --allowedTools "Read,Write,Edit,Glob,Grep,Skill,WebSearch,WebFetch,Bash(node .claude/skills/taste-skill/scripts/draw.mjs:*),Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*),Bash(node .github/scripts/shot.mjs:*),Bash(.github/scripts/fetch-photos.sh:*)"'
+          claude_args: '--model opus --max-turns 100 --allowedTools "Read,Write,Edit,Glob,Grep,Skill,WebSearch,WebFetch,Bash(node .claude/skills/taste-skill/scripts/draw.mjs:*),Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*),Bash(node .github/scripts/shot.mjs:*),Bash(.github/scripts/fetch-photos.sh:*)"'
       # 審査役 3 回目（最後の点数を残すだけ。直しには回さない）：仕様・試作の HTML・前の採点を隠して、画像だけを見せる（作った側の意図を読み込ませない）
       - name: 審査役に見せない物を隠す（3 回目）
         id: hide3
-        if: steps.fix2.outcome == 'success'
+        if: steps.fix2.conclusion == 'success'
         run: .github/scripts/factory-blind.sh hide
       - uses: anthropics/claude-code-action@v1
         id: critic3
