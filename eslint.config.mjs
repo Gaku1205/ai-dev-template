@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // 見本（examples/）は、それぞれの pipeline.json の確認コマンドで確かめる
+    "examples/**",
   ]),
 ]);
 
