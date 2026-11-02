@@ -223,6 +223,16 @@ assert_eq "本物の PNG だけが入る" "01-empty-1440.png 01-empty-390.png" \
   "$(git --git-dir="$T/remotes/o/ref-ok.git" ls-tree --name-only main docs/design-ref/ | xargs -n1 basename | sort | xargs)"
 assert_contains "結果に書く（枚数は画像だけ）" "$(cat "$T/comment.txt")" "画面の画像 2 枚を、目標の絵として docs/design-ref/ に入れた"
 assert_contains "最初のIssueで、目標の絵と見比べるよう頼む" "$(cat "$T/calls.log")" "docs/design-ref/ の画像を目標の絵に"
+assert_not_contains "名前が top- でない画像はコメントに貼らない" "$(cat "$T/comment.txt")" "<img"
+R2="$T/ref-top"; rm -rf "$R2"; mkdir -p "$R2"
+for f in top-1440 top-1440-s1 top-1440-s2 top-390 top-1920; do printf '\x89PNG\r\n\x1a\nrest' > "$R2/$f.png"; done
+run_factory ref-top nextjs "説明" DESIGN_FILE="$T/design-ok.md" DESIGN_REF_DIR="$R2" > /dev/null
+comment=$(cat "$T/comment.txt")
+assert_contains "結果のコメントに PC の最初の1画面を貼る" "$comment" '<img src="https://raw.githubusercontent.com/o/ref-top/main/docs/design-ref/top-1440.png" width="720"'
+assert_contains "スクロールした所も" "$comment" "top-1440-s2.png"
+assert_contains "スマホは小さく" "$comment" 'top-390.png" width="260"'
+assert_not_contains "選んだ物だけ（1920 は貼らない）" "$comment" "top-1920.png"
+assert_contains "ほかの画像の場所も書く" "$comment" "https://github.com/o/ref-top/tree/main/docs/design-ref"
 run_factory ref-nodesign nextjs "説明" DESIGN_FILE="$T/design-bad.md" DESIGN_REF_DIR="$R" > /dev/null
 assert_eq "デザイン仕様が雛形のままなら入れない" "" "$(file_in o/ref-nodesign docs/design-ref/01-empty-390.png)"
 assert_not_contains "そのときは目標の絵を頼まない" "$(cat "$T/calls.log")" "design-ref"

@@ -2,7 +2,7 @@
 # main の CI が通ったら少し待ち、その間にまたマージされたら古い方の待ちは止まって、新しい方だけが最新の main を1回公開する。
 # 使うには：Secret の VERCEL_TOKEN（工場と配布が入れる）と、vercel.json の "git": { "deploymentEnabled": false }
 # （Vercel が自分で公開するのを止める）。VERCEL_TOKEN が無ければ何もしない（Vercel が自分で公開する、今までどおりの形）。
-# 待つ分は変数 VERCEL_DEPLOY_DELAY_MIN（既定 10 分）。手で動かしたとき・3時間ごとの確かめでは待たない。
+# 待つ分は変数 VERCEL_DEPLOY_DELAY_MIN（既定 3 分）。手で動かしたとき・3時間ごとの確かめでは待たない。
 name: Deploy Vercel
 
 on:
@@ -48,7 +48,7 @@ jobs:
           DELAY: ${{ vars.VERCEL_DEPLOY_DELAY_MIN }}
           EVENT: ${{ github.event_name }}
         run: |
-          case "$DELAY" in ''|*[!0-9]*) DELAY=10 ;; esac
+          case "$DELAY" in ''|*[!0-9]*) DELAY=3 ;; esac
           [ "$EVENT" != "workflow_run" ] && DELAY=0
           echo "${DELAY} 分待ってから公開します（その間に main が更新されたら、新しい方が公開します）"
           sleep $(( DELAY * 60 ))

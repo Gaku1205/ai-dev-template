@@ -32,6 +32,7 @@ VERCEL_API="${VERCEL_API:-https://api.vercel.com}"
 COPY_SECRETS="CLAUDE_CODE_OAUTH_TOKEN PIPELINE_APP_PRIVATE_KEY PIPELINE_TOKEN NTFY_TOPIC VERCEL_TOKEN"
 COPY_VARS="PIPELINE_APP_ID NOTIFY_EVENTS AGENT_DESK_URL VERCEL_TEAM_ID"
 report=()
+gallery=""
 note() { report+=("$1"); echo "$1"; }
 fail() {
   note "❌ $1"
@@ -42,7 +43,7 @@ say_result() {
   local body
   body="$1
 
-$(printf -- '- %s\n' "${report[@]}")"
+$(printf -- '- %s\n' "${report[@]}")${gallery}"
   GH_TOKEN="${COMMENT_TOKEN:-$GH_TOKEN}" gh api "repos/$TEMPLATE/issues/$ISSUE/comments" -f body="$body" > /dev/null 2>&1 || true
 }
 
@@ -248,6 +249,20 @@ case "$site_flag" in
 esac
 ref_line=$(grep '^REF=' "$work/ref.flag" 2> /dev/null | head -1)
 [ -n "$ref_line" ] && note "✅ 最後に撮った画面の画像 ${ref_line#REF=} 枚を、目標の絵として docs/design-ref/ に入れた"
+# 結果のコメントに画面の画像を貼る（公開を待たずに、どんな画面かを見られるように）。PC の最初の1画面とスクロールした所、スマホの最初の1画面
+if [ -n "$ref_line" ]; then
+  shots=""
+  for want in top-1440.png top-1440-s2.png top-1440-s3.png top-1440-s4.png top-390.png top-390-s2.png; do
+    [ -f "$work/app/docs/design-ref/$want" ] || continue
+    case "$want" in *-390*) width=260 ;; *) width=720 ;; esac
+    shots="${shots}<img src=\"https://raw.githubusercontent.com/${NEW}/main/docs/design-ref/${want}\" width=\"${width}\" alt=\"${want%.png}\"> "
+  done
+  [ -n "$shots" ] && gallery="
+
+## できた画面（デザイン担当が作って撮った物。ほかの画像は [docs/design-ref/](https://github.com/${NEW}/tree/main/docs/design-ref)）
+
+${shots}"
+fi
 libs_line=$(grep '^LIBS=' "$work/libs.flag" 2> /dev/null | head -1)
 [ -n "$libs_line" ] && note "✅ デザイン担当が使った道具を入れた：${libs_line#LIBS=}"
 grep -q '^LIBS_FAILED=' "$work/libs.flag" 2> /dev/null && note "⚠️ 動き・3D の道具を入れられませんでした（npm install が失敗。入れずに進めた）"

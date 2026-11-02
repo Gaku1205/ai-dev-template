@@ -139,7 +139,7 @@ AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions
 
 | `kind` | 公開のしかた | 要る設定 | 書く物 |
 | --- | --- | --- | --- |
-| `vercel` | `deploy-vercel.yml` が、main の CI が通ってから10分（変数 `VERCEL_DEPLOY_DELAY_MIN`）待ち、その間にまたマージされたら新しい方だけが、最新の main を1回だけ本番に公開する（Vercel の無料プランは「1日100回まで」なので、マージのたびに公開しない）。最後に公開に成功したコミットから、パイプラインの物（`.github/`・`docs/pipeline.md`）しか変わっていなければ公開しない。Secret `VERCEL_TOKEN` が無いときは何もせず、Vercel が自分で公開する（今までの形）。`pipeline.json` が無いときの既定 | Vercel でリポジトリを読み込み、`vercel.json` を `"git": { "deploymentEnabled": false }` にし、`ignoreCommand` を消す（Vercel が自分で公開するのを止める。`ignoreCommand` は直前のコミットとの差しか見ないので、まとめて公開すると間の変更を見落として公開が飛ばされる）。`VERCEL_TOKEN` は工場（新しいサービス）と配布（`sync.yml` の vercel-token。`vercel.json` があるリポジトリだけ）が入れる | `VERCEL_TOKEN`（任意）、変数 `VERCEL_TEAM_ID`（チームのとき） |
+| `vercel` | `deploy-vercel.yml` が、main の CI が通ってから3分（変数 `VERCEL_DEPLOY_DELAY_MIN`）待ち、その間にまたマージされたら新しい方だけが、最新の main を1回だけ本番に公開する（Vercel の無料プランは「1日100回まで」なので、マージのたびに公開しない）。最後に公開に成功したコミットから、パイプラインの物（`.github/`・`docs/pipeline.md`）しか変わっていなければ公開しない。Secret `VERCEL_TOKEN` が無いときは何もせず、Vercel が自分で公開する（今までの形）。`pipeline.json` が無いときの既定 | Vercel でリポジトリを読み込み、`vercel.json` を `"git": { "deploymentEnabled": false }` にし、`ignoreCommand` を消す（Vercel が自分で公開するのを止める。`ignoreCommand` は直前のコミットとの差しか見ないので、まとめて公開すると間の変更を見落として公開が飛ばされる）。`VERCEL_TOKEN` は工場（新しいサービス）と配布（`sync.yml` の vercel-token。`vercel.json` があるリポジトリだけ）が入れる | `VERCEL_TOKEN`（任意）、変数 `VERCEL_TEAM_ID`（チームのとき） |
 | `aws-apprunner` | Docker のイメージを作って ECR に置き、App Runner で動かす。最初の公開でサービスを作り、2回目から差し替える。言語を選ばない（Web・API） | 下の「AWS App Runner」 | `service`（サービス名・小文字の英数字と `-` `_`。ECR の名前にも使う）、`port`（既定 8080）、`dockerfile`（既定 `Dockerfile`）、`cpu`（既定 256）、`memory`（既定 512）、`health`（HTTPのヘルスチェックのパス。省くとTCP） |
 | `github-release` | OS ごとに配布物（exe など）を作り、GitHub Releases に置く。ファイル名に OS が付く（`hello.exe` → `hello-windows.exe`）。タグは `build-<日時>-<コミット>` | なし | `build`（作るコマンド）、`files`（置くファイル。例 `dist/*`）、`os`（既定 `["windows-latest"]`。`macos-latest`・`ubuntu-latest` も） |
 | `expo` | スマホアプリを Expo（EAS）で配る。既定は `eas update`（アプリを入れ直さずに中身を更新） | Secret の `EXPO_TOKEN` | `command`（既定 `npx --yes eas-cli@latest update --auto --non-interactive`。ストアに出すなら `eas build --auto-submit ...`） |
@@ -180,7 +180,7 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 5. Next.js で `VERCEL_TOKEN` があれば、Vercel のプロジェクトを作ってつなぐ
 6. `CLAUDE.md` の1行目・仕様書の「目的」・README に説明を書き、デザイン担当が作った画面とデザイン仕様と道具を入れ、Python なら見本（`examples/python`）に切り替えて（公開先は none）、main に push する。この push で Bootstrap が動く
 7. main を守る（PRと CI の `check` を必須にする。管理者は通れる）
-8. 最初のIssueを作る（自動で企画に回る）。デザイン担当が画面を作れていれば、作りきれなかった残り（`factory-todo.md`、3つまで）だけをIssueにする（無ければ作らない）。作れていなければ、1行のメモを最初のIssueにする（最初の画面を一から作るので `size:L`＝強いモデルで実装する）。Vercel につないだときは、本番の公開アドレスを調べて報告に書き、リポジトリの Website 欄にも入れる（同じ名前がほかの人に使われていると、アドレスの後ろに文字が付く）。元のIssueに結果を書いて閉じる
+8. 最初のIssueを作る（自動で企画に回る）。デザイン担当が画面を作れていれば、作りきれなかった残り（`factory-todo.md`、3つまで）だけをIssueにする（無ければ作らない）。作れていなければ、1行のメモを最初のIssueにする（最初の画面を一から作るので `size:L`＝強いモデルで実装する）。Vercel につないだときは、本番の公開アドレスを調べて報告に書き、リポジトリの Website 欄にも入れる（同じ名前がほかの人に使われていると、アドレスの後ろに文字が付く）。元のIssueに結果を書いて閉じる（デザイン担当が撮った画面の画像も貼るので、公開を待たずにどんな画面か見られる）
 
 テンプレートの受付（intake）は、`新サービス：` のIssueを企画に回さない。工場は最初にIssueへ `factory` の印を付け、企画AI・実装AIは、題が `新サービス：` で始まるか、この印があるIssueを、テンプレート自身では受けない（題が書き換えられても止まる）。
 
