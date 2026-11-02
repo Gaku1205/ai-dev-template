@@ -65,15 +65,15 @@ jobs:
         run: |
           enabled=false
           if [ -n "${{ steps.stack.outputs.node }}" ] && [ -f package.json ] && [ -f .github/scripts/shot.mjs ] &&
-            [ -f .claude/skills/taste-skill/scripts/lib/cdp.mjs ] && [ "$(jq -r '.scripts.start != null' package.json)" = true ] &&
+            [ -f .github/scripts/lib/cdp.mjs ] && [ "$(jq -r '.scripts.start != null' package.json)" = true ] &&
             node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)' &&
             { command -v google-chrome > /dev/null || command -v chromium > /dev/null; }; then
             enabled=true
           fi
           echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
           if [ "$enabled" = true ]; then
-            echo "allowed=Bash(npm run build),Bash(node .github/scripts/shot.mjs:*),Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*)" >> "$GITHUB_OUTPUT"
-            echo "prompt=画面に触る作業では、確認コマンドが通ったあと、npm run build をしてから node .github/scripts/shot.mjs --serve / で画面を撮る（ほかのページはパスを並べる。押したり入力したりした後の場面は --steps で書く。使い方はそのファイルの先頭）。390・1440・1920 の幅の画像が .shots/ にできるので、全部 Read で見る。docs/design-ref/ に目標の絵（試作の画像）があれば見比べる。行をまたいで揃うはずの列や数字のずれ・重なり・何も無い大きな帯・左右の片寄り・はみ出し・入力済みに見える例の文字・目立たない主役を探し、目立つ問題の上位3つを直して撮り直す（最大3回）。.shots/ はコミットしない。Issue への報告に、撮って見た場面と直した所を短く書く。" >> "$GITHUB_OUTPUT"
+            echo "allowed=Bash(npm run build),Bash(node .github/scripts/shot.mjs:*)" >> "$GITHUB_OUTPUT"
+            echo "prompt=画面に触る作業では、確認コマンドが通ったあと、npm run build をしてから node .github/scripts/shot.mjs --serve / で画面を撮る（ほかのページはパスを並べる。押したり入力したりした後の場面は --steps で書く。使い方はそのファイルの先頭）。390・1440・1920 の幅の画像が .shots/ にできるので、全部 Read で見る。docs/design-ref/ に目標の絵（工場のデザイン担当が撮った画像）があれば見比べる。行をまたいで揃うはずの列や数字のずれ・重なり・何も無い大きな帯・左右の片寄り・はみ出し・入力済みに見える例の文字・目立たない主役を探し、目立つ問題の上位3つを直して撮り直す（最大3回）。.shots/ はコミットしない。Issue への報告に、撮って見た場面と直した所を短く書く。" >> "$GITHUB_OUTPUT"
             # 撮った画像をコミットしないように（.gitignore は変えない）
             echo "/.shots/" >> .git/info/exclude
             echo "/.review/" >> .git/info/exclude
@@ -129,7 +129,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             あなたは、厳しいことで知られるアートディレクターです。実装された画面を、**画像だけ**で審査してください。コード・仕様・Issue は見ないでください。
-            開いてよいのは `.review/shots/`（いまの画面。名前の末尾が幅：390 はスマホ、1440・1920 は PC）と `.review/ref/`（デザイン部門の試作＝目標の絵。無いこともある）の画像だけです。
+            開いてよいのは `.review/shots/`（いまの画面。名前の末尾が幅：390 はスマホ、1440・1920 は PC）と `.review/ref/`（工場のデザイン担当が最初に作った画面を撮った物＝目標の絵。無いこともある）の画像だけです。
             1. 両方の画像を全部 Read で見る
             2. 10点満点で採点する。目安：9＝賞を取る／8＝プロの仕事で記憶に残る／7＝きれいだが既視感／6＝テンプレートっぽい／5以下＝AIが作った感・崩れ。
                見る所：目標の絵と比べて弱くなった所（質感・主役・余白・文字の大きさや太さ・色）／崩れ（重なり・はみ出し・揃っていない列・何も無い帯・片寄り）／スマホでも成立するか。

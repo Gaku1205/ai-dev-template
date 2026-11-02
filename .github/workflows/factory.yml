@@ -1,6 +1,6 @@
 # 工場：ai-dev-template に「新サービス：〜」で始まるIssueを1行書くと、新しいサービスのリポジトリを作って、いつものパイプラインに渡す。
 #   例：「新サービス：毎朝の天気と予定を1枚で見られるページ」
-# 名前・言語（Next.js か Python）・1行の説明をAIが決め、Next.js ならデザイン部門が使う場面の分析からデザイン仕様を書き（作品・体験の型なら GSAP・Lenis も選ぶ）、あとは factory.sh が行う（リポジトリ作成・秘密と変数のコピー・
+# 名前・言語（Next.js か Python）・1行の説明をAIが決め、Next.js ならデザイン担当が実例を集めてから本物の画面を作り、あとは factory.sh が行う（リポジトリ作成・秘密と変数のコピー・
 # Vercel・main の保護・最初のIssue）。最初の1回だけ、Environment「factory」に FACTORY_TOKEN（と、Next.js を公開するなら VERCEL_TOKEN）の登録が要る（docs/pipeline.md「工場」）。
 # テンプレート本体でだけ、オーナーが書いたIssueでだけ動く（公開リポジトリなので、ほかの人のIssueでは動かない）。
 name: Factory
@@ -87,17 +87,18 @@ jobs:
           { echo "name=$name"; echo "stack=$stack"; echo "desc<<DESC_END"; echo "$desc"; echo "DESC_END";
             echo "memo<<MEMO_END"; printf '%s\n' "$MEMO"; echo "MEMO_END"; } >> "$GITHUB_OUTPUT"
 
-  # デザイン部門（Next.js のときだけ）：.github/factory/design-department.md。決まりは最低限（読める・押せる・止められる）にして、大胆な方向を取らせる。
-  # 1. デザイン部門が、場面を短く分析して方向を決め、主な場面の試作を HTML で描いて撮り、画像を見て直してから、短い仕様を書く
-  #    （写真は fetch-photos.sh で CC0・パブリックドメインの物だけ。3D・動きの道具は factory-libs.txt で頼む）
-  # 2. 審査役（別のAI）が、仕様・HTML・前の採点を隠した状態で、画像だけを見て厳しく採点する。8点に届かなければ、指摘をつけてデザイン部門に戻す（最大2回）
-  # 試作・画像・使った写真は docs/design-ref/ と public/photos/ に入り、実装の目標になる。
-  # AIはファイルを書くだけ（鍵は持たない）。書いた物は build ジョブが形を確かめてから使う
+  # デザイン担当（Next.js のときだけ）：.github/factory/design-department.md。決まりは「読める・押せる・スマホで崩れない・写さない」だけ。
+  # 1. Issue に貼られた画像（オーナーの「こういうのが良い」）を取ってくる
+  # 2. デザイン担当（AI）が、実在の良いサイトを探して撮り、参考の板を作ってから方向を決め、本物の Next.js の画面を作って、撮って実例と見比べて直す
+  # 3. 確認コマンド（typecheck・lint・test・build）を通す。通らなければ1回だけ直させる
+  # 4. 最後の画面を撮る（新しいリポジトリの docs/design-ref/ に入り、あとの Issue の目標の絵になる）
+  # 作った src/・public/・docs/design.md は、build ジョブ（factory.sh）が形を確かめてから新しいリポジトリに入れる。
+  # AIはファイルを書くことと、決まったコマンドを動かすことだけ（鍵は持たない）
   design:
     needs: plan
     if: needs.plan.outputs.stack == 'nextjs'
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 180
     permissions:
       contents: read
       id-token: write
@@ -105,220 +106,96 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
-      # taste-skill の draw.mjs・inspect.mjs と撮影（shot.mjs）は Node 22 以上が要る。撮影は ubuntu-latest に入っている Chrome を使う
+      # 撮影（shot.mjs）は Node 22 以上が要る。撮影は ubuntu-latest に入っている Chrome を使う
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      # AIが動かしてよいスクリプト（draw.mjs・inspect.mjs・shot.mjs・fetch-photos.sh）や手順書を、AI自身が書き換えられないようにする
-      - name: スキルと手順書を読み取り専用にする
-        run: chmod -R a-w .claude/skills .github
-      # 撮影（shot.mjs・inspect.mjs）で Chrome を動かす。Ubuntu 24.04 は、Chrome の安全な囲い（sandbox）に要る仕組みを止めていることがあるので、使えるようにする
+      - name: 道具を入れる
+        run: npm ci --no-audit --no-fund
+      # AIが動かしてよいスクリプトや手順書・ルールを、AI自身が書き換えられないようにする
+      - name: 手順書とスクリプトを読み取り専用にする
+        run: chmod -R a-w .github .claude CLAUDE.md AGENTS.md
+      # 撮影で Chrome を動かす。Ubuntu 24.04 は、Chrome の安全な囲い（sandbox）に要る仕組みを止めていることがあるので、使えるようにする
       - name: 撮影の準備
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 > /dev/null 2>&1 || true
-          google-chrome --version || echo "::warning::Chrome が見つかりません（試作を撮れないので、デザイン部門は文章だけで決めます）"
+          google-chrome --version || echo "::warning::Chrome が見つかりません（画面を撮れません）"
+      - name: Issue に貼られた画像を取る
+        env:
+          BODY: ${{ github.event.issue.body }}
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/fetch-issue-images.sh || echo "::warning::Issue の画像を取れませんでした"
       - uses: anthropics/claude-code-action@v1
         id: designer
         continue-on-error: true
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
-            あなたはこのサービスのアートディレクター兼デザイナーです。新しく作るWebサービスの見た目を決めてください。
+            あなたはこのサービスのアートディレクター兼フロントエンドの作り手です。見た目を決めて、本物の Next.js の画面を最後まで作ってください。
             - サービス名：${{ needs.plan.outputs.name }}
             - 説明：${{ needs.plan.outputs.desc }}
             - 元のメモ：${{ needs.plan.outputs.memo }}
-            - 詳しいメモ（載せたい中身・見た目のスタイルなど。あればこれも守る）：
+            - 詳しいメモ（載せたい中身・見た目の雰囲気など。あればこれも守る）：
               ${{ needs.plan.outputs.detail }}
 
-            手順：
-            1. `.github/factory/design-department.md`（進め方。短い）を全部読む。スキル frontend-design（`.claude/skills/frontend-design/SKILL.md`）も読む
-            2. 進め方のとおりに、場面を短く分析し、方向を決め、素材（写真・シェーダー・3D）を考え、主な場面の試作を `factory-proto/NN-<英小文字の名前>.html` に描く
-            3. `node .github/scripts/shot.mjs --out factory-proto/shots factory-proto/*.html` で撮り、画像を全部 Read で見て、自分に厳しく直す（最大3回）。画像を見ないまま次に進まない
-            4. 進め方の「仕様を書く」のとおりに、短いデザイン仕様を `factory-design.md` に書く（1行目は `# デザイン仕様`、すぐ下に「目標の絵」）
-            5. 「使う人」と「使う場面」を、2〜4行の箇条書きで `factory-context.md` に書く（仕様書の「前提」に入る）
-            6. 3D・動きの道具を使うときだけ、`factory-libs.txt` に1行1つで書く
-            このあと、別のAI（審査役）が画像だけで採点します。ほかのファイルは作らない・変えない（`factory-proto/` は試作・写真・画像の置き場。`.taste-skill/` は作業用で残らない）。
-          claude_args: '--model opus --max-turns 120 --allowedTools "Read,Write,Edit,Glob,Grep,Skill,WebSearch,WebFetch,Bash(node .claude/skills/taste-skill/scripts/draw.mjs:*),Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*),Bash(node .github/scripts/shot.mjs:*),Bash(.github/scripts/fetch-photos.sh:*)"'
-      # 審査役 1 回目：仕様・試作の HTML・前の採点を隠して、画像だけを見せる（作った側の意図を読み込ませない）
-      - name: 審査役に見せない物を隠す（1 回目）
-        id: hide1
-        if: steps.designer.outcome == 'success'
-        run: .github/scripts/factory-blind.sh hide
-      - uses: anthropics/claude-code-action@v1
-        id: critic1
-        continue-on-error: true
-        if: steps.hide1.outcome == 'success'
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          prompt: |
-            あなたは、厳しいことで知られるアートディレクターです。新しいWebサービスの試作を、**画像だけ**で審査してください。
-            作った人の説明・仕様・コードは見せません（見ないでください。開いてよいのは `factory-proto/shots/` の画像と `factory-proto/photos/` の写真だけ）。
-            - サービス名：${{ needs.plan.outputs.name }}
-            - 説明：${{ needs.plan.outputs.desc }}
-            - 元のメモ：${{ needs.plan.outputs.memo }}
-            - 詳しいメモ（載せたい中身・見た目のスタイルなど。あればこれも守る）：
-              ${{ needs.plan.outputs.detail }}
-
-            手順：
-            1. `factory-proto/shots/` の画像を全部 Read で見る（名前の末尾が幅：390 はスマホ、1440・1920 は PC）
-            2. 賞を取るサイト（Awwwards の Site of the Day）と並べたつもりで、10点満点で採点する。目安：
-               9＝賞を取る／8＝プロの仕事で、記憶に残る／7＝きれいだが既視感がある／6＝テンプレートっぽい／5以下＝AIが作った感・素人っぽい
-               見る所：一目で何のサイトか・誰のための物か／主役が強いか／構図と余白と揃い／文字の質と階層／色と質感（安っぽいぼかし・のっぺりした面・ありがちな飾りは減点）／
-               題材らしさ（ほかのサービスに名前を変えても成り立つなら減点）／スマホでも成立するか／メモで見た目のスタイルが指定されていれば、本当にそのスタイルに見えるか
-               甘くしない。迷ったら低い方にする
-            3. `factory-critique.md` に書く（このファイルだけを書く）。形：
-               1行目 `点数: 7.5`（数字だけ）、2行目 `判定: 通す`（8.0 以上）か `判定: 直す`（8.0 未満）
-               そのあと `## 直すこと` に、効く順に最大6個。どの画像の・どこが・なぜだめで・どう変えるとよいかを具体的に。方向そのものが弱いなら、1個目にそう書く
-          claude_args: '--model opus --max-turns 25 --allowedTools "Read,Glob,Write"'
-      - name: 隠した物を戻して、点数を読む（1 回目）
-        id: judge1
-        if: always() && steps.hide1.outcome == 'success'
-        run: |
-          .github/scripts/factory-blind.sh restore
-          score=$(grep -m1 -E '^点数' factory-critique.md 2> /dev/null | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
-          echo "審査役の点数：${score:-なし}"
-          # 点数が読めない（審査役が失敗した）ときは、直しに回さずに進める
-          if [ -n "$score" ] && awk -v s="$score" 'BEGIN { exit !(s < 8.0) }'; then echo "redo=true" >> "$GITHUB_OUTPUT"; else echo "redo=false" >> "$GITHUB_OUTPUT"; fi
-      - uses: anthropics/claude-code-action@v1
-        id: fix1
-        continue-on-error: true
-        if: steps.judge1.outputs.redo == 'true'
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          prompt: |
-            あなたはこのサービスのデザイン部門です。描いた試作を、仕様も見ない別のAI（審査役）が画像だけで審査し、8点に届きませんでした。
-            - サービス名：${{ needs.plan.outputs.name }}
-            - 説明：${{ needs.plan.outputs.desc }}
-            - 元のメモ：${{ needs.plan.outputs.memo }}
-            - 詳しいメモ（載せたい中身・見た目のスタイルなど。あればこれも守る）：
-              ${{ needs.plan.outputs.detail }}
-
-            1. `.github/factory/design-department.md` の「審査役」の節と、`factory-critique.md`（審査の結果）を読む
-            2. 指摘を効く順に直す。試作（`factory-proto/*.html`）を直し、`node .github/scripts/shot.mjs --out factory-proto/shots factory-proto/*.html` で撮り直して、画像を全部 Read で見る。
-               方向そのものが弱いと言われたら、小手先で直さず、方向から描き直してよい（写真・シェーダー・3D も使ってよい）
-            3. `factory-design.md` を、最後の試作に合わせて直す。`factory-libs.txt` も要れば直す
-            ほかのファイルは作らない（`factory-critique.md` は消さない・書き換えない）。
-          claude_args: '--model opus --max-turns 100 --allowedTools "Read,Write,Edit,Glob,Grep,Skill,WebSearch,WebFetch,Bash(node .claude/skills/taste-skill/scripts/draw.mjs:*),Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*),Bash(node .github/scripts/shot.mjs:*),Bash(.github/scripts/fetch-photos.sh:*)"'
-      # 審査役 2 回目：仕様・試作の HTML・前の採点を隠して、画像だけを見せる（作った側の意図を読み込ませない）
-      - name: 審査役に見せない物を隠す（2 回目）
-        id: hide2
-        # 直しは continue-on-error なので、作業回数を超えて「失敗」になっても直した物は残っている。動いたなら審査する
-        if: steps.fix1.conclusion == 'success'
-        run: .github/scripts/factory-blind.sh hide
-      - uses: anthropics/claude-code-action@v1
-        id: critic2
-        continue-on-error: true
-        if: steps.hide2.outcome == 'success'
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          prompt: |
-            あなたは、厳しいことで知られるアートディレクターです。新しいWebサービスの試作を、**画像だけ**で審査してください。
-            作った人の説明・仕様・コードは見せません（見ないでください。開いてよいのは `factory-proto/shots/` の画像と `factory-proto/photos/` の写真だけ）。
-            - サービス名：${{ needs.plan.outputs.name }}
-            - 説明：${{ needs.plan.outputs.desc }}
-            - 元のメモ：${{ needs.plan.outputs.memo }}
-            - 詳しいメモ（載せたい中身・見た目のスタイルなど。あればこれも守る）：
-              ${{ needs.plan.outputs.detail }}
-
-            手順：
-            1. `factory-proto/shots/` の画像を全部 Read で見る（名前の末尾が幅：390 はスマホ、1440・1920 は PC）
-            2. 賞を取るサイト（Awwwards の Site of the Day）と並べたつもりで、10点満点で採点する。目安：
-               9＝賞を取る／8＝プロの仕事で、記憶に残る／7＝きれいだが既視感がある／6＝テンプレートっぽい／5以下＝AIが作った感・素人っぽい
-               見る所：一目で何のサイトか・誰のための物か／主役が強いか／構図と余白と揃い／文字の質と階層／色と質感（安っぽいぼかし・のっぺりした面・ありがちな飾りは減点）／
-               題材らしさ（ほかのサービスに名前を変えても成り立つなら減点）／スマホでも成立するか／メモで見た目のスタイルが指定されていれば、本当にそのスタイルに見えるか
-               甘くしない。迷ったら低い方にする
-            3. `factory-critique.md` に書く（このファイルだけを書く）。形：
-               1行目 `点数: 7.5`（数字だけ）、2行目 `判定: 通す`（8.0 以上）か `判定: 直す`（8.0 未満）
-               そのあと `## 直すこと` に、効く順に最大6個。どの画像の・どこが・なぜだめで・どう変えるとよいかを具体的に。方向そのものが弱いなら、1個目にそう書く
-          claude_args: '--model opus --max-turns 25 --allowedTools "Read,Glob,Write"'
-      - name: 隠した物を戻して、点数を読む（2 回目）
-        id: judge2
-        if: always() && steps.hide2.outcome == 'success'
-        run: |
-          .github/scripts/factory-blind.sh restore
-          score=$(grep -m1 -E '^点数' factory-critique.md 2> /dev/null | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
-          echo "審査役の点数：${score:-なし}"
-          # 点数が読めない（審査役が失敗した）ときは、直しに回さずに進める
-          if [ -n "$score" ] && awk -v s="$score" 'BEGIN { exit !(s < 8.0) }'; then echo "redo=true" >> "$GITHUB_OUTPUT"; else echo "redo=false" >> "$GITHUB_OUTPUT"; fi
-      - uses: anthropics/claude-code-action@v1
-        id: fix2
-        continue-on-error: true
-        if: steps.judge2.outputs.redo == 'true'
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          prompt: |
-            あなたはこのサービスのデザイン部門です。描いた試作を、仕様も見ない別のAI（審査役）が画像だけで審査し、8点に届きませんでした。
-            - サービス名：${{ needs.plan.outputs.name }}
-            - 説明：${{ needs.plan.outputs.desc }}
-            - 元のメモ：${{ needs.plan.outputs.memo }}
-            - 詳しいメモ（載せたい中身・見た目のスタイルなど。あればこれも守る）：
-              ${{ needs.plan.outputs.detail }}
-
-            1. `.github/factory/design-department.md` の「審査役」の節と、`factory-critique.md`（審査の結果）を読む
-            2. 指摘を効く順に直す。試作（`factory-proto/*.html`）を直し、`node .github/scripts/shot.mjs --out factory-proto/shots factory-proto/*.html` で撮り直して、画像を全部 Read で見る。
-               方向そのものが弱いと言われたら、小手先で直さず、方向から描き直してよい（写真・シェーダー・3D も使ってよい）
-            3. `factory-design.md` を、最後の試作に合わせて直す。`factory-libs.txt` も要れば直す
-            ほかのファイルは作らない（`factory-critique.md` は消さない・書き換えない）。
-          claude_args: '--model opus --max-turns 100 --allowedTools "Read,Write,Edit,Glob,Grep,Skill,WebSearch,WebFetch,Bash(node .claude/skills/taste-skill/scripts/draw.mjs:*),Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*),Bash(node .github/scripts/shot.mjs:*),Bash(.github/scripts/fetch-photos.sh:*)"'
-      # 審査役 3 回目（最後の点数を残すだけ。直しには回さない）：仕様・試作の HTML・前の採点を隠して、画像だけを見せる（作った側の意図を読み込ませない）
-      - name: 審査役に見せない物を隠す（3 回目）
-        id: hide3
-        if: steps.fix2.conclusion == 'success'
-        run: .github/scripts/factory-blind.sh hide
-      - uses: anthropics/claude-code-action@v1
-        id: critic3
-        continue-on-error: true
-        if: steps.hide3.outcome == 'success'
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          prompt: |
-            あなたは、厳しいことで知られるアートディレクターです。新しいWebサービスの試作を、**画像だけ**で審査してください。
-            作った人の説明・仕様・コードは見せません（見ないでください。開いてよいのは `factory-proto/shots/` の画像と `factory-proto/photos/` の写真だけ）。
-            - サービス名：${{ needs.plan.outputs.name }}
-            - 説明：${{ needs.plan.outputs.desc }}
-            - 元のメモ：${{ needs.plan.outputs.memo }}
-            - 詳しいメモ（載せたい中身・見た目のスタイルなど。あればこれも守る）：
-              ${{ needs.plan.outputs.detail }}
-
-            手順：
-            1. `factory-proto/shots/` の画像を全部 Read で見る（名前の末尾が幅：390 はスマホ、1440・1920 は PC）
-            2. 賞を取るサイト（Awwwards の Site of the Day）と並べたつもりで、10点満点で採点する。目安：
-               9＝賞を取る／8＝プロの仕事で、記憶に残る／7＝きれいだが既視感がある／6＝テンプレートっぽい／5以下＝AIが作った感・素人っぽい
-               見る所：一目で何のサイトか・誰のための物か／主役が強いか／構図と余白と揃い／文字の質と階層／色と質感（安っぽいぼかし・のっぺりした面・ありがちな飾りは減点）／
-               題材らしさ（ほかのサービスに名前を変えても成り立つなら減点）／スマホでも成立するか／メモで見た目のスタイルが指定されていれば、本当にそのスタイルに見えるか
-               甘くしない。迷ったら低い方にする
-            3. `factory-critique.md` に書く（このファイルだけを書く）。形：
-               1行目 `点数: 7.5`（数字だけ）、2行目 `判定: 通す`（8.0 以上）か `判定: 直す`（8.0 未満）
-               そのあと `## 直すこと` に、効く順に最大6個。どの画像の・どこが・なぜだめで・どう変えるとよいかを具体的に。方向そのものが弱いなら、1個目にそう書く
-          claude_args: '--model opus --max-turns 25 --allowedTools "Read,Glob,Write"'
-      - name: 隠した物を戻して、点数を読む（3 回目）
-        id: judge3
-        if: always() && steps.hide3.outcome == 'success'
-        run: |
-          .github/scripts/factory-blind.sh restore
-          score=$(grep -m1 -E '^点数' factory-critique.md 2> /dev/null | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
-          echo "審査役の点数：${score:-なし}"
-          # 点数が読めない（審査役が失敗した）ときは、直しに回さずに進める
-          if [ -n "$score" ] && awk -v s="$score" 'BEGIN { exit !(s < 8.0) }'; then echo "redo=true" >> "$GITHUB_OUTPUT"; else echo "redo=false" >> "$GITHUB_OUTPUT"; fi
-      - name: 書いた物を取っておく
+            `.github/factory/design-department.md`（進め方）を全部読んで、そのとおりに進めてください：
+            実例を集めて撮る → 参考の板（`factory-refs/board.md`）と方向 → `src/` に作る → 撮って実例と見比べて直す（最低3回）→ 仕上げ（確認コマンド・`docs/design.md`）。
+            書いてよい場所：`src/`、`public/`、`docs/design.md`、`factory-refs/`、`.shots/`、`factory-context.md`、`factory-todo.md`、`factory-pages.txt`
+            （道具を factory-add-lib.sh で入れると、package.json・package-lock.json・factory-libs.txt も変わる）。ほかは変えない。
+          claude_args: '--model opus --max-turns 250 --allowedTools "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Bash(npm run build),Bash(npm run typecheck),Bash(npm run lint),Bash(npm run test),Bash(node .github/scripts/shot.mjs:*),Bash(.github/scripts/fetch-photos.sh:*),Bash(.github/scripts/factory-add-lib.sh:*)"'
+      # 確認コマンドを、AIとは別にもう一度動かす（AIが「通った」と言っても、ここで通らなければ新しいリポジトリには入れない）
+      - name: 確かめる（1 回目）
+        id: check1
         if: ${{ !cancelled() }}
+        run: .github/scripts/factory-checks.sh
+      - uses: anthropics/claude-code-action@v1
+        id: fixer
+        continue-on-error: true
+        if: ${{ !cancelled() && steps.check1.outputs.ok == 'false' && steps.check1.outputs.site == 'true' }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            あなたはこのサービスの画面を作ったデザイン担当です。作った画面で、確認コマンド（typecheck・lint・test・build）が通りませんでした。
+            `factory-checks.log`（失敗したときの出力の最後）を読んで、原因を直してください。見た目は変えない。直したら、4つのコマンドを全部動かして通ることを確かめる。
+            書いてよい場所：`src/`、`public/`、`docs/design.md`（道具は `.github/scripts/factory-add-lib.sh` で入れる）。ほかは変えない。
+          claude_args: '--model opus --max-turns 80 --allowedTools "Read,Write,Edit,Glob,Grep,Bash(npm run build),Bash(npm run typecheck),Bash(npm run lint),Bash(npm run test),Bash(.github/scripts/factory-add-lib.sh:*)"'
+      - name: 確かめる（2 回目）
+        id: check2
+        if: ${{ !cancelled() && steps.fixer.conclusion == 'success' }}
+        run: .github/scripts/factory-checks.sh
+      # 最後の画面を撮る：最初の1画面（390・1440・1920）と、1画面ずつスクロールした絵（390・1440）。ページは / と factory-pages.txt の物（合わせて3つまで）
+      - name: 最後の画面を撮る
+        id: final
+        if: ${{ !cancelled() && (steps.check1.outputs.ok == 'true' || steps.check2.outputs.ok == 'true') }}
         run: |
-          mkdir -p "$RUNNER_TEMP/design"
-          if [ -f factory-design.md ] && [ ! -L factory-design.md ]; then cp factory-design.md "$RUNNER_TEMP/design/design.md"; fi
-          if [ -f factory-context.md ] && [ ! -L factory-context.md ]; then cp factory-context.md "$RUNNER_TEMP/design/context.md"; fi
-          if [ -f factory-libs.txt ] && [ ! -L factory-libs.txt ]; then cp factory-libs.txt "$RUNNER_TEMP/design/libs.txt"; fi
-          if [ -f factory-critique.md ] && [ ! -L factory-critique.md ]; then cp factory-critique.md "$RUNNER_TEMP/design/critique.md"; fi
-          # 取った写真（試作で使った物だけを、build ジョブが入れる）
-          mkdir -p "$RUNNER_TEMP/design/photos"
-          for f in factory-proto/photos/*; do
-            if [ -f "$f" ] && [ ! -L "$f" ]; then cp "$f" "$RUNNER_TEMP/design/photos/"; fi
+          out="$RUNNER_TEMP/design/ref"; mkdir -p "$out"
+          pages=(/)
+          if [ -f factory-pages.txt ] && [ ! -L factory-pages.txt ]; then
+            while IFS= read -r p; do
+              [[ "$p" =~ ^/[a-z0-9][a-z0-9/-]{0,60}$ ]] && [ "${#pages[@]}" -lt 3 ] && pages+=("$p")
+            done < <(head -n 10 factory-pages.txt | tr -d '\r')
+          fi
+          node .github/scripts/shot.mjs --serve --out "$out" "${pages[@]}" || echo "::warning::最初の1画面を撮れなかった物があります"
+          node .github/scripts/shot.mjs --serve --out "$out" --widths 390,1440 --scrolls 4 "${pages[@]}" || echo "::warning::スクロールした絵を撮れなかった物があります"
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+      - name: 作った物を取っておく
+        if: ${{ !cancelled() }}
+        env:
+          SITE_OK: ${{ steps.final.outputs.ok }}
+        run: |
+          d="$RUNNER_TEMP/design"; mkdir -p "$d"
+          if [ -f docs/design.md ] && [ ! -L docs/design.md ]; then cp docs/design.md "$d/design.md"; fi
+          for f in factory-context.md factory-libs.txt factory-todo.md; do
+            if [ -f "$f" ] && [ ! -L "$f" ]; then cp "$f" "$d/${f#factory-}"; fi
           done
-          # 試作と、その最後の画像（目標の絵）。形は build ジョブ（factory.sh）がもう一度確かめる
-          mkdir -p "$RUNNER_TEMP/design/ref"
-          for f in factory-proto/*.html factory-proto/shots/*.png; do
-            if [ -f "$f" ] && [ ! -L "$f" ]; then cp "$f" "$RUNNER_TEMP/design/ref/"; fi
-          done
-          touch "$RUNNER_TEMP/design/.keep"
+          # 確認コマンドが通った物だけを、新しいリポジトリの中身として渡す（形は build ジョブの factory.sh がもう一度確かめる）
+          if [ "$SITE_OK" = true ]; then
+            mkdir -p "$d/site"
+            cp -R src "$d/site/src"
+            if [ -d public ]; then cp -R public "$d/site/public"; fi
+            touch "$d/site/.checks-ok"
+          fi
+          touch "$d/.keep"
       - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with:
@@ -341,7 +218,7 @@ jobs:
       issues: write
     steps:
       - uses: actions/checkout@v6
-      # デザイン部門が GSAP・Lenis を選んだときに npm install する
+      # デザイン担当が入れた道具（GSAP・three.js など）を、新しいリポジトリの package.json に入れる
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -387,8 +264,8 @@ jobs:
           CONTEXT_FILE: ${{ runner.temp }}/design/context.md
           LIBS_FILE: ${{ runner.temp }}/design/libs.txt
           DESIGN_REF_DIR: ${{ runner.temp }}/design/ref
-          PHOTOS_DIR: ${{ runner.temp }}/design/photos
-          CRITIQUE_FILE: ${{ runner.temp }}/design/critique.md
+          SITE_DIR: ${{ runner.temp }}/design/site
+          TODO_FILE: ${{ runner.temp }}/design/todo.md
         run: .github/scripts/factory.sh
 
   # AIが名前を決められなかったときも、黙って終わらない

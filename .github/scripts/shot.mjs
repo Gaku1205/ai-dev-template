@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// 画面を本物のブラウザで開いて、決まった幅で撮る（工場のデザイン部門の試作と、実装AIの「撮って見て直す」で使う）。
-// 依存なし：taste-skill の Chrome の操作（.claude/skills/taste-skill/scripts/lib/cdp.mjs）を使う。Node 22 以上と Chrome が要る。
+// 画面を本物のブラウザで開いて、決まった幅で撮る（工場のデザイン担当が実例と自分の画面を撮るのと、実装AIの「撮って見て直す」で使う）。
+// 依存なし：Chrome の操作は .github/scripts/lib/cdp.mjs（taste-skill から写した物、MIT）。Node 22 以上と Chrome が要る。
 //
-//   node .github/scripts/shot.mjs [--serve] [--out DIR] [--widths 390,1440,1920] [--full] [--reduced] [--steps FILE] 対象...
+//   node .github/scripts/shot.mjs [--serve] [--out DIR] [--widths 390,1440,1920] [--full | --scrolls N] [--reduced] [--steps FILE] 対象...
 //
-//   対象：--serve のときはパス（/ や /settings）。そうでなければ URL か HTML のファイル（例：factory-proto/01-empty.html）
+//   対象：--serve のときはパス（/ や /settings）。そうでなければ URL（実在のサイト。名前はドメインとパスから）か HTML のファイル
 //   --serve：ビルド済みのアプリを npm run start で立ち上げてから撮り、撮り終わったら止める（先に npm run build が要る）
 //   --steps：操作してから撮る場面を JSON で書いたファイル。対象の代わりに使う（両方書いてもよい）
 //     [{ "name": "after-record", "path": "/", "steps": [
@@ -13,6 +13,7 @@
 //        { "fill": ["金額", "1200"] },         ← 入力欄に打ち込む（ラベル・placeholder の文字か CSS セレクタで探す）
 //        { "press": "Enter" }, { "wait": 500 }, { "scroll": 800 } ] }]
 //   --full：画面の下まで全部撮る（無ければ最初の1画面だけ）
+//   --scrolls N：上から1画面ずつ下へスクロールしながら N 枚撮る（2〜12）。スクロールで出てくる物・動きの途中が見える。名前は <名前>-<幅>-s<番号>.png
 //   --reduced：prefers-reduced-motion を有効にして撮る
 // 出力：DIR/<名前>-<幅>.png（DIR の既定は .shots）。撮った画像の一覧と、ページで起きたエラーを表示する
 // 終了コード：撮れた → 0、撮れなかった物がある → 1、使い方の間違い → 2
@@ -23,9 +24,9 @@ import { basename, dirname, extname, join, relative, resolve, sep } from 'node:p
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const cdpPath = resolve(here, '../../.claude/skills/taste-skill/scripts/lib/cdp.mjs');
+const cdpPath = resolve(here, 'lib/cdp.mjs');
 if (!existsSync(cdpPath)) {
-  console.error('taste-skill の cdp.mjs が見つかりません：' + cdpPath);
+  console.error('Chrome の操作（cdp.mjs）が見つかりません：' + cdpPath);
   process.exit(2);
 }
 const { Browser, sleep } = await import(pathToFileURL(cdpPath).href);
@@ -49,18 +50,20 @@ const widths = String(flag('widths', '390,1440,1920')).split(',').map(Number).fi
 const stepsFile = flag('steps', '');
 const serve = has('serve');
 const full = has('full');
+const scrolls = Number(flag('scrolls', '0'));
 const reduced = has('reduced');
 const HEIGHT = { 360: 780, 375: 812, 390: 844, 768: 1024, 1024: 768, 1280: 800, 1440: 900, 1920: 1080, 2560: 1440 };
 
-if (args.some((a) => a.startsWith('--')) || (!args.length && !stepsFile) || !widths.length) {
-  console.error('使い方：node .github/scripts/shot.mjs [--serve] [--out DIR] [--widths 390,1440,1920] [--full] [--reduced] [--steps FILE] 対象...');
+const badScrolls = scrolls !== 0 && (!Number.isInteger(scrolls) || scrolls < 2 || scrolls > 12 || full);
+if (args.some((a) => a.startsWith('--')) || (!args.length && !stepsFile) || !widths.length || badScrolls) {
+  console.error('使い方：node .github/scripts/shot.mjs [--serve] [--out DIR] [--widths 390,1440,1920] [--full | --scrolls 2〜12] [--reduced] [--steps FILE] 対象...');
   process.exit(2);
 }
 
 // 撮る場面：{ name, target, steps }
 const safeName = (s) => String(s).replace(/^\/+|\/+$/g, '').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'top';
 const scenes = args.map((t) => ({
-  name: /^https?:\/\//.test(t) ? safeName(new URL(t).pathname) : serve ? safeName(t) : safeName(basename(t, extname(t))),
+  name: /^https?:\/\//.test(t) ? safeName(new URL(t).hostname.replace(/^www\./, '') + new URL(t).pathname) : serve ? safeName(t) : safeName(basename(t, extname(t))),
   target: t,
   steps: [],
 }));
@@ -244,13 +247,25 @@ try {
       const h = HEIGHT[w] || Math.round(w * 0.625);
       const page = await browser.newPage({ width: w, height: h, dsf: 1, mobile: w < 600, reducedMotion: reduced });
       try {
-        await page.goto(url, { timeoutMs: 30000, settleMs: 800 });
+        // 実在のサイトは、読み込みの演出（ローディング・最初の動き）が終わるまで長めに待つ
+        const external = /^https?:\/\//.test(scene.target);
+        await page.goto(url, { timeoutMs: external ? 45000 : 30000, settleMs: external ? 3000 : 800 });
         for (const step of scene.steps) await runStep(page, url, step);
         await page.eval('document.fonts.ready.then(() => true)').catch(() => {});
         await sleep(500);
-        const path = join(outDir, `${scene.name}-${w}.png`);
-        await page.screenshot({ path, format: 'png', fullPage: full });
-        written.push(path);
+        if (scrolls) {
+          for (let k = 0; k < scrolls; k++) {
+            await page.eval(`window.scrollTo({ top: ${Math.round(k * h * 0.9)}, behavior: 'instant' })`);
+            await sleep(external ? 1500 : 1000);
+            const path = join(outDir, `${scene.name}-${w}-s${k + 1}.png`);
+            await page.screenshot({ path, format: 'png' });
+            written.push(path);
+          }
+        } else {
+          const path = join(outDir, `${scene.name}-${w}.png`);
+          await page.screenshot({ path, format: 'png', fullPage: full });
+          written.push(path);
+        }
         if (page.consoleErrors.length) console.log(`  ! ${scene.name}-${w}：ページのエラー：${page.consoleErrors.slice(0, 3).join(' / ')}`);
       } catch (e) {
         console.error(`× ${scene.name}-${w}：${e.message}`);

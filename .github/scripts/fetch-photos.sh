@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# 工場のデザイン部門が、自由に使える写真（CC0・パブリックドメインだけ）を取ってくる。
+# 工場のデザイン担当が、自由に使える写真（CC0・パブリックドメインだけ）を取ってくる。
 #   .github/scripts/fetch-photos.sh "<英語の検索語>" [枚数（1〜6、既定 4）]
-# Openverse（https://openverse.org、鍵は要らない）で探し、横幅 1200px 以上の写真を factory-proto/photos/ に入れる。
-# 出どころは factory-proto/photos/CREDITS.md に足す（CC0・パブリックドメインは表記の義務は無いが、元を残す）。
-# 置き場所は決まっていて変えられない。合わせて 12 枚まで、1枚 5MB まで、JPEG・PNG・WebP だけ。
-# 環境変数（テスト用）：OPENVERSE_API（既定 https://api.openverse.org）、PHOTOS_DIR（既定 factory-proto/photos）
+# Openverse（https://openverse.org、鍵は要らない）で探し、横幅 1200px 以上の写真を public/photos/ に入れる（作っている画面からそのまま /photos/… で使える）。
+# 出どころは public/photos/CREDITS.md に足す（CC0・パブリックドメインは表記の義務は無いが、元を残す）。
+# 置き場所は決まっていて変えられない。合わせて 20 枚まで、1枚 5MB まで、JPEG・PNG・WebP だけ。
+# 環境変数（テスト用）：OPENVERSE_API（既定 https://api.openverse.org）、PHOTOS_DIR（既定 public/photos）
 set -uo pipefail
 API="${OPENVERSE_API:-https://api.openverse.org}"
-DIR="${PHOTOS_DIR:-factory-proto/photos}"
-MAX_TOTAL=12
+DIR="${PHOTOS_DIR:-public/photos}"
+MAX_TOTAL=20
 MAX_BYTES=5242880
 
 query="${1:-}"
@@ -66,4 +66,4 @@ if [ "$got" -eq 0 ]; then
   echo "写真を取れませんでした（どれも取れないか、形が違いました）。検索語を変えてください" >&2
   exit 1
 fi
-echo "${got} 枚取りました。Read で見て、良い物だけを試作で使ってください（試作の HTML で使った写真だけが新しいリポジトリに入ります）"
+echo "${got} 枚取りました。Read で見て、良い物だけを画面で使ってください（画面で名前を使った写真だけが新しいリポジトリに入ります）"

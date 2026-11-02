@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 工場のデザイン部門が写真を取ってくる（fetch-photos.sh）
+# 工場のデザイン担当が写真を取ってくる（fetch-photos.sh）
 # Openverse は、このテストの中の疑似 curl で真似る（本物のネットワークには出ない）
 source "$(dirname "$0")/lib.sh"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
@@ -35,23 +35,23 @@ api '{"results":[
  {"url":"https://img.test/good2.png","title":"Lanterns","creator":"G","license":"pdm","foreign_landing_url":"https://src.test/2","width":1600,"height":1200}]}'
 out=$(run "Night Street, Fukuoka!" 4)
 assert_contains "取った枚数を書く" "$out" "2 枚取りました"
-assert_eq "入った写真" "01-night-street-fukuoka.jpg 02-night-street-fukuoka.png" "$(cd "$T/work/factory-proto/photos" && find . -maxdepth 1 \( -name "*.jpg" -o -name "*.png" \) -printf "%f\n" | sort | paste -sd " ")"
-credits=$(cat "$T/work/factory-proto/photos/CREDITS.md")
+assert_eq "入った写真" "01-night-street-fukuoka.jpg 02-night-street-fukuoka.png" "$(cd "$T/work/public/photos" && find . -maxdepth 1 \( -name "*.jpg" -o -name "*.png" \) -printf "%f\n" | sort | paste -sd " ")"
+credits=$(cat "$T/work/public/photos/CREDITS.md")
 assert_contains "出どころ（CC0）" "$credits" '`01-night-street-fukuoka.jpg`：Night river（A、CC0、2400×1600）https://src.test/1'
 assert_contains "出どころ（パブリックドメイン）" "$credits" "パブリックドメイン"
 assert_contains "ライセンスを絞って探す" "$(cat "$T/calls.log")" "license=cc0,pdm"
 
-echo "== 続けて取ると番号が続く。合わせて 12 枚まで"
+echo "== 続けて取ると番号が続く。合わせて 20 枚まで"
 api '{"results":[{"url":"https://img.test/good3.jpg","title":"x","creator":"x","license":"cc0","width":2000,"height":1000}]}'
 run "lantern" 1 > /dev/null
-assert_eq "番号が続く" "yes" "$([ -f "$T/work/factory-proto/photos/03-lantern.jpg" ] && echo yes || echo no)"
-for i in $(seq 4 12); do printf 'x' > "$T/work/factory-proto/photos/$(printf %02d "$i")-x.jpg"; done
+assert_eq "番号が続く" "yes" "$([ -f "$T/work/public/photos/03-lantern.jpg" ] && echo yes || echo no)"
+for i in $(seq 4 20); do printf 'x' > "$T/work/public/photos/$(printf %02d "$i")-x.jpg"; done
 out=$(run "more" 1); code=$?
-assert_eq "12 枚あれば取らない" "1" "$code"
-assert_contains "そう書く" "$out" "もう 12 枚あります"
+assert_eq "20 枚あれば取らない" "1" "$code"
+assert_contains "そう書く" "$out" "もう 20 枚あります"
 
 echo "== 使い方の間違い・見つからない"
-rm -rf "$T/work/factory-proto"
+rm -rf "$T/work/public"
 out=$(run "" 2); assert_eq "検索語が無い" "2" "$?"
 run "x" 9 > /dev/null; assert_eq "枚数は 1〜6" "2" "$?"
 api '{"results":[]}'

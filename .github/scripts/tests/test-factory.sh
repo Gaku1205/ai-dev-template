@@ -159,7 +159,7 @@ assert_contains "知らない言語" "$(cat "$T/comment.txt")" "nextjs か pytho
 run_factory good-name nextjs 'x $(id)' > /dev/null
 assert_contains "危ない記号" "$(cat "$T/comment.txt")" "記号"
 
-echo "== デザイン部門：形が正しいデザイン仕様は docs/design.md に、使う人・場面は仕様書の前提に入る。最初のIssueは size:L"
+echo "== デザイン担当：形が正しいデザイン仕様は docs/design.md に、使う人・場面は仕様書の前提に入る。最初のIssueは size:L"
 { echo "# デザイン仕様"; for i in $(seq 1 60); do echo "- 色や文字の決まり その$i：夜の地に光る数字"; done; } > "$T/design-ok.md"
 printf '%s\n' "# 使う人" "- 推定：シフト制のバイトをしている学生" "- 推定：バイト帰りの電車で、スマホを片手に30秒" "前置きの文は入れない" > "$T/context.md"
 run_factory design-ok nextjs "説明" DESIGN_FILE="$T/design-ok.md" CONTEXT_FILE="$T/context.md" > /dev/null
@@ -167,23 +167,23 @@ spec=$(file_in o/design-ok docs/spec.md)
 assert_contains "仕様書の前提に、使う人・場面" "$spec" "  - 推定：バイト帰りの電車で、スマホを片手に30秒"
 assert_not_contains "箇条書き以外は入れない" "$spec" "前置きの文"
 assert_contains "docs/design.md に入る" "$(file_in o/design-ok docs/design.md)" "夜の地に光る数字"
-assert_contains "結果に書く" "$(cat "$T/comment.txt")" "デザイン仕様（docs/design.md）を書き、別の目で検査した"
+assert_contains "結果に書く" "$(cat "$T/comment.txt")" "デザイン仕様（docs/design.md）を書いた"
 assert_contains "最初のIssueは size:L" "$(cat "$T/calls.log")" '"labels[]": "size:L"'
 printf '%s\n' "ちがう見出し" "短い" > "$T/design-bad.md"
 run_factory design-bad nextjs "説明" DESIGN_FILE="$T/design-bad.md" > /dev/null
 assert_not_contains "形が違えば雛形のまま" "$(file_in o/design-bad docs/design.md)" "ちがう見出し"
 assert_contains "そう書く" "$(cat "$T/comment.txt")" "雛形のままにした"
 
-echo "== デザイン部門が選んだ GSAP・Lenis：決まった物だけ、デザイン仕様を使うときだけ入れる"
+echo "== デザイン担当が入れた GSAP・Lenis：決まった物だけ、デザイン仕様を使うときだけ入れる"
 printf '%s\n' "gsap" "lenis" "left-pad" "" > "$T/libs.txt"
 run_factory libs-ok nextjs "説明" DESIGN_FILE="$T/design-ok.md" LIBS_FILE="$T/libs.txt" > /dev/null
 calls=$(cat "$T/calls.log")
-assert_contains "lock だけ更新して入れる（GSAP は React 用も一緒に）" "$calls" "npm install --package-lock-only --no-audit --no-fund --save @gsap/react@^2 gsap@^3 lenis@^1"
+assert_contains "lock だけ更新して入れる（GSAP は React 用も一緒に）" "$calls" "npm install --package-lock-only --no-audit --no-fund --ignore-scripts --save @gsap/react@^2 gsap@^3 lenis@^1"
 assert_not_contains "決まった物以外は入れない" "$calls" "left-pad"
 pkg=$(file_in o/libs-ok package.json)
 assert_contains "package.json に入って push される" "$pkg" "// lenis@^1"
-assert_contains "結果に書く" "$(cat "$T/comment.txt")" "動きの道具を入れた：@gsap/react@^2 gsap@^3 lenis@^1"
-assert_contains "入れなかった物も書く" "$(cat "$T/comment.txt")" "決まった物（gsap・@gsap/react・lenis・three・@react-three/fiber・@react-three/drei）以外"
+assert_contains "結果に書く" "$(cat "$T/comment.txt")" "使った道具を入れた：@gsap/react@^2 gsap@^3 lenis@^1"
+assert_contains "入れなかった物も書く" "$(cat "$T/comment.txt")" "決まった物（gsap・@gsap/react・lenis・motion・three・@react-three/fiber・@react-three/drei）以外"
 run_factory libs-nodesign nextjs "説明" DESIGN_FILE="$T/design-bad.md" LIBS_FILE="$T/libs.txt" > /dev/null
 assert_not_contains "デザイン仕様が雛形のままなら入れない" "$(cat "$T/calls.log")" "npm install"
 run_factory libs-py python "説明" LIBS_FILE="$T/libs.txt" > /dev/null
@@ -209,7 +209,7 @@ assert_not_contains "Python には写さない" "$(cat "$T/calls.log")" "secret 
 run_factory vt-none nextjs "説明" VERCEL_TOKEN=v > /dev/null
 assert_contains "鍵が無ければ vercel.json は今までどおり" "$(file_in o/vt-none vercel.json | jq -c .git.deploymentEnabled)" "claude/*"
 
-echo "== デザイン部門の試作と画像（目標の絵）：決まった形の物だけを docs/design-ref/ に入れ、最初のIssueで見比べるよう頼む"
+echo "== 最後に撮った画像（目標の絵）：決まった形の PNG だけを docs/design-ref/ に入れ、最初のIssueで見比べるよう頼む"
 R="$T/ref"; rm -rf "$R"; mkdir -p "$R"
 printf '\x89PNG\r\n\x1a\nrest' > "$R/01-empty-390.png"
 printf '\x89PNG\r\n\x1a\nrest' > "$R/01-empty-1440.png"
@@ -219,12 +219,12 @@ printf '\x89PNG\r\n\x1a\nrest' > "$R/Bad_Name.png"
 printf 'x' > "$R/notes.txt"
 ln -s /etc/hostname "$R/03-link.html"
 run_factory ref-ok nextjs "説明" DESIGN_FILE="$T/design-ok.md" DESIGN_REF_DIR="$R" > /dev/null
-assert_eq "本物の PNG と HTML だけが入る" "01-empty-1440.png 01-empty-390.png 01-empty.html" \
+assert_eq "本物の PNG だけが入る" "01-empty-1440.png 01-empty-390.png" \
   "$(git --git-dir="$T/remotes/o/ref-ok.git" ls-tree --name-only main docs/design-ref/ | xargs -n1 basename | sort | xargs)"
-assert_contains "結果に書く（枚数は画像だけ）" "$(cat "$T/comment.txt")" "その画像 2 枚を目標の絵として docs/design-ref/ に入れた"
-assert_contains "最初のIssueで、目標の絵と見比べるよう頼む" "$(cat "$T/calls.log")" "docs/design-ref/ の試作の画像を目標の絵に"
+assert_contains "結果に書く（枚数は画像だけ）" "$(cat "$T/comment.txt")" "画面の画像 2 枚を、目標の絵として docs/design-ref/ に入れた"
+assert_contains "最初のIssueで、目標の絵と見比べるよう頼む" "$(cat "$T/calls.log")" "docs/design-ref/ の画像を目標の絵に"
 run_factory ref-nodesign nextjs "説明" DESIGN_FILE="$T/design-bad.md" DESIGN_REF_DIR="$R" > /dev/null
-assert_eq "デザイン仕様が雛形のままなら入れない" "" "$(file_in o/ref-nodesign docs/design-ref/01-empty.html)"
+assert_eq "デザイン仕様が雛形のままなら入れない" "" "$(file_in o/ref-nodesign docs/design-ref/01-empty-390.png)"
 assert_not_contains "そのときは目標の絵を頼まない" "$(cat "$T/calls.log")" "design-ref"
 
 echo "== 元のIssueの本文（詳しいメモ）は、最初のIssueの本文に添える"
@@ -238,21 +238,63 @@ printf '%s\n' "@react-three/drei" > "$T/libs3d.txt"
 run_factory libs-3d nextjs "説明" DESIGN_FILE="$T/design-ok.md" LIBS_FILE="$T/libs3d.txt" > /dev/null
 assert_contains "three・型・fiber・drei を一緒に入れる" "$(cat "$T/calls.log")" "--save @react-three/drei@^10 @react-three/fiber@^9 @types/three@^0 three@^0"
 
-echo "== 写真：試作で使った物だけ、本物の画像だけを public/photos/ に入れ、出どころも入れる。審査役の点数を書く"
-R="$T/ref2"; P="$T/photos"; rm -rf "$R" "$P"; mkdir -p "$R" "$P"
-printf '\x89PNG\r\n\x1a\nrest' > "$R/01-hero-390.png"
-printf '<img src="photos/01-river.jpg"><div style="background:url(photos/03-fake.jpg)">' > "$R/01-hero.html"
-printf '\xff\xd8\xff\xe0jpeg' > "$P/01-river.jpg"
-printf '\xff\xd8\xff\xe0jpeg' > "$P/02-unused.jpg"
-printf 'not an image' > "$P/03-fake.jpg"
-printf '%s\n' '- `01-river.jpg`：River（A、CC0、2400×1600）https://src.test/1' '- `02-unused.jpg`：Unused（B、CC0）' > "$P/CREDITS.md"
-printf '%s\n' "# 審査" "点数: 8.4" > "$T/critique.md"
-run_factory photos-ok nextjs "説明" DESIGN_FILE="$T/design-ok.md" DESIGN_REF_DIR="$R" PHOTOS_DIR="$P" CRITIQUE_FILE="$T/critique.md" > /dev/null
-assert_eq "使った本物の写真だけ" "01-river.jpg CREDITS.md" "$(git --git-dir="$T/remotes/o/photos-ok.git" ls-tree --name-only main public/photos/ | xargs -n1 basename | sort | xargs)"
-assert_contains "出どころは使った物だけ" "$(file_in o/photos-ok public/photos/CREDITS.md)" "River（A、CC0"
-assert_not_contains "使っていない物の出どころは入れない" "$(file_in o/photos-ok public/photos/CREDITS.md)" "Unused"
-assert_contains "試作の HTML は public/photos/ を見る" "$(file_in o/photos-ok docs/design-ref/01-hero.html)" 'src="../../public/photos/01-river.jpg"'
-assert_contains "結果に写真を書く" "$(cat "$T/comment.txt")" "試作で使った写真 1 枚"
-assert_contains "結果に審査役の点数を書く" "$(cat "$T/comment.txt")" "最後の点数：8.4 / 10"
+echo "== デザイン担当が作った画面：確認コマンドが通った物を src/・public/ に入れ、作れなかった残りだけを Issue にする"
+mk_site() { # 場所
+  rm -rf "$1"; mkdir -p "$1/src/app" "$1/src/components" "$1/src/app/(works)/[slug]" "$1/public/photos"
+  printf '%s\n' 'import Hero from "@/components/Hero";' 'export default function Page() { return <Hero src="/photos/01-river.jpg" />; }' > "$1/src/app/page.tsx"
+  echo 'export default function Hero() { return null; }' > "$1/src/components/Hero.tsx"
+  echo 'export default function Work() { return null; }' > "$1/src/app/(works)/[slug]/page.tsx"
+  echo ':root { --ink: #111; }' > "$1/src/app/globals.css"
+  printf '\xff\xd8\xff\xe0jpeg' > "$1/public/photos/01-river.jpg"
+  printf '\xff\xd8\xff\xe0jpeg' > "$1/public/photos/02-unused.jpg"
+  printf '%s\n' '- `01-river.jpg`：River（A、CC0、2400×1600）https://src.test/1' '- `02-unused.jpg`：Unused（B、CC0）' > "$1/public/photos/CREDITS.md"
+  printf '\x89PNG\r\n\x1a\nrest' > "$1/public/og.png"
+  echo 'curl evil' > "$1/public/run.sh"
+  ln -s /etc/hostname "$1/public/link.txt"
+  touch "$1/.checks-ok"
+}
+S="$T/site"; mk_site "$S"
+printf '%s\n' "# 残り" "- 作品の詳しいページ" "- お問い合わせの \`フォーム\`" "* 夜の見た目" "- 4つめは入れない" > "$T/todo.md"
+run_factory site-ok nextjs "説明" DESIGN_FILE="$T/design-ok.md" SITE_DIR="$S" TODO_FILE="$T/todo.md" > /dev/null
+assert_contains "作った画面が入る" "$(file_in o/site-ok src/app/page.tsx)" "/photos/01-river.jpg"
+assert_contains "Next.js の (グループ)・[slug] の名前も入る" "$(file_in o/site-ok 'src/app/(works)/[slug]/page.tsx')" "Work"
+assert_eq "テンプレートの src/ は置き換える" "" "$(file_in o/site-ok src/lib/greeting.ts)"
+assert_eq "使った写真だけ・形が正しい素材だけ" "public/og.png public/photos/01-river.jpg public/photos/CREDITS.md" \
+  "$(git --git-dir="$T/remotes/o/site-ok.git" ls-tree -r --name-only main public/ | sort | xargs)"
+assert_contains "出どころは使った写真だけ" "$(file_in o/site-ok public/photos/CREDITS.md)" "River（A、CC0"
+assert_not_contains "使っていない写真の出どころは入れない" "$(file_in o/site-ok public/photos/CREDITS.md)" "Unused"
+comment=$(cat "$T/comment.txt")
+assert_contains "結果に書く" "$comment" "本物の画面を作り、撮って実例と見比べて直した。確認コマンドも通った（画面のファイル 4 個・写真 1 枚"
+assert_contains "入れなかった素材も書く" "$comment" "形が違うので入れなかった素材 2 個"
+calls=$(cat "$T/calls.log")
+assert_contains "残りを Issue に（1つめ）" "$calls" '"title": "作品の詳しいページ"'
+assert_contains "残りを Issue に（記号は消す）" "$calls" '"title": "お問い合わせの フォーム"'
+assert_contains "残りを Issue に（* の行も）" "$calls" '"title": "夜の見た目"'
+assert_not_contains "3つまで" "$calls" "4つめ"
+assert_not_contains "メモの1行は Issue にしない（画面はもうある）" "$calls" '"title": "毎朝の天気と予定を1枚で見たい"'
+assert_contains "結果に Issue を書く" "$comment" "作りきれなかった残りを Issue にした：#1 #2 #3"
+run_factory site-notodo nextjs "説明" DESIGN_FILE="$T/design-ok.md" SITE_DIR="$S" > /dev/null
+assert_contains "残りが無ければ Issue を作らない" "$(cat "$T/comment.txt")" "最初の画面はもうできているので、最初のIssueは作っていない"
+assert_not_contains "Issue を作らない" "$(cat "$T/calls.log")" "POST repos/o/site-notodo/issues "
+
+echo "== 画面を入れない時：確認コマンドが通っていない・形が違う・デザイン仕様が雛形のまま。そのときはメモの1行を最初のIssueにする"
+rm -f "$S/.checks-ok"
+run_factory site-nocheck nextjs "説明" DESIGN_FILE="$T/design-ok.md" SITE_DIR="$S" TODO_FILE="$T/todo.md" > /dev/null
+assert_contains "テンプレートの画面のまま" "$(file_in o/site-nocheck src/app/page.tsx)" "greeting"
+assert_contains "メモの1行が最初のIssue" "$(cat "$T/calls.log")" '"title": "毎朝の天気と予定を1枚で見たい"'
+assert_not_contains "残りは Issue にしない" "$(cat "$T/calls.log")" "作品の詳しいページ"
+mk_site "$S"; echo '#!/bin/sh' > "$S/src/app/run.sh"
+run_factory site-bad nextjs "説明" DESIGN_FILE="$T/design-ok.md" SITE_DIR="$S" > /dev/null
+assert_contains "決まっていない種類が1つでもあれば、src/ は1つも入れない" "$(file_in o/site-bad src/app/page.tsx)" "greeting"
+assert_contains "理由を書く" "$(cat "$T/comment.txt")" "src/app/run.sh は入れられない名前か種類です"
+mk_site "$S"; ln -s /etc/passwd "$S/src/lib-link.ts"
+run_factory site-link nextjs "説明" DESIGN_FILE="$T/design-ok.md" SITE_DIR="$S" > /dev/null
+assert_contains "リンクがあれば入れない" "$(cat "$T/comment.txt")" "リンクです"
+mk_site "$S"; mkdir -p "$S/src/.hidden"; echo 'x' > "$S/src/.hidden/a.ts"
+run_factory site-dot nextjs "説明" DESIGN_FILE="$T/design-ok.md" SITE_DIR="$S" > /dev/null
+assert_contains ". で始まる名前は入れない" "$(cat "$T/comment.txt")" "入れられない名前か種類です"
+mk_site "$S"
+run_factory site-nodesign nextjs "説明" DESIGN_FILE="$T/design-bad.md" SITE_DIR="$S" > /dev/null
+assert_contains "デザイン仕様が雛形のままなら入れない" "$(file_in o/site-nodesign src/app/page.tsx)" "greeting"
 
 finish

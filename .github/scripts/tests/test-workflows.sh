@@ -183,7 +183,7 @@ PY2
 )
 assert_eq "factory.yml の守り" "build-env,plan-no-factory,owner-only,template-only" "$result"
 
-echo "== デザイン部門：AIが動かせるコマンドは taste-skill の draw.mjs・inspect.mjs と撮影の shot.mjs、写真の fetch-photos.sh だけ。動かす前にスキルと手順書を読み取り専用にする"
+echo "== デザイン担当：動かせるコマンドは確認コマンド・撮影・写真・決まった道具だけ。動かす前に手順書とスクリプトを読み取り専用にし、Issue の画像は AI の前に取る"
 result=$(python3 - "$WORKFLOWS/factory.yml" <<'PY2'
 import sys, re, yaml
 steps = yaml.safe_load(open(sys.argv[1]))["jobs"]["design"]["steps"]
@@ -194,43 +194,48 @@ for st in steps:
     bash |= set(re.findall(r"Bash\(([^)]*)\)", args))
 out.append("bash=" + "|".join(sorted(bash)))
 names = [st.get("id") or st.get("name") or st.get("uses", "") for st in steps]
-ro = names.index("スキルと手順書を読み取り専用にする")
+ro = names.index("手順書とスクリプトを読み取り専用にする")
 out.append("ro-first" if ro < names.index("designer") else "ro-late")
-out.append("chmod" if "chmod -R a-w .claude/skills .github" in steps[ro]["run"] else "no-chmod")
+out.append("chmod" if "chmod -R a-w .github .claude CLAUDE.md AGENTS.md" in steps[ro]["run"] else "no-chmod")
+img = names.index("Issue に貼られた画像を取る")
+out.append("images-first" if img < names.index("designer") and "github.token" in str(steps[img]["env"]) else "images-ng")
 print(",".join(out))
 PY2
 )
-assert_eq "factory.yml のデザイン部門" "bash=.github/scripts/fetch-photos.sh:*|node .claude/skills/taste-skill/scripts/draw.mjs:*|node .claude/skills/taste-skill/scripts/inspect.mjs:*|node .github/scripts/shot.mjs:*,ro-first,chmod" "$result"
+assert_eq "factory.yml のデザイン担当" "bash=.github/scripts/factory-add-lib.sh:*|.github/scripts/fetch-photos.sh:*|node .github/scripts/shot.mjs:*|npm run build|npm run lint|npm run test|npm run typecheck,ro-first,chmod,images-first" "$result"
 
-echo "== 審査役：仕様と HTML を隠してから、画像だけを見る（読む・書くだけ。コマンドは動かせない）。採点のあとで戻す"
+echo "== デザイン担当の画面：AIとは別に確認コマンドを動かし、通らなければ1回だけ直させる。通った物だけを撮って、新しいリポジトリに渡す"
+result=$(python3 - "$WORKFLOWS/factory.yml" <<'PY2'
+import sys, yaml
+j = yaml.safe_load(open(sys.argv[1]))["jobs"]
+steps = j["design"]["steps"]; out = []
+ids = [st.get("id") for st in steps]
+c1, fx, c2, fin = (steps[ids.index(i)] for i in ("check1", "fixer", "check2", "final"))
+out.append("checks:" + ("ok" if c1["run"] == c2["run"] == ".github/scripts/factory-checks.sh" else "ng"))
+out.append("fixer:" + ("ok" if "steps.check1.outputs.ok == 'false'" in fx["if"] and "steps.check1.outputs.site == 'true'" in fx["if"] and fx.get("continue-on-error") is True else "ng"))
+out.append("recheck:" + ("ok" if "steps.fixer.conclusion == 'success'" in c2["if"] else "ng"))
+out.append("final:" + ("ok" if "steps.check1.outputs.ok == 'true'" in fin["if"] and "steps.check2.outputs.ok == 'true'" in fin["if"] and "--serve" in fin["run"] else "ng"))
+keep = [st for st in steps if st.get("name") == "作った物を取っておく"][0]
+out.append("ship:" + ("ok" if "steps.final.outputs.ok" in str(keep["env"]) and ".checks-ok" in keep["run"] else "ng"))
+env = [st for st in j["build"]["steps"] if st.get("name") == "新しいサービスを作る"][0]["env"]
+out.append("env:" + ("ok" if all(k in env for k in ("SITE_DIR", "TODO_FILE", "DESIGN_REF_DIR")) else "ng"))
+out.append("no-critic" if not any("critic" in str(i) or "hide" in str(i) for i in ids) else "critic-left")
+print(",".join(out))
+PY2
+)
+assert_eq "デザイン担当の画面" "checks:ok,fixer:ok,recheck:ok,final:ok,ship:ok,env:ok,no-critic" "$result"
+
+echo "== 実装の審査役：画像だけを見る（読む・書くだけ。コマンドは動かせない）"
 result=$(python3 - "$WORKFLOWS" <<'PY2'
 import sys, yaml
-w = sys.argv[1]; out = []
-steps = yaml.safe_load(open(f"{w}/factory.yml"))["jobs"]["design"]["steps"]
-ids = [st.get("id") for st in steps]
-for n in (1, 2, 3):
-    c = steps[ids.index(f"critic{n}")]
-    h = steps[ids.index(f"hide{n}")]
-    j = steps[ids.index(f"judge{n}")]
-    ok = (ids.index(f"hide{n}") < ids.index(f"critic{n}") < ids.index(f"judge{n}")
-          and "factory-blind.sh hide" in h["run"] and "factory-blind.sh restore" in j["run"] and "always()" in j["if"]
-          and '--allowedTools "Read,Glob,Write"' in c["with"]["claude_args"])
-    out.append(f"critic{n}:" + ("ok" if ok else "ng"))
-for n in (1, 2):
-    f = steps[ids.index(f"fix{n}")]
-    # 直しが作業回数を超えて「失敗」でも、直した物は残る。次の審査は conclusion（continue-on-error 後）で決める
-    h = steps[ids.index(f"hide{n + 1}")]
-    ok = (f["if"] == f"steps.judge{n}.outputs.redo == 'true'" and f.get("continue-on-error") is True
-          and h["if"] == f"steps.fix{n}.conclusion == 'success'")
-    out.append(f"fix{n}:" + ("ok" if ok else "ng"))
+w = sys.argv[1]
 j = yaml.safe_load(open(f"{w}/claude-implement.yml"))["jobs"]["implement"]["steps"]
 jid = [st.get("id") for st in j]
 c = j[jid.index("critic")]
-out.append("implement-critic:" + ("ok" if '--allowedTools "Read,Glob,Write"' in c["with"]["claude_args"] and jid.index("review_shots") < jid.index("critic") < jid.index("review_judge") < jid.index("fix") else "ng"))
-print(",".join(out))
+print("implement-critic:" + ("ok" if '--allowedTools "Read,Glob,Write"' in c["with"]["claude_args"] and jid.index("review_shots") < jid.index("critic") < jid.index("review_judge") < jid.index("fix") else "ng"))
 PY2
 )
-assert_eq "目隠しの審査" "critic1:ok,critic2:ok,critic3:ok,fix1:ok,fix2:ok,implement-critic:ok" "$result"
+assert_eq "実装の審査役" "implement-critic:ok" "$result"
 
 echo "== 「新サービス：」のIssue：テンプレート自身の企画・実装には回さない（工場が受け持つ）"
 result=$(python3 - "$WORKFLOWS" <<'PY2'
@@ -265,14 +270,14 @@ out.append("args:" + ("ok" if "${{ steps.shots.outputs.allowed }}" in args and "
 out.append("exclude:" + ("ok" if "/.shots/" in run and ".git/info/exclude" in run else "ng"))
 out.append("order:" + ("ok" if st and j["steps"].index(st[0]) < [i for i, s in enumerate(j["steps"]) if "claude-code-action" in s.get("uses", "")][0] else "ng"))
 d = yaml.safe_load(open(f"{w}/factory.yml"))["jobs"]["design"]
-up = [s for s in d["steps"] if s.get("name") == "書いた物を取っておく"][0]["run"]
+fin = [s for s in d["steps"] if s.get("id") == "final"][0]["run"]
 b = yaml.safe_load(open(f"{w}/factory.yml"))["jobs"]["build"]["steps"]
 env = [s for s in b if s.get("name") == "新しいサービスを作る"][0]["env"]
-out.append("ref:" + ("ok" if "factory-proto/shots/*.png" in up and "DESIGN_REF_DIR" in env else "ng"))
+out.append("ref:" + ("ok" if '$RUNNER_TEMP/design/ref' in fin and "DESIGN_REF_DIR" in env else "ng"))
 print(",".join(out))
 PY2
 )
-assert_eq "撮影の扱い" "allowed=Bash(npm run build),Bash(node .github/scripts/shot.mjs:*),Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*),args:ok,exclude:ok,order:ok,ref:ok" "$result"
+assert_eq "撮影の扱い" "allowed=Bash(npm run build),Bash(node .github/scripts/shot.mjs:*),args:ok,exclude:ok,order:ok,ref:ok" "$result"
 
 echo "== 見た目のテスト：AIは動かせるが基準の画像は撮り直せない。撮り直しが失敗したらAIに直させる"
 result=$(python3 - "$WORKFLOWS" <<'PY2'

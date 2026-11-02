@@ -4,9 +4,10 @@
 #   1. テンプレートからリポジトリを作る（同じ名前があれば -2, -3 … を付ける）
 #   2. パイプラインの秘密と変数を、テンプレートの物から写す
 #   3. Vercel のプロジェクトを作ってつなぐ（Next.js で VERCEL_TOKEN があるとき）
-#   4. 中身を整えて main に push する（CLAUDE.md・仕様書の説明、デザイン仕様、デザイン部門が選んだ GSAP・Lenis、Python なら見本に切り替え）。この push で Bootstrap が動く
+#   4. 中身を整えて main に push する（CLAUDE.md・仕様書の説明、デザイン担当が作った画面とデザイン仕様と道具、Python なら見本に切り替え）。この push で Bootstrap が動く
 #   5. main を守る（PRとCIの check を必須にする。管理者は通れる）
-#   6. Bootstrap がラベルを作るのを待って、1行のメモを最初のIssueにする（そこから先はいつものパイプライン）
+#   6. Bootstrap がラベルを作るのを待って、最初のIssueを作る（そこから先はいつものパイプライン）。
+#      デザイン担当が画面を作れていれば、作れなかった残り（todo）だけをIssueにする。作れていなければ、1行のメモを最初のIssueにする
 #   7. 元のIssueに結果を書いて閉じる
 #
 # 環境変数：
@@ -14,14 +15,16 @@
 #   MEMO_DETAIL（任意）：元のIssueの本文（詳しいメモ：載せたい中身・見た目のスタイルなど）。最初のIssueの本文に添える
 #   APP_NAME・APP_STACK（nextjs か python）・APP_DESC（1行の説明）：AIが決めた物
 #   S_<名前>：写す秘密の値（S_CLAUDE_CODE_OAUTH_TOKEN など）、V_<名前>：写す変数の値（V_PIPELINE_APP_ID など）
-#   DESIGN_FILE・CONTEXT_FILE・LIBS_FILE（任意）：デザイン部門が書いたデザイン仕様・使う人と場面・入れる動きの道具（1行1つ）
-#   DESIGN_REF_DIR（任意）：デザイン部門が描いた試作（HTML）と、それを撮った画像（PNG）。docs/design-ref/ に入れ、実装とレビューの目標の絵にする
-#   PHOTOS_DIR（任意）：デザイン部門が取った写真（CC0・パブリックドメイン）と CREDITS.md。試作で使った物だけを public/photos/ に入れる
-#   CRITIQUE_FILE（任意）：審査役の最後の採点。点数を結果に書く
+#   DESIGN_FILE・CONTEXT_FILE・LIBS_FILE（任意）：デザイン担当が書いたデザイン仕様・使う人と場面・入れた道具（1行1つ）
+#   SITE_DIR（任意）：デザイン担当が作った画面（src/ と public/）。確認コマンドが通った印（.checks-ok）があり、形が正しいときだけ入れる
+#   DESIGN_REF_DIR（任意）：デザイン担当が作った画面を最後に撮った画像（PNG）。docs/design-ref/ に入れ、あとの Issue の目標の絵にする
+#   TODO_FILE（任意）：デザイン担当が作れなかった残り（1行1つ「- 」、最大3個）。画面を入れたときだけ、1つずつ Issue にする
 #   VERCEL_TOKEN・VERCEL_TEAM_ID（任意）、COMMENT_TOKEN（元のIssueにコメントする鍵。無ければ GH_TOKEN）
 #   テスト用：FACTORY_GIT_URL（clone 先の書式。%s にリポジトリ名）、VERCEL_API、FACTORY_WAIT_SEC
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=factory-libs.sh
+source "$HERE/factory-libs.sh"
 OWNER="${TEMPLATE%%/*}"
 WAIT="${FACTORY_WAIT_SEC:-5}"
 GIT_URL="${FACTORY_GIT_URL:-https://x-access-token:${GH_TOKEN}@github.com/%s.git}"
@@ -139,7 +142,7 @@ PY2
   if [ "$APP_STACK" = python ]; then
     "$HERE/factory-python.sh" . || exit 1
   fi
-  # デザイン部門が書いた「使う人・使う場面」を、仕様書の「前提」の「使う人：」に入れる（短い箇条書きだけ）
+  # デザイン担当が書いた「使う人・使う場面」を、仕様書の「前提」の「使う人：」に入れる（短い箇条書きだけ）
   if [ -n "${CONTEXT_FILE:-}" ] && [ -f "$CONTEXT_FILE" ] && [ ! -L "$CONTEXT_FILE" ] && [ "$(wc -c < "$CONTEXT_FILE")" -le 2000 ]; then
     CONTEXT_FILE="$CONTEXT_FILE" python3 - <<'PY3'
 import os
@@ -147,11 +150,11 @@ ctx = [l.rstrip() for l in open(os.environ["CONTEXT_FILE"], encoding="utf-8") if
 if ctx:
     body = "\n".join("  " + l.lstrip().replace("* ", "- ", 1) for l in ctx)
     s = open("docs/spec.md", encoding="utf-8").read()
-    s = s.replace("- 使う人：\n", "- 使う人・使う場面（デザイン部門の分析。推定を含む）：\n" + body + "\n", 1)
+    s = s.replace("- 使う人：\n", "- 使う人・使う場面（デザイン担当の分析。推定を含む）：\n" + body + "\n", 1)
     open("docs/spec.md", "w", encoding="utf-8").write(s)
 PY3
   fi
-  # デザイン部門が書いたデザイン仕様（形が正しいときだけ。だめなら雛形のまま）
+  # デザイン担当が書いたデザイン仕様（形が正しいときだけ。だめなら雛形のまま）
   if [ -n "${DESIGN_FILE:-}" ] && [ -f "$DESIGN_FILE" ] && [ ! -L "$DESIGN_FILE" ]; then
     size=$(wc -c < "$DESIGN_FILE")
     if [ "$(head -1 "$DESIGN_FILE")" = "# デザイン仕様" ] && [ "$size" -ge 800 ] && [ "$size" -le 60000 ]; then
@@ -161,71 +164,48 @@ PY3
       echo "DESIGN=bad" > "$work/design.flag"
     fi
   fi
-  # デザイン部門が描いた試作と、その画像（目標の絵）。デザイン仕様を使うときだけ、決まった形の物だけを入れる
-  # （名前は英小文字・数字・-、PNG は本物の PNG で 3MB まで、HTML は 300KB まで、合わせて 40 個・25MB まで）
+  # デザイン担当が作った画面（src/ と public/）。デザイン仕様を使うときで、確認コマンドが通った印があり、形が正しいときだけ入れる
+  if [ "$(cat "$work/design.flag" 2> /dev/null)" = DESIGN=yes ] && [ "$APP_STACK" = nextjs ] && [ -n "${SITE_DIR:-}" ] &&
+    [ -d "$SITE_DIR" ] && [ ! -L "$SITE_DIR" ] && [ -f "$SITE_DIR/.checks-ok" ]; then
+    if result=$(SITE_DIR="$SITE_DIR" python3 "$HERE/factory-site.py" . 2>&1); then
+      echo "SITE=yes $result" > "$work/site.flag"
+    else
+      echo "SITE=bad $(printf '%s' "$result" | tail -1 | cut -c1-200)" > "$work/site.flag"
+    fi
+  fi
+  # 最後に撮った画像（目標の絵）。決まった形の物だけ（名前は英小文字・数字・-、本物の PNG で 3MB まで、合わせて 40 枚・25MB まで）
   if [ "$(cat "$work/design.flag" 2> /dev/null)" = DESIGN=yes ] && [ -n "${DESIGN_REF_DIR:-}" ] && [ -d "$DESIGN_REF_DIR" ] && [ ! -L "$DESIGN_REF_DIR" ]; then
-    count=0; total=0; pngs=0
+    count=0; total=0
     for f in "$DESIGN_REF_DIR"/*; do
       [ -f "$f" ] && [ ! -L "$f" ] || continue
       base=$(basename "$f")
-      [[ "$base" =~ ^[a-z0-9][a-z0-9-]{0,60}\.(png|html)$ ]] || continue
+      [[ "$base" =~ ^[a-z0-9][a-z0-9-]{0,60}\.png$ ]] || continue
       size=$(wc -c < "$f")
-      case "$base" in
-        *.png) [ "$size" -le 3145728 ] && [ "$(head -c 8 "$f" | od -An -tx1 | tr -d ' \n')" = 89504e470d0a1a0a ] || continue ;;
-        *.html) [ "$size" -le 307200 ] || continue ;;
-      esac
+      [ "$size" -le 3145728 ] && [ "$(head -c 8 "$f" | od -An -tx1 | tr -d ' \n')" = 89504e470d0a1a0a ] || continue
       [ "$count" -lt 40 ] && [ $((total + size)) -le 26214400 ] || continue
       mkdir -p docs/design-ref
       cp "$f" "docs/design-ref/$base"
-      # 試作の写真は public/photos/ に入るので、docs/design-ref/ から見た場所に直す
-      case "$base" in *.html) sed -i 's#\(["(]\)photos/#\1../../public/photos/#g' "docs/design-ref/$base" ;; esac
       count=$((count + 1)); total=$((total + size))
-      case "$base" in *.png) pngs=$((pngs + 1)) ;; esac
     done
-    [ "$pngs" -gt 0 ] && echo "REF=$pngs" > "$work/ref.flag"
+    [ "$count" -gt 0 ] && echo "REF=$count" > "$work/ref.flag"
   fi
-  # デザイン部門が取った写真：試作の HTML で使った物だけ、決まった形の物だけを入れる（1枚 5MB まで、12 枚まで）
-  if [ "$(cat "$work/design.flag" 2> /dev/null)" = DESIGN=yes ] && [ -n "${PHOTOS_DIR:-}" ] && [ -d "$PHOTOS_DIR" ] && [ ! -L "$PHOTOS_DIR" ] && [ -d docs/design-ref ]; then
-    photos=0
-    for f in "$PHOTOS_DIR"/*; do
-      [ -f "$f" ] && [ ! -L "$f" ] || continue
-      base=$(basename "$f")
-      [[ "$base" =~ ^[0-9]{2}-[a-z0-9-]{1,40}\.(jpg|png|webp)$ ]] || continue
-      [ "$(wc -c < "$f")" -le 5242880 ] || continue
-      case "$(head -c 12 "$f" | od -An -tx1 | tr -d ' \n')" in ffd8ff* | 89504e470d0a1a0a* | 52494646????????57454250) ;; *) continue ;; esac
-      grep -qF "photos/$base" docs/design-ref/*.html 2> /dev/null || continue
-      [ "$photos" -lt 12 ] || continue
-      mkdir -p public/photos
-      cp "$f" "public/photos/$base"
-      if [ -f "$PHOTOS_DIR/CREDITS.md" ] && [ ! -L "$PHOTOS_DIR/CREDITS.md" ]; then
-        [ -f public/photos/CREDITS.md ] || printf '%s\n\n' "# 写真の出どころ（どれも CC0 かパブリックドメイン。Openverse で探した物）" > public/photos/CREDITS.md
-        grep -F "\`$base\`" "$PHOTOS_DIR/CREDITS.md" | head -1 | cut -c1-400 >> public/photos/CREDITS.md
-      fi
-      photos=$((photos + 1))
-    done
-    [ "$photos" -gt 0 ] && echo "PHOTOS=$photos" > "$work/photos.flag"
-  fi
-  # デザイン部門が選んだ動き・3D の道具（GSAP・Lenis・three.js）。デザイン仕様を使うときだけ、決まった物の中からだけ入れる
+  # デザイン担当が入れた動き・3D の道具（GSAP・Lenis・three.js など）。デザイン仕様を使うときだけ、決まった物の中からだけ入れる（factory-libs.sh）
   # （アプリの AI は依存パッケージを足せないので、作るときに工場が入れておく）
   if [ "$APP_STACK" = nextjs ] && [ "$(cat "$work/design.flag" 2> /dev/null)" = DESIGN=yes ] &&
     [ -n "${LIBS_FILE:-}" ] && [ -f "$LIBS_FILE" ] && [ ! -L "$LIBS_FILE" ] && [ "$(wc -c < "$LIBS_FILE")" -le 200 ]; then
     pkgs=()
     while IFS= read -r lib; do
       lib="$(printf '%s' "$lib" | tr -d '[:space:]')"
-      case "$lib" in
-        gsap) pkgs+=("gsap@^3" "@gsap/react@^2") ;;
-        @gsap/react) pkgs+=("gsap@^3" "@gsap/react@^2") ;;
-        lenis) pkgs+=("lenis@^1") ;;
-        three) pkgs+=("three@^0" "@types/three@^0") ;;
-        @react-three/fiber) pkgs+=("three@^0" "@types/three@^0" "@react-three/fiber@^9") ;;
-        @react-three/drei) pkgs+=("three@^0" "@types/three@^0" "@react-three/fiber@^9" "@react-three/drei@^10") ;;
-        "") ;;
-        *) echo "LIBS_SKIPPED=yes" >> "$work/libs.flag" ;;
-      esac
+      [ -z "$lib" ] && continue
+      if got=$(lib_pkgs "$lib"); then
+        mapfile -t -O "${#pkgs[@]}" pkgs <<< "$got"
+      else
+        echo "LIBS_SKIPPED=yes" >> "$work/libs.flag"
+      fi
     done < "$LIBS_FILE"
     if [ "${#pkgs[@]}" -gt 0 ]; then
       mapfile -t pkgs < <(printf '%s\n' "${pkgs[@]}" | sort -u)
-      if npm install --package-lock-only --no-audit --no-fund --save "${pkgs[@]}" > "$work/npm.log" 2>&1; then
+      if npm install --package-lock-only --no-audit --no-fund --ignore-scripts --save "${pkgs[@]}" > "$work/npm.log" 2>&1; then
         echo "LIBS=${pkgs[*]}" >> "$work/libs.flag"
       else
         git checkout -q -- package.json package-lock.json 2> /dev/null || true
@@ -257,22 +237,21 @@ if [ -n "$vercel_note" ] && [ -n "${S_VERCEL_TOKEN:-}" ]; then
     note "⚠️ 最初の公開を頼めませんでした（$(printf '%s' "$dout" | tail -1 | sed 's/^::error:://' | cut -c1-160)）。次のマージのあとに公開されます"
   fi
 fi
+site_flag=$(cat "$work/site.flag" 2> /dev/null)
 case "$(cat "$work/design.flag" 2> /dev/null)" in
-  DESIGN=yes) note "✅ デザイン部門：使う場面を分析して、このサービスのデザイン仕様（docs/design.md）を書き、別の目で検査した" ;;
-  DESIGN=bad) note "⚠️ デザイン部門が書いたデザイン仕様の形が違ったので、雛形のままにした" ;;
+  DESIGN=yes) note "✅ デザイン担当：実例を集めて撮り、方向を決めて、デザイン仕様（docs/design.md）を書いた" ;;
+  DESIGN=bad) note "⚠️ デザイン担当が書いたデザイン仕様の形が違ったので、雛形のままにした" ;;
+esac
+case "$site_flag" in
+  "SITE=yes "*) note "✅ デザイン担当が本物の画面を作り、撮って実例と見比べて直した。確認コマンドも通った（${site_flag#SITE=yes }）" ;;
+  "SITE=bad "*) note "⚠️ デザイン担当が作った画面の形が正しくなかったので入れなかった（${site_flag#SITE=bad }）。最初のIssueで作り直す" ;;
 esac
 ref_line=$(grep '^REF=' "$work/ref.flag" 2> /dev/null | head -1)
-[ -n "$ref_line" ] && note "✅ デザイン部門が試作を描いて撮り、見て直した。その画像 ${ref_line#REF=} 枚を目標の絵として docs/design-ref/ に入れた"
-photos_line=$(grep '^PHOTOS=' "$work/photos.flag" 2> /dev/null | head -1)
-[ -n "$photos_line" ] && note "✅ 試作で使った写真 ${photos_line#PHOTOS=} 枚（CC0・パブリックドメイン）を public/photos/ に入れた（出どころは public/photos/CREDITS.md）"
-if [ -n "${CRITIQUE_FILE:-}" ] && [ -f "$CRITIQUE_FILE" ] && [ ! -L "$CRITIQUE_FILE" ]; then
-  score=$(grep -m1 -E '^点数' "$CRITIQUE_FILE" | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
-  [ -n "$score" ] && note "🧑‍⚖️ 審査役（画像だけを見る別のAI）の最後の点数：${score} / 10"
-fi
+[ -n "$ref_line" ] && note "✅ 最後に撮った画面の画像 ${ref_line#REF=} 枚を、目標の絵として docs/design-ref/ に入れた"
 libs_line=$(grep '^LIBS=' "$work/libs.flag" 2> /dev/null | head -1)
-[ -n "$libs_line" ] && note "✅ デザイン部門が選んだ動きの道具を入れた：${libs_line#LIBS=}"
+[ -n "$libs_line" ] && note "✅ デザイン担当が使った道具を入れた：${libs_line#LIBS=}"
 grep -q '^LIBS_FAILED=' "$work/libs.flag" 2> /dev/null && note "⚠️ 動き・3D の道具を入れられませんでした（npm install が失敗。入れずに進めた）"
-grep -q '^LIBS_SKIPPED=' "$work/libs.flag" 2> /dev/null && note "⚠️ デザイン部門が、決まった物（gsap・@gsap/react・lenis・three・@react-three/fiber・@react-three/drei）以外の道具を書いていたので、それは入れなかった"
+grep -q '^LIBS_SKIPPED=' "$work/libs.flag" 2> /dev/null && note "⚠️ デザイン担当が、決まった物（${FACTORY_LIB_NAMES// /・}）以外の道具を書いていたので、それは入れなかった"
 
 # ---- 5. main を守る ----
 ruleset=$(jq -nc '{
@@ -297,24 +276,51 @@ for _ in $(seq 1 36); do
   sleep "$WAIT"
 done
 [ "$labels" = yes ] || note "⚠️ Bootstrap のラベルがまだできていません（Actions の Bootstrap を見る）。Issue は先に作ります"
-look="見た目は docs/design.md のとおりに作ってください。"
-[ -n "$ref_line" ] && look="見た目は docs/design.md のとおりに作り、docs/design-ref/ の試作の画像を目標の絵にしてください（作った画面を撮って、試作と見比べて直す）。"
-body="工場（${TEMPLATE}#${ISSUE}）で作ったサービスの、最初のメモです。企画AIが清書して、そのまま実装まで進めます。最初の画面を一から作る大きい作業なので size:L（強いモデル）にしています。${look}"
-if [ -n "$(printf '%s' "${MEMO_DETAIL:-}" | tr -d '[:space:]')" ]; then
-  body="${body}
+if [ "${site_flag%% *}" = SITE=yes ]; then
+  # 画面はもうある。作れなかった残りだけを Issue にする（1行1つ「- 」、最大3個、1つ 200 文字まで）
+  todos=()
+  if [ -n "${TODO_FILE:-}" ] && [ -f "$TODO_FILE" ] && [ ! -L "$TODO_FILE" ] && [ "$(wc -c < "$TODO_FILE")" -le 4000 ]; then
+    while IFS= read -r line; do
+      item=$(printf '%s' "$line" | sed -E 's/^[[:space:]]*[-*][[:space:]]+//' | tr -d '`' | cut -c1-200)
+      [ -n "$item" ] && [ "${#todos[@]}" -lt 3 ] && todos+=("$item")
+    done < <(grep -E '^[[:space:]]*[-*][[:space:]]+' "$TODO_FILE")
+  fi
+  made=()
+  for item in "${todos[@]}"; do
+    body="工場（${TEMPLATE}#${ISSUE}）のデザイン担当が最初の画面を作ったときに、時間が足りず残った作業です。見た目は docs/design.md と docs/design-ref/ の画像に合わせてください（作った画面を撮って見比べる）。
+
+元のメモ：${MEMO}"
+    if n=$(gh api "repos/$NEW/issues" -f title="$(printf '%s' "$item" | cut -c1-80)" -f body="$body" -q .number 2>&1); then made+=("#$n"); fi
+  done
+  if [ "${#made[@]}" -gt 0 ]; then
+    note "✅ 作りきれなかった残りを Issue にした：${made[*]}（自動で企画に回る）"
+  else
+    note "✅ 最初の画面はもうできているので、最初のIssueは作っていない（足したい物は、そのリポジトリにIssueを書く）"
+  fi
+else
+  look="見た目は docs/design.md のとおりに作ってください。"
+  [ -n "$ref_line" ] && look="見た目は docs/design.md のとおりに作り、docs/design-ref/ の画像を目標の絵にしてください（作った画面を撮って、見比べて直す）。"
+  body="工場（${TEMPLATE}#${ISSUE}）で作ったサービスの、最初のメモです。企画AIが清書して、そのまま実装まで進めます。最初の画面を一から作る大きい作業なので size:L（強いモデル）にしています。${look}"
+  if [ -n "$(printf '%s' "${MEMO_DETAIL:-}" | tr -d '[:space:]')" ]; then
+    body="${body}
 
 ## 詳しいメモ（元のIssueの本文）
 
 ${MEMO_DETAIL}"
+  fi
+  first=$(gh api "repos/$NEW/issues" -f title="$MEMO" -f "labels[]=size:L" \
+    -f body="$body" -q .number 2>&1) \
+    || fail "最初のIssueを作れませんでした"
+  note "✅ 最初のIssue：https://github.com/$NEW/issues/$first（自動で企画に回る）"
 fi
-first=$(gh api "repos/$NEW/issues" -f title="$MEMO" -f "labels[]=size:L" \
-  -f body="$body" -q .number 2>&1) \
-  || fail "最初のIssueを作れませんでした"
-note "✅ 最初のIssue：https://github.com/$NEW/issues/$first（自動で企画に回る）"
 # 公開アドレス：Vercel が最初の公開でアドレスを決めるまで待って調べる（同じ名前がほかの人に使われていると、名前の後ろに文字が付く）
 if [ -n "$vercel_note" ]; then
   if site=$(PROJECT="${vercel_note#Vercel：}" REPO_FULL="$NEW" "$HERE/factory-vercel-url.sh"); then
-    note "🌐 公開アドレス：$site（リポジトリの Website 欄にも入れた。最初の画面は、最初のIssueがマージされると出る）"
+    if [ "${site_flag%% *}" = SITE=yes ]; then
+      note "🌐 公開アドレス：$site（リポジトリの Website 欄にも入れた。最初の画面は、公開が終わるとすぐ見られる）"
+    else
+      note "🌐 公開アドレス：$site（リポジトリの Website 欄にも入れた。最初の画面は、最初のIssueがマージされると出る）"
+    fi
   else
     note "⚠️ 公開アドレスがまだ決まっていません（Vercel の画面の Domains で確かめる）"
   fi

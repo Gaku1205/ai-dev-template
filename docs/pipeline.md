@@ -89,7 +89,7 @@ AIが正常に終わったのに変更が無いとき（質問した、指摘が
 | AI（ワークフロー） | 許可している操作 | 許可していない操作と理由 |
 | --- | --- | --- |
 | 企画AI（`claude-plan.yml`） | `Bash(gh issue view:*)`、`Bash(gh issue edit:*)`、`Bash(gh issue comment:*)`、`Bash(gh issue create:*)`、`Bash(gh issue list:*)`、`Bash(gh pr list:*)`、`Bash(gh pr diff:*)`、`Read`、`Glob`、`Grep`、`Write` | コードを変えるgit操作・npm（企画はIssueを書くだけ。`Write` は結果ファイル `plan-result.txt` のため） |
-| 実装AI（`claude-implement.yml`） | pipeline.json の checks のコマンド（無ければ npm run typecheck・lint・test・build。下の「言語と公開先」）、`Bash(.github/scripts/tests/run-all.sh)`、`Bash(git status:*)`、`Bash(git diff:*)`、`Bash(git add:*)`、`Bash(git commit:*)`、`Bash(git fetch:*)`、`Bash(git merge:*)`、`Bash(git push:*)`、`Bash(bash .github/scripts/tests/run-all.sh)`、`Bash(shellcheck:*)`、見た目のテストがあるアプリでは `Bash(npm run test:visual)`・`Bash(npm run test:visual -- -g:*)`・`Bash(npx playwright test:*)`（手元で動かして、位置や数値を確かめるため。基準の画像の撮り直し（--update-snapshots・-u）は許さない）、画面のあるアプリでは `Bash(npm run build)`・`Bash(node .github/scripts/shot.mjs:*)`・`Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*)`（作った画面を本物のブラウザで 390・1440・1920 の幅で撮り、画像を見て直すため。下の「撮って見て直す」）、`Skill`（.claude/skills/ のスキル。画面を作るときの frontend-design・taste-skill・web-design-guidelines、GSAP・Lenis が入っているアプリでの motion-gsap-lenis。taste-skill のスクリプトは、測る inspect.mjs だけ動かしてよい） | `gh`（PRやコメントは進行役が作る）、`npm run readme:shots` などの重い物（README の撮影はCIのワークフローでやる）。ファイルの編集は、このツールの標準で許可される。gitは、標準に任せると拒否されて止まったことがあるので、明示して許可している。`git push --force`・`git rebase` は許可しない |
+| 実装AI（`claude-implement.yml`） | pipeline.json の checks のコマンド（無ければ npm run typecheck・lint・test・build。下の「言語と公開先」）、`Bash(.github/scripts/tests/run-all.sh)`、`Bash(git status:*)`、`Bash(git diff:*)`、`Bash(git add:*)`、`Bash(git commit:*)`、`Bash(git fetch:*)`、`Bash(git merge:*)`、`Bash(git push:*)`、`Bash(bash .github/scripts/tests/run-all.sh)`、`Bash(shellcheck:*)`、見た目のテストがあるアプリでは `Bash(npm run test:visual)`・`Bash(npm run test:visual -- -g:*)`・`Bash(npx playwright test:*)`（手元で動かして、位置や数値を確かめるため。基準の画像の撮り直し（--update-snapshots・-u）は許さない）、画面のあるアプリでは `Bash(npm run build)`・`Bash(node .github/scripts/shot.mjs:*)`（作った画面を本物のブラウザで 390・1440・1920 の幅で撮り、画像を見て直すため。下の「撮って見て直す」）、`Skill`（.claude/skills/ のスキル。画面を作るときの frontend-design・taste-skill・web-design-guidelines、GSAP・Lenis が入っているアプリでの motion-gsap-lenis。taste-skill のスクリプトは、測る inspect.mjs だけ動かしてよい） | `gh`（PRやコメントは進行役が作る）、`npm run readme:shots` などの重い物（README の撮影はCIのワークフローでやる）。ファイルの編集は、このツールの標準で許可される。gitは、標準に任せると拒否されて止まったことがあるので、明示して許可している。`git push --force`・`git rebase` は許可しない |
 | レビューAI（`claude-review.yml`） | `Bash(gh pr view:*)`、`Bash(gh pr diff:*)`、`Bash(gh issue view:*)`、`Bash(gh pr comment:*)`、`Read`、`Glob`、`Grep`、`Write`、`mcp__github_inline_comment__create_inline_comment` | コードの変更・git操作・npm（レビューは読むだけ。コードは直さない） |
 | 修正AI（`claude-mention.yml`） | `Bash(gh pr view:*)`、`Bash(gh pr edit:*)`、`Bash(gh pr comment:*)`、`Bash(git fetch:*)`、`Bash(git merge:*)`、`Bash(git status:*)`、`Bash(git diff:*)`、`Bash(git add:*)`、`Bash(git commit:*)`、`Bash(git push:*)`、pipeline.json の checks のコマンド（無ければ npm run typecheck・lint・test・build）、`Bash(.github/scripts/tests/run-all.sh)`、`Bash(bash .github/scripts/tests/run-all.sh)`、`Bash(shellcheck:*)`、見た目のテストがあるアプリでは `Bash(npm run test:visual)`・`Bash(npm run test:visual -- -g:*)`・`Bash(npx playwright test:*)`（基準の画像の撮り直しは許さない）、`Skill` | `git rebase`・`git push --force`（履歴を書き換えない）、`gh pr merge`（マージは進行役だけ）。`gh pr edit` はPRの説明の直し、`git merge` はコンフリクトの解消のために許可している |
 
@@ -103,9 +103,9 @@ AIが正常に終わったのに変更が無いとき（質問した、指摘が
 
 文字だけで画面を作ると、行をまたいで揃うはずの列のずれ・重なり・何も無い帯・弱い主役に、誰も気づけない（工場で作った最初の2つのサービスで起きた）。そこで、画面を作るAIは**自分で撮って見る**。
 
-- 撮るのは `.github/scripts/shot.mjs`（依存なし。taste-skill の Chrome の操作を使い、ubuntu-latest に入っている Chrome で撮る。Node 22 以上）。`--serve` でビルド済みのアプリを立ち上げてパス（`/` など）を撮るか、HTML のファイルを撮る。幅は 390・1440・1920。押す・入力する・localStorage にデータを入れるなどの操作をしてから撮る場面は `--steps` の JSON で書く（使い方はファイルの先頭）
+- 撮るのは `.github/scripts/shot.mjs`（依存なし。Chrome の操作は `.github/scripts/lib/cdp.mjs`（taste-skill から写した物、MIT）で、ubuntu-latest に入っている Chrome で撮る。Node 22 以上）。`--serve` でビルド済みのアプリを立ち上げてパス（`/` など）を撮るか、URL（実在のサイト）か HTML のファイルを撮る。幅は 390・1440・1920。`--scrolls N` で1画面ずつスクロールしながら N 枚撮る（スクロールで出てくる物・動きの途中が見える）。押す・入力する・localStorage にデータを入れるなどの操作をしてから撮る場面は `--steps` の JSON で書く（使い方はファイルの先頭）
 - **実装AI**（`claude-implement.yml`）：画面のあるアプリ（package.json に `start` がある Node のアプリ）では、確認コマンドが通ったあと `npm run build` → `node .github/scripts/shot.mjs --serve /` で撮り、画像を全部見て、`docs/design-ref/` の目標の絵があれば見比べ、目立つ問題の上位3つを直して撮り直す（最大3回）。撮った画像は `.shots/` にでき、コミットされない（`.git/info/exclude`）。そのあと、**別のAI（審査役）**が、ワークフローが撮り直した画像と目標の絵だけを見て採点し（コードは見ない）、8点に届かなければ、指摘をつけて実装AIにもう1回だけ直させる。採点はPRの本文に入る。そのぶん時間の上限を 75 分にしている
-- **デザイン部門**（工場）：仕様を書く前に、主な場面の試作を HTML で描いて撮り、見て直す。そのあと審査役が画像だけで採点する（下の「工場」）
+- **デザイン担当**（工場）：実在の良いサイトを撮って参考にしてから、本物の画面を作り、撮って実例と見比べて直す（下の「工場」）
 
 ## 言語と公開先（`pipeline.json`）
 
@@ -167,21 +167,20 @@ AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions
 
 ## 工場（1行から新しいサービスを作る）
 
-ai-dev-template に、タイトルが **`新サービス：`** で始まるIssueを書くと（例：「新サービス：毎朝の天気と予定を1枚で見られるページ」）、`factory.yml` が新しいサービスのリポジトリを作って、いつものパイプラインに渡す。テンプレート本体で、オーナーが書いたIssueでだけ動く。Issue の本文は「詳しいメモ」として、名前決め・デザイン部門・最初のIssueに渡る（載せたい中身や、見た目のスタイルの指定。3000文字まで）。本文で見た目のスタイル（Liquid Glass など）を指定すると、デザイン部門はそれを方向の中心にし、そのスタイルの要素には「AIが作った感」の禁止（ガラス・グラデーションなど）を当てない（読みやすさの決まりは外さない。`.github/factory/design-department.md`）。
+ai-dev-template に、タイトルが **`新サービス：`** で始まるIssueを書くと（例：「新サービス：毎朝の天気と予定を1枚で見られるページ」）、`factory.yml` が新しいサービスのリポジトリを作って、いつものパイプラインに渡す。テンプレート本体で、オーナーが書いたIssueでだけ動く。Issue の本文は「詳しいメモ」として、名前決め・デザイン担当・最初のIssueに渡る（載せたい中身や、見た目の雰囲気。3000文字まで）。本文に**画像（リールのスクショ・好きなサイトの画面など）を貼ると**、デザイン担当がいちばん大事な実例として見る（`.github/scripts/fetch-issue-images.sh` が AI の前に取ってくる。10 枚まで）。URL を書けば、それも撮って見る。
 
 1. AIが、名前（英語の小文字と -）・言語（画面のあるWebなら Next.js、処理が中心なら Python）・1行の説明を決める（AIは名前を書くだけで、鍵は持たない）
-2. **デザイン部門**（Next.js のとき。`.github/factory/design-department.md`）：目標は「賞を取るサイトと並べて見劣りしない」。決まりは最低限（読める・押せる・動きを止められる・スマホで成立する・目的が果たせる・ブランドを写さない）だけにして、色・書体・質感・ガラス・グラデーション・写真・3D は自由に選ばせる（決まりを足すほど無難で地味になったため。taste-skill の家の決まりと inspect.mjs の FAIL は、工場では守らせない）
-   - 場面を短く分析して、題材から1つの強い方向を決め、主な場面の試作を HTML で `factory-proto/` に描き、`shot.mjs` で 390・1440・1920 の幅で撮って見て直してから、短い仕様（150行くらい）を書く。**見た目の正は試作の HTML**で、実装はそのコードを移してよい
-   - **素材**：写真は `.github/scripts/fetch-photos.sh "<英語の検索語>" <枚数>` で、Openverse から CC0・パブリックドメインの物だけを取る（鍵は要らない。合わせて 12 枚まで、出どころは CREDITS.md）。試作で使った写真だけが `public/photos/` に入る。3D・動きは `factory-libs.txt` に `three`・`@react-three/fiber`・`@react-three/drei`・`gsap`・`@gsap/react`・`lenis` を書けば、工場が `npm install --package-lock-only` で入れる（アプリのAIは依存を足せないため）。シェーダーはライブラリなしで書ける
-   - **審査役**：別のAIが、仕様・試作の HTML・前の採点を隠した状態（`.github/scripts/factory-blind.sh`）で、**画像だけ**を見て10点満点で厳しく採点する（賞を取るサイトが8〜9、テンプレートが5）。8点に届かなければ、指摘を `factory-critique.md` に書いてデザイン部門に戻す（最大2回）。最後の点数は元のIssueの結果に書く
-   - 発想の材料：スキル frontend-design・taste-skill（`draw.mjs` で方向を配ってもらえる）・デザインの参考（`.github/factory/references/`、有名なサイトの仕組みの書き起こし。大きいのでアプリには配らない）。メモで見た目のスタイル（Liquid Glass など）を指定すると、それが方向の中心になる
-   - 使う人・場面は仕様書の「前提」にも入る。仕様の形が違えば雛形のまま進める（そのときは道具も写真も入れない）
+2. **デザイン担当**（Next.js のとき。`.github/factory/design-department.md`）：AIが見た目を決めて、**本物の Next.js の画面を最後まで作る**。それがそのまま新しいリポジトリの最初の中身になる（前は、試作の HTML と文章の仕様を描いて、別のAIが作り直していた。伝言で質が落ちるのでやめた）
+   - **実例から作る**：描く前に、題材と雰囲気に近い実在のサイトを 8〜15 個探して `shot.mjs --scrolls` で撮り、良い所を `factory-refs/board.md` に書いて、どれのどこを混ぜるか決める（言葉だけで考えると平均的な画面になるため）。Issue に貼った画像がいちばん大事な実例
+   - **決まりは最低限**：読める・押せる・スマホで崩れない・動きを止められる・目的が果たせる・実在のブランドを写さない、だけ。色・書体・構図・質感・動きは全部AIが決める（前は禁止を足し続けていたが、無難で地味になったので全部外した。taste-skill・デザインの参考の書き起こし・審査役も外した）
+   - **作って、撮って、実例と見比べて直す**（最低3回）。写真は `.github/scripts/fetch-photos.sh "<英語の検索語>" <枚数>` で Openverse から CC0・パブリックドメインの物だけを `public/photos/` に取る（鍵は要らない。合わせて 20 枚まで、出どころは CREDITS.md。画面で使った写真だけが入る）。動き・3D の道具は `.github/scripts/factory-add-lib.sh <名前>` で、決まった物（`gsap`・`@gsap/react`・`lenis`・`motion`・`three`・`@react-three/fiber`・`@react-three/drei`。`.github/scripts/factory-libs.sh`）だけをその場で入れ、新しいリポジトリにも同じ物が入る（アプリのAIは依存を足せないため）
+   - 最後に `docs/design.md`（あとのIssueで同じ見た目を作るための決まり）を書き直す。ワークフローが確認コマンド（typecheck・lint・test・build）をAIとは別に動かし（`.github/scripts/factory-checks.sh`）、通らなければ1回だけ直させる。**通った物だけ**を、`.github/scripts/factory-site.py` が形を確かめてから新しいリポジトリの `src/`・`public/` に入れ、最後に撮った画像を `docs/design-ref/` に入れる。通らなかったときは、今までどおりメモの1行を最初のIssueにして、実装AIが作る
 3. `factory.sh` が、テンプレートからリポジトリを作る（同じ名前があれば `-2` …）
 4. パイプラインの秘密（`CLAUDE_CODE_OAUTH_TOKEN`・`PIPELINE_APP_PRIVATE_KEY`・`PIPELINE_TOKEN`・`NTFY_TOPIC`）と変数（`PIPELINE_APP_ID`・`NOTIFY_EVENTS`・`AGENT_DESK_URL`）を、テンプレートの物から写す
 5. Next.js で `VERCEL_TOKEN` があれば、Vercel のプロジェクトを作ってつなぐ
-6. `CLAUDE.md` の1行目・仕様書の「目的」・README に説明を書き、見た目の段のデザイン仕様を入れ、Python なら見本（`examples/python`）に切り替えて（公開先は none）、main に push する。この push で Bootstrap が動く
+6. `CLAUDE.md` の1行目・仕様書の「目的」・README に説明を書き、デザイン担当が作った画面とデザイン仕様と道具を入れ、Python なら見本（`examples/python`）に切り替えて（公開先は none）、main に push する。この push で Bootstrap が動く
 7. main を守る（PRと CI の `check` を必須にする。管理者は通れる）
-8. 1行のメモを、新しいリポジトリの最初のIssueにする（自動で企画に回る。最初の画面を一から作るので `size:L`＝強いモデルで実装する）。Vercel につないだときは、本番の公開アドレスを調べて報告に書き、リポジトリの Website 欄にも入れる（同じ名前がほかの人に使われていると、アドレスの後ろに文字が付く）。元のIssueに結果を書いて閉じる
+8. 最初のIssueを作る（自動で企画に回る）。デザイン担当が画面を作れていれば、作りきれなかった残り（`factory-todo.md`、3つまで）だけをIssueにする（無ければ作らない）。作れていなければ、1行のメモを最初のIssueにする（最初の画面を一から作るので `size:L`＝強いモデルで実装する）。Vercel につないだときは、本番の公開アドレスを調べて報告に書き、リポジトリの Website 欄にも入れる（同じ名前がほかの人に使われていると、アドレスの後ろに文字が付く）。元のIssueに結果を書いて閉じる
 
 テンプレートの受付（intake）は、`新サービス：` のIssueを企画に回さない。工場は最初にIssueへ `factory` の印を付け、企画AI・実装AIは、題が `新サービス：` で始まるか、この印があるIssueを、テンプレート自身では受けない（題が書き換えられても止まる）。
 
