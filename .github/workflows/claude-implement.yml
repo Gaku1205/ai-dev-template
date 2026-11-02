@@ -72,8 +72,8 @@ jobs:
           fi
           echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
           if [ "$enabled" = true ]; then
-            echo "allowed=Bash(npm run build),Bash(node .github/scripts/shot.mjs:*)" >> "$GITHUB_OUTPUT"
-            echo "prompt=画面に触る作業では、確認コマンドが通ったあと、npm run build をしてから node .github/scripts/shot.mjs --serve / で画面を撮る（ほかのページはパスを並べる。押したり入力したりした後の場面は --steps で書く。使い方はそのファイルの先頭）。390・1440・1920 の幅の画像が .shots/ にできるので、全部 Read で見る。docs/design-ref/ に目標の絵（工場のデザイン担当が撮った画像）があれば見比べる。行をまたいで揃うはずの列や数字のずれ・重なり・何も無い大きな帯・左右の片寄り・はみ出し・入力済みに見える例の文字・目立たない主役を探し、目立つ問題の上位3つを直して撮り直す（最大3回）。.shots/ はコミットしない。Issue への報告に、撮って見た場面と直した所を短く書く。" >> "$GITHUB_OUTPUT"
+            echo "allowed=Bash(npm run build),Bash(node .github/scripts/shot.mjs:*),Bash(.github/scripts/fetch-photos.sh:*)" >> "$GITHUB_OUTPUT"
+            echo "prompt=画面に触る作業では、確認コマンドが通ったあと、npm run build をしてから node .github/scripts/shot.mjs --serve / で画面を撮る（ほかのページはパスを並べる。押したり入力したりした後の場面は --steps で書く。使い方はそのファイルの先頭）。390・1440・1920 の幅の画像が .shots/ にできるので、全部 Read で見る。docs/design-ref/ に目標の絵（工場のデザイン担当が撮った画像）があれば見比べる。行をまたいで揃うはずの列や数字のずれ・重なり・何も無い大きな帯・左右の片寄り・はみ出し・入力済みに見える例の文字・目立たない主役を探し、目立つ問題の上位3つを直して撮り直す（最大3回）。.shots/ はコミットしない。Issue への報告に、撮って見た場面と直した所を短く書く。写真が要るときは .github/scripts/fetch-photos.sh \"<英語の検索語>\" <枚数> で、自由に使える写真（CC0・パブリックドメイン）が public/photos/ に入る（出どころは public/photos/CREDITS.md。使う物だけコミットする）。" >> "$GITHUB_OUTPUT"
             # 撮った画像をコミットしないように（.gitignore は変えない）
             echo "/.shots/" >> .git/info/exclude
             echo "/.review/" >> .git/info/exclude

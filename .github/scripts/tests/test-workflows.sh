@@ -277,7 +277,7 @@ out.append("ref:" + ("ok" if '$RUNNER_TEMP/design/ref' in fin and "DESIGN_REF_DI
 print(",".join(out))
 PY2
 )
-assert_eq "撮影の扱い" "allowed=Bash(npm run build),Bash(node .github/scripts/shot.mjs:*),args:ok,exclude:ok,order:ok,ref:ok" "$result"
+assert_eq "撮影の扱い" "allowed=Bash(npm run build),Bash(node .github/scripts/shot.mjs:*),Bash(.github/scripts/fetch-photos.sh:*),args:ok,exclude:ok,order:ok,ref:ok" "$result"
 
 echo "== 見た目のテスト：AIは動かせるが基準の画像は撮り直せない。撮り直しが失敗したらAIに直させる"
 result=$(python3 - "$WORKFLOWS" <<'PY2'
