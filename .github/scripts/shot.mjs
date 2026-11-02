@@ -2,7 +2,7 @@
 // 画面を本物のブラウザで開いて、決まった幅で撮る（工場のデザイン担当が実例と自分の画面を撮るのと、実装AIの「撮って見て直す」で使う）。
 // 依存なし：Chrome の操作は .github/scripts/lib/cdp.mjs（taste-skill から写した物、MIT）。Node 22 以上と Chrome が要る。
 //
-//   node .github/scripts/shot.mjs [--serve] [--out DIR] [--widths 390,1440,1920] [--full | --scrolls N] [--reduced] [--steps FILE] 対象...
+//   node .github/scripts/shot.mjs [--serve] [--out DIR] [--widths 390,1440,1920] [--full | --scrolls N] [--scale 2] [--format webp] [--reduced] [--steps FILE] 対象...
 //
 //   対象：--serve のときはパス（/ や /settings）。そうでなければ URL（実在のサイト。名前はドメインとパスから）か HTML のファイル
 //   --serve：ビルド済みのアプリを npm run start で立ち上げてから撮り、撮り終わったら止める（先に npm run build が要る）
@@ -15,6 +15,8 @@
 //   --full：画面の下まで全部撮る（無ければ最初の1画面だけ）
 //   --scrolls N：上から1画面ずつ下へスクロールしながら N 枚撮る（2〜12）。スクロールで出てくる物・動きの途中が見える。名前は <名前>-<幅>-s<番号>.png
 //   --reduced：prefers-reduced-motion を有効にして撮る
+//   --scale N：画面の細かさ（1〜3、既定 1）。サイトに載せる画像は 2（高精細な画面でもぼやけない。画像の縦横は N 倍）
+//   --format：png（既定）・webp・jpeg。サイトに載せる画像は webp（png より軽い。画質 90）
 //   --links：ページにあるリンク（文字と URL）を、場面ごとに1回、最大 150 個表示する（ギャラリーの一覧から、載っているサイトを拾うため）
 // 出力：DIR/<名前>-<幅>.png（DIR の既定は .shots）。撮った画像の一覧と、ページで起きたエラーを表示する
 // 終了コード：撮れた → 0、撮れなかった物がある → 1、使い方の間違い → 2
@@ -54,11 +56,14 @@ const full = has('full');
 const scrolls = Number(flag('scrolls', '0'));
 const reduced = has('reduced');
 const links = has('links');
+const scale = Number(flag('scale', '1'));
+const format = String(flag('format', 'png'));
+const ext = format === 'jpeg' ? 'jpg' : format;
 const HEIGHT = { 360: 780, 375: 812, 390: 844, 768: 1024, 1024: 768, 1280: 800, 1440: 900, 1920: 1080, 2560: 1440 };
 
-const badScrolls = scrolls !== 0 && (!Number.isInteger(scrolls) || scrolls < 2 || scrolls > 12 || full);
+const badScrolls = (scrolls !== 0 && (!Number.isInteger(scrolls) || scrolls < 2 || scrolls > 12 || full)) || !(scale >= 1 && scale <= 3) || !['png', 'webp', 'jpeg'].includes(format);
 if (args.some((a) => a.startsWith('--')) || (!args.length && !stepsFile) || !widths.length || badScrolls) {
-  console.error('使い方：node .github/scripts/shot.mjs [--serve] [--out DIR] [--widths 390,1440,1920] [--full | --scrolls 2〜12] [--reduced] [--steps FILE] 対象...');
+  console.error('使い方：node .github/scripts/shot.mjs [--serve] [--out DIR] [--widths 390,1440,1920] [--full | --scrolls 2〜12] [--scale 1〜3] [--format png|webp|jpeg] [--reduced] [--steps FILE] 対象...');
   process.exit(2);
 }
 
@@ -247,7 +252,7 @@ try {
     }
     for (const w of widths) {
       const h = HEIGHT[w] || Math.round(w * 0.625);
-      const page = await browser.newPage({ width: w, height: h, dsf: 1, mobile: w < 600, reducedMotion: reduced });
+      const page = await browser.newPage({ width: w, height: h, dsf: scale, mobile: w < 600, reducedMotion: reduced });
       try {
         // 実在のサイトは、読み込みの演出（ローディング・最初の動き）が終わるまで長めに待つ
         const external = /^https?:\/\//.test(scene.target);
@@ -274,13 +279,13 @@ try {
           for (let k = 0; k < scrolls; k++) {
             await page.eval(`window.scrollTo({ top: ${Math.round(k * h * 0.9)}, behavior: 'instant' })`);
             await sleep(external ? 1500 : 1000);
-            const path = join(outDir, `${scene.name}-${w}-s${k + 1}.png`);
-            await page.screenshot({ path, format: 'png' });
+            const path = join(outDir, `${scene.name}-${w}-s${k + 1}.${ext}`);
+            await page.screenshot({ path, format, quality: 90 });
             written.push(path);
           }
         } else {
-          const path = join(outDir, `${scene.name}-${w}.png`);
-          await page.screenshot({ path, format: 'png', fullPage: full });
+          const path = join(outDir, `${scene.name}-${w}.${ext}`);
+          await page.screenshot({ path, format, quality: 90, fullPage: full });
           written.push(path);
         }
         if (page.consoleErrors.length) console.log(`  ! ${scene.name}-${w}：ページのエラー：${page.consoleErrors.slice(0, 3).join(' / ')}`);

@@ -36,6 +36,7 @@
 - このリポジトリの Next.js は学習データと違う所がある。書く前に `AGENTS.md` を読み、要る所は `node_modules/next/dist/docs/` で確かめる
 - 文字：`next/font/google` で読み込む
 - 写真：`.github/scripts/fetch-photos.sh "<英語の検索語>" <枚数>` で、自由に使える写真（CC0・パブリックドメイン）が `public/photos/` に入る（`/photos/…` で使える）。Read で見て、良い物だけ使う。使わない写真は新しいリポジトリには入らない。検索語は何回変えてもよい（合わせて 20 枚まで）
+- 実在のページの画面をサイトの画像として載せるとき（作品紹介など）は、`node .github/scripts/shot.mjs --scale 2 --format webp --out public/<置き場> <URL>` で撮る（高精細な画面でもぼやけず、軽い）。スマホの画面はスマホの輪郭、PC の画面はブラウザの枠に入れて見せると、何の画面かが一目で分かる
 - シェーダー・canvas・SVG は、道具なしで書いてよい
 - 動き・3D の道具：`.github/scripts/factory-add-lib.sh <名前>` で入る（gsap・@gsap/react・lenis・motion・three・@react-three/fiber・@react-three/drei）。ほかの道具は入れられない
 - 触らない物：`.github/`、`package.json` を手で書き換えること（道具は上のコマンドだけで入れる）、`next.config.*`、`CLAUDE.md`、`AGENTS.md`。外のサイトの画像・フォントを直接読み込まない（写真は `public/` に入れて使う）
