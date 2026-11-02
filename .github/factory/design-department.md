@@ -20,9 +20,10 @@
 言葉だけで考えると、どこかで見た平均的な画面になります。先に本物を見ます。
 
 - `factory-refs/issue/` に画像があれば、それはオーナーが貼った「こういうのが良い」の実例。いちばん大事にする（`INDEX.md` に出どころ）
-- メモに URL があれば、それも撮る
-- 題材と、メモに書かれた雰囲気に近い実在のサイトを、8〜15 個探す。探し方の例：WebSearch で「awwwards site of the day <題材>」「<題材> website design inspiration」、ギャラリー（Awwwards・Godly・Siteinspire・Land-book・One Page Love・Httpster・Minimal Gallery・Lapa Ninja など）の一覧ページ
-- 撮る：`node .github/scripts/shot.mjs --out factory-refs/shots --widths 1440,390 --scrolls 4 <URL> <URL> ...`（1画面ずつスクロールして4枚。ギャラリーの一覧ページを撮ると、一度にたくさんの実例が見える）。撮った画像は全部 Read で見る
+- メモに URL があれば、それも撮る。ギャラリー（いくつものサイトを集めたページ）の URL なら、オーナーが「この系統が好き」と言っている所。一覧を撮って眺め、`--links` で載っているサイトを拾って、良さそうな物を1つずつ撮る
+- 題材と、メモに書かれた雰囲気に近い実在のサイトを、8〜15 個探す。日本語の文字の組み方は日本のサイトがいちばん参考になるので、**まず日本のギャラリー**（SANKOU! https://sankoudesign.com/ 、MUUUUU.ORG https://muuuuu.org/ 、I/O 3000 https://io3000.com/ 、Web Design Clip https://webdesignclip.com/ 。カテゴリ・色・業種で絞れる）を見る。次に海外（Awwwards・Godly・Siteinspire・Land-book・One Page Love・Minimal Gallery など）や WebSearch
+- ギャラリーから拾う：`node .github/scripts/shot.mjs --links --out factory-refs/shots --widths 1440 --scrolls 3 <一覧の URL>`（一覧の絵と、載っているリンクの一覧が出る。紹介ページを経由するギャラリーは、紹介ページも `--links` で開いて本物のサイトの URL を拾う）。WebFetch で読めないサイトも、これなら開ける
+- 撮る：`node .github/scripts/shot.mjs --out factory-refs/shots --widths 1440,390 --scrolls 4 <URL> <URL> ...`（1画面ずつスクロールして4枚）。撮った画像は全部 Read で見る
 - `factory-refs/board.md` に、良かった物を5〜8個、それぞれ「どこが・なぜ良いか」（構図・余白・文字の組み方と大きさの差・色・写真の扱い・動き）を具体的に書く。最後に、どれとどれのどこを混ぜて、このサービスの画面にするかを書く
 
 ### 2. 方向を決める

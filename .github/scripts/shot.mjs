@@ -15,6 +15,7 @@
 //   --full：画面の下まで全部撮る（無ければ最初の1画面だけ）
 //   --scrolls N：上から1画面ずつ下へスクロールしながら N 枚撮る（2〜12）。スクロールで出てくる物・動きの途中が見える。名前は <名前>-<幅>-s<番号>.png
 //   --reduced：prefers-reduced-motion を有効にして撮る
+//   --links：ページにあるリンク（文字と URL）を、場面ごとに1回、最大 150 個表示する（ギャラリーの一覧から、載っているサイトを拾うため）
 // 出力：DIR/<名前>-<幅>.png（DIR の既定は .shots）。撮った画像の一覧と、ページで起きたエラーを表示する
 // 終了コード：撮れた → 0、撮れなかった物がある → 1、使い方の間違い → 2
 import { spawn } from 'node:child_process';
@@ -52,6 +53,7 @@ const serve = has('serve');
 const full = has('full');
 const scrolls = Number(flag('scrolls', '0'));
 const reduced = has('reduced');
+const links = has('links');
 const HEIGHT = { 360: 780, 375: 812, 390: 844, 768: 1024, 1024: 768, 1280: 800, 1440: 900, 1920: 1080, 2560: 1440 };
 
 const badScrolls = scrolls !== 0 && (!Number.isInteger(scrolls) || scrolls < 2 || scrolls > 12 || full);
@@ -252,6 +254,21 @@ try {
         await page.goto(url, { timeoutMs: external ? 45000 : 30000, settleMs: external ? 3000 : 800 });
         for (const step of scene.steps) await runStep(page, url, step);
         await page.eval('document.fonts.ready.then(() => true)').catch(() => {});
+        if (links && w === widths[0]) {
+          const found = await page.eval(`(() => {
+            const seen = new Set(); const out = [];
+            for (const a of document.querySelectorAll('a[href]')) {
+              let href; try { href = new URL(a.getAttribute('href'), location.href).href; } catch { continue; }
+              if (!/^https?:/.test(href) || seen.has(href)) continue;
+              seen.add(href);
+              out.push(((a.innerText || a.getAttribute('aria-label') || a.querySelector('img')?.alt || '').replace(/\\s+/g, ' ').trim().slice(0, 60)) + '\\t' + href);
+              if (out.length >= 150) break;
+            }
+            return out;
+          })()`).catch(() => []);
+          console.log(`リンク（${scene.name}、${found.length} 個。文字<TAB>URL）：`);
+          for (const l of found) console.log('  ' + l);
+        }
         await sleep(500);
         if (scrolls) {
           for (let k = 0; k < scrolls; k++) {
