@@ -251,7 +251,7 @@ mk_site() { # 場所
   printf '\x89PNG\r\n\x1a\nrest' > "$1/public/og.png"
   echo 'curl evil' > "$1/public/run.sh"
   ln -s /etc/hostname "$1/public/link.txt"
-  touch "$1/.checks-ok"
+  touch "$1/.checks-ok" "$1/src/components/.gitkeep"
 }
 S="$T/site"; mk_site "$S"
 printf '%s\n' "# 残り" "- 作品の詳しいページ" "- お問い合わせの \`フォーム\`" "* 夜の見た目" "- 4つめは入れない" > "$T/todo.md"

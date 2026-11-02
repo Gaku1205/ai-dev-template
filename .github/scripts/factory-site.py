@@ -3,7 +3,7 @@
 
 factory.sh が呼ぶ。AIが書いた物なので、決まった形の物だけを入れる。
 - src/：全部が決まった形でなければ、1つも入れない（一部だけ入れると、ビルドが壊れるため）。
-  名前は英数字と . _ - @ ( ) [ ] だけ（. で始まる名前・.. は不可）、拡張子は決まった物、1つ 300KB・合わせて 400 個・4MB まで。
+  名前は英数字と . _ - @ ( ) [ ] だけ（. で始まるフォルダ・.. は不可。. で始まるファイル（.gitkeep など）は黙って飛ばす）、拡張子は決まった物、1つ 300KB・合わせて 400 個・4MB まで。
   src/app/page.tsx が要る。入れるときは、テンプレートの src/ を置き換える
 - public/：形が違う物は飛ばす。1つ 10MB・合わせて 150 個・60MB まで。
   public/photos/ の写真は、src/ のどこかで名前が使われている物だけ（使わない写真は入れない）。CREDITS.md はその写真の行だけ残す
@@ -59,6 +59,9 @@ src_files, total = [], 0
 for kind, rel in walk(src):
     if kind == "link":
         die(f"src/{rel} はリンクです")
+    # .gitkeep・.DS_Store など、. で始まるファイルは黙って飛ばす（テンプレートの空フォルダの印など）
+    if os.path.basename(rel).startswith("."):
+        continue
     if not ok_path(rel, SRC_EXT):
         die(f"src/{rel} は入れられない名前か種類です")
     size = os.path.getsize(os.path.join(src, rel))
