@@ -146,6 +146,18 @@ assert_contains "下のフォルダの物も" "$created" "README-windows.txt"
 assert_contains "そのコミットに付ける" "$created" "--target 0123456789abcdef"
 assert_contains "タイトルにPRのタイトル" "$created" "あいさつを足す"
 assert_contains "URL を出す" "$(cat "$work/r")" "url=https://github.com/o/app/releases/tag/build-20261029-0300-0123456"
+echo "== Releases：OS が1つだと、download-artifact は build-<OS> を作らずに直に置く。その OS の名前を付ける"
+rm -rf all; mkdir -p all/sub
+echo exe > all/Game.exe
+echo txt > all/sub/README.txt
+: > "$LOG"
+out=$(RELEASE_OS='["windows-latest"]' NOW=20261029-0300 GITHUB_OUTPUT=/dev/null bash "$SCRIPTS_DIR/deploy-release.sh" all 2>&1); rc=$?
+assert_eq "1つの OS：終了コード 0" "0" "$rc"
+created=$(grep "gh release create" "$LOG")
+assert_contains "1つの OS：Windows の exe" "$created" "Game-windows.exe"
+assert_contains "1つの OS：下のフォルダの物も" "$created" "README-windows.txt"
+out=$(GITHUB_OUTPUT=/dev/null bash "$SCRIPTS_DIR/deploy-release.sh" all 2>&1); rc=$?
+assert_eq "OS が分からなければ置かない" "1" "$rc"
 rm -rf all; mkdir -p all/build-windows-latest
 out=$(GITHUB_OUTPUT=/dev/null bash "$SCRIPTS_DIR/deploy-release.sh" all 2>&1); rc=$?
 assert_eq "置く物が無い：終了コード 1" "1" "$rc"

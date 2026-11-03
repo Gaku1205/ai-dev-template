@@ -153,6 +153,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       SHA: ${{ needs.plan.outputs.sha }}
+      RELEASE_OS: ${{ needs.plan.outputs.release_os }}
       NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
       NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
     steps:
