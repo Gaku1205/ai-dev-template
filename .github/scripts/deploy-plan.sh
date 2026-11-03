@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 公開の計画：pipeline.json の deploy から、どの公開先を動かすかを決めて GITHUB_OUTPUT に書く。deploy.yml から呼ぶ。
 #   apprunner=true/false、release=true/false、release_os=["windows-latest",...]、expo=true/false、pages=true/false、skip_reason=...
-# パイプラインの更新だけのコミット（.github/ と docs/pipeline.md だけ）は公開しない（Vercel の ignoreCommand と同じ考え）。
+# パイプラインの更新だけのコミット（.github/ と docs/pipeline.md だけ）は公開しない（Vercel の ignoreCommand と同じ考え）。手で動かしたとき（GITHUB_EVENT_NAME=workflow_dispatch）は、いつも公開する。
 # 環境変数：GITHUB_OUTPUT（無ければ標準出力に書く）、CHANGED_FILES（テスト用。無ければ git diff HEAD^ HEAD で調べる）
 source "$(dirname "$0")/stack.sh"
 out="${GITHUB_OUTPUT:-/dev/stdout}"
@@ -18,7 +18,7 @@ else
   changed=$(git diff --name-only HEAD^ HEAD 2> /dev/null || true)
 fi
 skip=""
-if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -vqE '^(\.github/|docs/pipeline\.md$)'; then
+if [ "${GITHUB_EVENT_NAME:-}" != workflow_dispatch ] && [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -vqE '^(\.github/|docs/pipeline\.md$)'; then
   skip="パイプラインの更新だけのコミットなので公開しません"
 fi
 

@@ -39,7 +39,7 @@ AWS
 printf '#!/usr/bin/env bash\necho "docker $*" >> "$LOG"\n[ "$1" = login ] && cat > /dev/null\nexit 0\n' > "$MOCK_DIR/bin/docker"
 chmod +x "$MOCK_DIR/bin/gh" "$MOCK_DIR/bin/aws" "$MOCK_DIR/bin/docker"
 export SHA=0123456789abcdef GITHUB_REPOSITORY=o/app APPRUNNER_WAIT_SEC=0 APPRUNNER_WAIT_MAX=3
-plan() { CHANGED_FILES="$1" GITHUB_OUTPUT="$work/out" bash "$SCRIPTS_DIR/deploy-plan.sh" > /dev/null 2>&1; cat "$work/out"; rm -f "$work/out"; }
+plan() { GITHUB_EVENT_NAME="${EV:-push}" CHANGED_FILES="$1" GITHUB_OUTPUT="$work/out" bash "$SCRIPTS_DIR/deploy-plan.sh" > /dev/null 2>&1; cat "$work/out"; rm -f "$work/out"; }
 
 echo "== 計画：pipeline.json が無ければ Vercel（ここでは何も動かさない）"
 out=$(plan "src/a.ts")
@@ -69,6 +69,8 @@ echo "== 計画：パイプラインの更新だけのコミットは公開し�
 out=$(plan "$(printf '.github/workflows/ci.yml\ndocs/pipeline.md')")
 assert_contains "App Runner は動かさない" "$out" "apprunner=false"
 assert_contains "理由" "$out" "skip_reason=パイプラインの更新だけ"
+out=$(EV=workflow_dispatch plan "$(printf '.github/workflows/ci.yml\ndocs/pipeline.md')")
+assert_contains "手で動かしたときは、パイプラインだけの更新でも公開する" "$out" "apprunner=true"
 out=$(plan "$(printf '.github/workflows/ci.yml\napp/main.py')")
 assert_contains "アプリも変わっていれば公開する" "$out" "apprunner=true"
 
