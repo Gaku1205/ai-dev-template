@@ -3,7 +3,7 @@
 # factory.yml の build ジョブから呼ぶ（AIが決めた名前と言語は、ここで形を確かめてから使う）。
 #   1. テンプレートからリポジトリを作る（同じ名前があれば -2, -3 … を付ける）
 #   2. パイプラインの秘密と変数を、テンプレートの物から写す
-#   3. Vercel のプロジェクトを作ってつなぐ（Next.js で VERCEL_TOKEN があるとき）
+#   3. Vercel のプロジェクトを作ってつなぐ（Next.js か Web のゲームで、VERCEL_TOKEN があるとき）
 #   4. 中身を整えて main に push する（CLAUDE.md・仕様書の説明、デザイン担当が作った画面とデザイン仕様と道具、Python なら見本に切り替え）。この push で Bootstrap が動く
 #   5. main を守る（PRとCIの check を必須にする。管理者は通れる）
 #   6. Bootstrap がラベルを作るのを待って、最初のIssueを作る（そこから先はいつものパイプライン）。
@@ -13,7 +13,7 @@
 # 環境変数：
 #   GH_TOKEN（FACTORY_TOKEN：リポジトリを作れる鍵）、TEMPLATE（owner/repo）、ISSUE（元のIssueの番号）、MEMO（1行のメモ）
 #   MEMO_DETAIL（任意）：元のIssueの本文（詳しいメモ：載せたい中身・見た目のスタイルなど）。最初のIssueの本文に添える
-#   APP_NAME・APP_STACK（nextjs・python・game）・APP_DESC（1行の説明）：AIが決めた物
+#   APP_NAME・APP_STACK（nextjs・python・game・webgame）・APP_DESC（1行の説明）：AIが決めた物
 #   S_<名前>：写す秘密の値（S_CLAUDE_CODE_OAUTH_TOKEN など）、V_<名前>：写す変数の値（V_PIPELINE_APP_ID など）
 #   DESIGN_FILE・CONTEXT_FILE・LIBS_FILE（任意）：デザイン担当が書いたデザイン仕様・使う人と場面・入れた道具（1行1つ）
 #   SITE_DIR（任意）：デザイン担当が作った画面（src/ と public/）。確認コマンドが通った印（.checks-ok）があり、形が正しいときだけ入れる
@@ -50,7 +50,7 @@ $(printf -- '- %s\n' "${report[@]}")${gallery}"
 # ---- 0. AIが決めた物の形を確かめる（ここで使う値は、この形の物だけ） ----
 valid_plan() {
   [[ "$APP_NAME" =~ ^[a-z][a-z0-9-]{2,38}$ ]] || { echo "名前「$APP_NAME」は小文字の英数字と - で3〜39文字にする"; return 1; }
-  case "$APP_STACK" in nextjs | python | game) ;; *) echo "言語「$APP_STACK」は nextjs・python・game のどれか"; return 1 ;; esac
+  case "$APP_STACK" in nextjs | python | game | webgame) ;; *) echo "言語「$APP_STACK」は nextjs・python・game・webgame のどれか"; return 1 ;; esac
   [ -n "$APP_DESC" ] && [ "${#APP_DESC}" -le 120 ] || { echo "説明は1〜120文字"; return 1; }
   case "$APP_DESC" in *$'\n'* | *'`'* | *'$('*) echo "説明に改行・記号（\` \$( ）は使わない"; return 1 ;; esac
 }
@@ -80,8 +80,8 @@ copied=()
 for n in $COPY_SECRETS; do
   v="S_$n"; val="${!v:-}"
   [ -z "$val" ] && continue
-  # Vercel の鍵は、Vercel で公開する物（Next.js）にだけ入れる（公開をまとめて頼む deploy-vercel.yml が使う）
-  [ "$n" = VERCEL_TOKEN ] && [ "$APP_STACK" != nextjs ] && continue
+  # Vercel の鍵は、Vercel で公開する物（Next.js・Web のゲーム）にだけ入れる（公開をまとめて頼む deploy-vercel.yml が使う）
+  [ "$n" = VERCEL_TOKEN ] && [ "$APP_STACK" != nextjs ] && [ "$APP_STACK" != webgame ] && continue
   if printf '%s' "$val" | gh secret set "$n" --repo "$NEW" > /dev/null 2>&1; then copied+=("$n"); else note "⚠️ 秘密 $n を写せませんでした（FACTORY_TOKEN に Secrets（Read and write）が要ります）"; fi
 done
 for n in $COPY_VARS; do
@@ -93,8 +93,9 @@ done
 
 # ---- 3. Vercel ----
 vercel_note=""
-if [ "$APP_STACK" = nextjs ]; then
-  if vout=$(REPO_FULL="$NEW" PROJECT="$name" "$HERE/factory-vercel.sh" 2>&1); then
+if [ "$APP_STACK" = nextjs ] || [ "$APP_STACK" = webgame ]; then
+  framework=nextjs; [ "$APP_STACK" = webgame ] && framework=vite
+  if vout=$(REPO_FULL="$NEW" PROJECT="$name" FRAMEWORK="$framework" "$HERE/factory-vercel.sh" 2>&1); then
     note "✅ Vercel のプロジェクトを作ってつないだ"
     vercel_note="Vercel：$vout"
   else
@@ -145,7 +146,11 @@ PY2
   fi
   # ゲーム：ブラウザの技術で作り、Electron で Windows の exe にする雛形（examples/game）に切り替える
   if [ "$APP_STACK" = game ]; then
-    "$HERE/factory-game.sh" . || exit 1
+    "$HERE/factory-game.sh" . exe || exit 1
+  fi
+  # Web のゲーム：同じくブラウザの技術で作り、Vercel で公開してブラウザ（スマホも）で遊ぶ雛形（examples/webgame）に切り替える
+  if [ "$APP_STACK" = webgame ]; then
+    "$HERE/factory-game.sh" . web || exit 1
   fi
   # デザイン担当が書いた「使う人・使う場面」を、仕様書の「前提」の「使う人：」に入れる（短い箇条書きだけ）
   if [ -n "${CONTEXT_FILE:-}" ] && [ -f "$CONTEXT_FILE" ] && [ ! -L "$CONTEXT_FILE" ] && [ "$(wc -c < "$CONTEXT_FILE")" -le 2000 ]; then
@@ -173,7 +178,7 @@ PY3
   if [ "$(cat "$work/design.flag" 2> /dev/null)" = DESIGN=yes ] && [ "$APP_STACK" != python ] && [ -n "${SITE_DIR:-}" ] &&
     [ -d "$SITE_DIR" ] && [ ! -L "$SITE_DIR" ] && [ -f "$SITE_DIR/.checks-ok" ]; then
     entry=src/app/page.tsx
-    [ "$APP_STACK" = game ] && entry=src/main.ts
+    case "$APP_STACK" in game | webgame) entry=src/main.ts ;; esac
     if result=$(SITE_DIR="$SITE_DIR" SITE_ENTRY="$entry" python3 "$HERE/factory-site.py" . 2>&1); then
       echo "SITE=yes $result" > "$work/site.flag"
     else
@@ -222,7 +227,7 @@ PY3
   fi
   # Vercel の鍵を入れたら、Vercel がマージのたびに自分で公開するのを止め、deploy-vercel.yml が落ち着いてから1回だけ公開する
   # （無料プランの「1日100回まで」に当たらないように）。鍵が無いときは今までどおり Vercel が自分で公開する
-  if [ "$APP_STACK" = nextjs ] && [ -n "${S_VERCEL_TOKEN:-}" ] && [ -f vercel.json ]; then
+  if { [ "$APP_STACK" = nextjs ] || [ "$APP_STACK" = webgame ]; } && [ -n "${S_VERCEL_TOKEN:-}" ] && [ -f vercel.json ]; then
     # ignoreCommand（直前のコミットとの差だけを見る）は消す。まとめて公開すると、間のコミットの変更を見落として公開が飛ばされるため。
     # パイプラインの物しか変わっていない時に公開しないのは、deploy-vercel.sh が決める
     jq '.git.deploymentEnabled = false | del(.ignoreCommand)' vercel.json > vercel.json.new && mv vercel.json.new vercel.json
@@ -259,7 +264,7 @@ ref_line=$(grep '^REF=' "$work/ref.flag" 2> /dev/null | head -1)
 # 結果のコメントに画面の画像を貼る（公開を待たずに、どんな画面かを見られるように）。PC の最初の1画面とスクロールした所、スマホの最初の1画面
 if [ -n "$ref_line" ]; then
   shots=""
-  for want in top-1440.png top-1440-s2.png top-1440-s3.png top-1440-s4.png scene-play-1440.png top-390.png top-390-s2.png; do
+  for want in top-1440.png top-1440-s2.png top-1440-s3.png top-1440-s4.png scene-play-1440.png top-390.png top-390-s2.png scene-play-390.png; do
     [ -f "$work/app/docs/design-ref/$want" ] || continue
     case "$want" in *-390*) width=260 ;; *) width=720 ;; esac
     shots="${shots}<img src=\"https://raw.githubusercontent.com/${NEW}/main/docs/design-ref/${want}\" width=\"${width}\" alt=\"${want%.png}\"> "

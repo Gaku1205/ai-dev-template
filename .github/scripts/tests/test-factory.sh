@@ -165,6 +165,27 @@ assert_not_contains "Vercel を呼ばない" "$(cat "$T/calls.log")" "curl"
 assert_not_contains "Vercel の鍵も写さない" "$(cat "$T/calls.log")" "secret VERCEL_TOKEN"
 assert_contains "結果に exe の置き場を書く" "$(cat "$T/comment.txt")" "https://github.com/o/star-drift/releases/latest"
 
+echo "== Web のゲーム：雛形（TypeScript・Vite）に切り替え、Vercel（Vite）で公開する。Electron は入れない"
+run_factory tap-rush webgame "タップで光を弾く30秒のゲーム" VERCEL_TOKEN=v > /dev/null
+r=o/tap-rush
+assert_contains "Vercel のプロジェクトは Vite" "$(cat "$T/vercel-body.json")" '"framework":"vite"'
+assert_contains "入口は src/main.ts" "$(file_in $r src/main.ts)" "canvas"
+assert_not_contains "Electron は入れない" "$(file_in $r package.json)" "electron"
+assert_eq "exe のウィンドウも無い" "" "$(file_in $r electron/main.cjs)"
+assert_eq "公開先は Vercel" '[{"kind":"vercel"}]' "$(file_in $r pipeline.json | jq -c .deploy)"
+assert_contains "スマホで勝手に動かない" "$(file_in $r index.html)" "touch-action: none"
+assert_eq "Next.js の物は消える" "" "$(file_in $r next.config.ts)"
+assert_eq "見本は持ち込まない" "" "$(file_in $r examples/webgame/package.json)"
+claude=$(file_in $r CLAUDE.md)
+assert_contains "CLAUDE.md：Web のゲーム" "$claude" "Vercel で公開して、スマホでも PC でもブラウザで遊ぶ Web のゲーム。"
+assert_contains "CLAUDE.md：注意は公開のしかた" "$claude" "AGENTS.md（公開のしかた・画面の撮り方）"
+assert_contains "AGENTS.md：スマホ" "$(file_in $r AGENTS.md)" "スマホ（縦の画面・タッチ）"
+assert_contains "仕様書の技術の欄" "$(file_in $r docs/spec.md)" "Vercel で公開する（スマホ・PC のブラウザで遊ぶ）"
+assert_contains "Vercel につないだと書く" "$(cat "$T/comment.txt")" "Vercel のプロジェクトを作ってつないだ"
+run_factory tap-rush webgame "説明" VERCEL_TOKEN=v S_VERCEL_TOKEN=vt > /dev/null
+assert_contains "Vercel の鍵を写す" "$(cat "$T/calls.log")" "secret VERCEL_TOKEN o/tap-rush"
+assert_eq "Vercel が自分で公開しない（まとめて公開する）" "false" "$(file_in o/tap-rush vercel.json | jq -c .git.deploymentEnabled)"
+
 echo "== ゲーム：デザイン担当が作ったゲーム（入口は src/main.ts、index.html も）を入れる"
 { echo "# デザイン仕様"; for i in $(seq 1 60); do echo "- 色や文字の決まり その$i：夜の地に光る数字"; done; } > "$T/design-ok.md"
 G="$T/game-site"; rm -rf "$G"; mkdir -p "$G/src/lib" "$G/public"
@@ -190,7 +211,7 @@ run_factory "Bad_Name" nextjs "x" > /dev/null
 assert_not_contains "作らない" "$(cat "$T/calls.log" 2> /dev/null)" "generate"
 assert_contains "理由を書く" "$(cat "$T/comment.txt")" "名前「Bad_Name」"
 run_factory good-name ruby "x" > /dev/null
-assert_contains "知らない言語" "$(cat "$T/comment.txt")" "nextjs・python・game のどれか"
+assert_contains "知らない言語" "$(cat "$T/comment.txt")" "nextjs・python・game・webgame のどれか"
 run_factory good-name nextjs 'x $(id)' > /dev/null
 assert_contains "危ない記号" "$(cat "$T/comment.txt")" "記号"
 

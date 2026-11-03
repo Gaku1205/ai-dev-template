@@ -1,0 +1,10 @@
+{
+  "tools": { "node": "22" },
+  "setup": ["npm ci"],
+  "checks": [
+    { "name": "型チェック", "run": "npm run typecheck" },
+    { "name": "テスト", "run": "npm run test" },
+    { "name": "ビルド", "run": "npm run build" }
+  ],
+  "deploy": [{ "kind": "vercel" }]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "webgame",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "ブラウザの技術で作り、Web で公開して遊ぶゲーム",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "start": "node scripts/serve.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5",
+    "vite": "^8",
+    "vitest": "^5"
+  }
+}

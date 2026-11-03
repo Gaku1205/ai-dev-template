@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# 工場：GitHub のリポジトリを、新しい Vercel のプロジェクトにつなぐ（Next.js）。つないだあとの push で、Vercel が公開を始める。
+# 工場：GitHub のリポジトリを、新しい Vercel のプロジェクトにつなぐ（Next.js。FRAMEWORK=vite なら Vite の Web のゲーム）。つないだあとの push で、Vercel が公開を始める。
 # factory.sh（新しく作るとき）と factory-vercel.yml（あとからつなぐとき）から呼ぶ。
-# 環境変数：VERCEL_TOKEN、REPO_FULL（owner/repo）、PROJECT（プロジェクト名）、VERCEL_TEAM_ID（任意）、VERCEL_API（テスト用）
+# 環境変数：VERCEL_TOKEN、REPO_FULL（owner/repo）、PROJECT（プロジェクト名）、FRAMEWORK（nextjs か vite。既定 nextjs）、VERCEL_TEAM_ID（任意）、VERCEL_API（テスト用）
 # 出力：つないだらプロジェクト名、だめなら理由（終了コード 1）
 set -uo pipefail
 VERCEL_API="${VERCEL_API:-https://api.vercel.com}"
@@ -10,7 +10,9 @@ if [ -z "${VERCEL_TOKEN:-}" ]; then
   exit 1
 fi
 q=""; [ -n "${VERCEL_TEAM_ID:-}" ] && q="?teamId=${VERCEL_TEAM_ID}"
-body=$(jq -nc --arg n "${PROJECT:?}" --arg r "${REPO_FULL:?}" '{name: $n, framework: "nextjs", gitRepository: {type: "github", repo: $r}}')
+fw="${FRAMEWORK:-nextjs}"
+case "$fw" in nextjs | vite) ;; *) echo "FRAMEWORK「$fw」は nextjs か vite"; exit 1 ;; esac
+body=$(jq -nc --arg n "${PROJECT:?}" --arg r "${REPO_FULL:?}" --arg f "$fw" '{name: $n, framework: $f, gitRepository: {type: "github", repo: $r}}')
 if ! res=$(printf '%s' "$body" | curl -sS -X POST "$VERCEL_API/v11/projects$q" -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" --data-binary @- 2>&1); then
   echo "Vercel に届きませんでした"
   exit 1

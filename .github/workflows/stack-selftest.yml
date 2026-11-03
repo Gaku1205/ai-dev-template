@@ -2,6 +2,7 @@
 #   python   実行環境をそろえる（setup-stack）→ 確認コマンド（run-checks）
 #   exe      Windows・Mac で pipeline.json の github-release の build を動かし、できた exe を動かして確かめる（Artifacts から落とせる）
 #   game     ゲームの見本（examples/game）を Windows で確認し、npm run dist で exe（Electron）ができるか確かめる（Artifacts から落とせる）
+#   webgame  Web のゲームの見本（examples/webgame）の確認コマンドを通す（公開は Vercel なので、ここでは作るまで）
 #   docker   App Runner に載せるのと同じイメージを作り、起動して /health と /hello に答えるか確かめる（AWS には出さない）
 # setup-stack・stack.sh・run-checks.sh・公開のスクリプト・見本を変えたPRで動く。手でも動かせる。
 name: Stack Selftest
@@ -100,6 +101,20 @@ jobs:
           name: game-windows
           path: examples/game/release/*.exe
           retention-days: 7
+
+  webgame:
+    if: github.event.repository.is_template
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: 実行環境をそろえる
+        uses: ./.github/actions/setup-stack
+        with:
+          dir: examples/webgame
+      - name: 確認
+        working-directory: examples/webgame
+        run: '"$GITHUB_WORKSPACE/.github/scripts/run-checks.sh"'
 
   docker:
     if: github.event.repository.is_template

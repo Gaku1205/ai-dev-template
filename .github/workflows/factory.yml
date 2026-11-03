@@ -63,10 +63,11 @@ jobs:
             このサービスのリポジトリを作るために、次の3つを決め、`factory-plan.json` に JSON で書いてください（ほかのファイルは作らない）。
             {"name": "...", "stack": "...", "description": "..."}
             - name：リポジトリの名前。中身が分かる短い英語を、小文字の英数字と - でつなぐ（3〜39文字、先頭は英字。例：morning-board、receipt-sorter）
-            - stack：nextjs・python・game のどれか
+            - stack：nextjs・python・game・webgame のどれか
               - 人が画面で使うWebのサービス（ページ・ダッシュボード・ツール）なら nextjs
               - 画面よりも処理が中心の物（API・データ処理・機械学習・定期的に動く処理）なら python
-              - ゲーム（遊ぶ物。Windows の exe で配る）なら game
+              - ゲーム（遊ぶ物）で、Windows の exe で配る物なら game
+              - ゲームで、ブラウザ（スマホも）で URL を開いてすぐ遊べる物（Web ゲーム・ブラウザゲーム・SNS で広める物）なら webgame。exe と書いていないゲームは webgame
               - 迷ったら nextjs
             - description：何のサービスかを、日本語で1文（120文字以内。改行・バッククォートは使わない）
           claude_args: '--model sonnet --max-turns 5 --allowedTools "Write"'
@@ -81,14 +82,14 @@ jobs:
           fi
           name=$(jq -r '.name // ""' "$f"); stack=$(jq -r '.stack // ""' "$f"); desc=$(jq -r '.description // ""' "$f" | tr -d '\n`')
           [[ "$name" =~ ^[a-z][a-z0-9-]{2,38}$ ]] || { echo "::error::名前「$name」の形が違います"; exit 1; }
-          case "$stack" in nextjs | python | game) ;; *) echo "::error::言語「$stack」は nextjs・python・game のどれか"; exit 1 ;; esac
+          case "$stack" in nextjs | python | game | webgame) ;; *) echo "::error::言語「$stack」は nextjs・python・game・webgame のどれか"; exit 1 ;; esac
           [ -n "$desc" ] || { echo "::error::説明がありません"; exit 1; }
           desc="${desc:0:120}"
           echo "名前：$name／言語：$stack／説明：$desc"
           { echo "name=$name"; echo "stack=$stack"; echo "desc<<DESC_END"; echo "$desc"; echo "DESC_END";
             echo "memo<<MEMO_END"; printf '%s\n' "$MEMO"; echo "MEMO_END"; } >> "$GITHUB_OUTPUT"
 
-  # デザイン担当（Next.js のときだけ）：.github/factory/design-department.md。決まりは「読める・押せる・スマホで崩れない・写さない」だけ。
+  # デザイン担当（Next.js とゲームのとき）：.github/factory/design-department.md。決まりは「読める・押せる・スマホで崩れない・写さない」だけ。
   # 1. Issue に貼られた画像（オーナーの「こういうのが良い」）を取ってくる
   # 2. デザイン担当（AI）が、実在の良いサイトを探して撮り、参考の板を作ってから方向を決め、本物の Next.js の画面を作って、撮って実例と見比べて直す
   # 3. 確認コマンド（typecheck・lint・test・build）を通す。通らなければ1回だけ直させる
@@ -97,7 +98,7 @@ jobs:
   # AIはファイルを書くことと、決まったコマンドを動かすことだけ（鍵は持たない）
   design:
     needs: plan
-    if: needs.plan.outputs.stack == 'nextjs' || needs.plan.outputs.stack == 'game'
+    if: needs.plan.outputs.stack == 'nextjs' || needs.plan.outputs.stack == 'game' || needs.plan.outputs.stack == 'webgame'
     runs-on: ubuntu-latest
     timeout-minutes: 180
     permissions:
@@ -114,9 +115,11 @@ jobs:
       # ゲームは、ブラウザの技術で作って Electron で exe にする雛形（examples/game）に切り替えてから作る。
       # 切り替えた所を一度コミットしておく（あとで「デザイン担当が src/ を作り変えたか」を、切り替えた後から見るため）
       - name: ゲームの雛形に切り替える
-        if: needs.plan.outputs.stack == 'game'
+        if: needs.plan.outputs.stack == 'game' || needs.plan.outputs.stack == 'webgame'
+        env:
+          MODE: ${{ needs.plan.outputs.stack == 'webgame' && 'web' || 'exe' }}
         run: |
-          .github/scripts/factory-game.sh .
+          .github/scripts/factory-game.sh . "$MODE"
           git add -A
           git -c user.name=factory -c user.email=factory@example.invalid commit -qm "ゲームの雛形"
       - name: 道具を入れる
@@ -141,7 +144,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             あなたはこのサービスのアートディレクター兼フロントエンドの作り手です。見た目を決めて、本物の画面を最後まで作ってください。
-            - 種類：${{ needs.plan.outputs.stack == 'game' && 'ゲーム（TypeScript・Vite・Canvas／WebGL で作り、Electron で Windows の exe にする。進め方の「ゲームのとき」と AGENTS.md も読む）' || 'Web のサービス（Next.js）' }}
+            - 種類：${{ needs.plan.outputs.stack == 'game' && 'ゲーム（TypeScript・Vite・Canvas／WebGL で作り、Electron で Windows の exe にする。進め方の「ゲームのとき」と AGENTS.md も読む）' || (needs.plan.outputs.stack == 'webgame' && 'Web のゲーム（TypeScript・Vite・Canvas／WebGL で作り、Vercel で公開してスマホでも PC でもブラウザで遊ぶ。進め方の「ゲームのとき」と AGENTS.md も読む）' || 'Web のサービス（Next.js）') }}
             - サービス名：${{ needs.plan.outputs.name }}
             - 説明：${{ needs.plan.outputs.desc }}
             - 元のメモ：${{ needs.plan.outputs.memo }}
@@ -190,6 +193,9 @@ jobs:
           if [ "$STACK" = game ]; then
             # ゲームはスクロールしないし、スマホでは遊ばない。PC の幅で、タイトルと遊んでいる場面を撮る
             node .github/scripts/shot.mjs --serve --out "$out" --widths 1440,1920 "${pages[@]}" || echo "::warning::撮れなかった場面があります"
+          elif [ "$STACK" = webgame ]; then
+            # Web のゲームはスクロールしない。スマホと PC の幅で、タイトルと遊んでいる場面を撮る
+            node .github/scripts/shot.mjs --serve --out "$out" --widths 390,1440 "${pages[@]}" || echo "::warning::撮れなかった場面があります"
           else
             node .github/scripts/shot.mjs --serve --out "$out" "${pages[@]}" || echo "::warning::最初の1画面を撮れなかった物があります"
             node .github/scripts/shot.mjs --serve --out "$out" --widths 390,1440 --scrolls 4 "${pages[@]}" || echo "::warning::スクロールした絵を撮れなかった物があります"
