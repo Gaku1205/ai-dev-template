@@ -18,6 +18,7 @@
 #   DESIGN_FILE・CONTEXT_FILE・LIBS_FILE（任意）：デザイン担当が書いたデザイン仕様・使う人と場面・入れた道具（1行1つ）
 #   SITE_DIR（任意）：デザイン担当が作った画面（src/ と public/）。確認コマンドが通った印（.checks-ok）があり、形が正しいときだけ入れる
 #   DESIGN_REF_DIR（任意）：デザイン担当が作った画面を最後に撮った画像（PNG）。docs/design-ref/ に入れ、あとの Issue の目標の絵にする
+#   IDEA_FILE（任意）：ゲームのデザイン担当が選んだ遊び方のアイデア（board.md の「## アイデア」）。結果のコメントに畳んで載せる
 #   TODO_FILE（任意）：デザイン担当が作れなかった残り（1行1つ「- 」、最大3個）。画面を入れたときだけ、1つずつ Issue にする
 #   VERCEL_TOKEN・VERCEL_TEAM_ID（任意）、COMMENT_TOKEN（元のIssueにコメントする鍵。無ければ GH_TOKEN）
 #   テスト用：FACTORY_GIT_URL（clone 先の書式。%s にリポジトリ名）、VERCEL_API、FACTORY_WAIT_SEC
@@ -274,6 +275,17 @@ if [ -n "$ref_line" ]; then
 ## できた画面（デザイン担当が作って撮った物。ほかの画像は [docs/design-ref/](https://github.com/${NEW}/tree/main/docs/design-ref)）
 
 ${shots}"
+fi
+# ゲームの遊び方のアイデア（ありきたりにしないために、デザイン担当が案を出して選んだ物）。AIが書いた物なので、畳んで載せ、人への呼びかけ（@）は効かなくする
+if [ -n "${IDEA_FILE:-}" ] && [ -f "$IDEA_FILE" ] && [ ! -L "$IDEA_FILE" ] && [ "$(wc -c < "$IDEA_FILE")" -le 12000 ]; then
+  idea=$(head -c 6000 "$IDEA_FILE" | sed 's/@/@\&#8203;/g; s#</details>##g')
+  [ -n "$idea" ] && gallery="${gallery}
+
+<details><summary>遊び方のアイデア（デザイン担当が 10 個出して、ありきたりな物を捨てて選んだ物）</summary>
+
+${idea}
+
+</details>"
 fi
 libs_line=$(grep '^LIBS=' "$work/libs.flag" 2> /dev/null | head -1)
 [ -n "$libs_line" ] && note "✅ デザイン担当が使った道具を入れた：${libs_line#LIBS=}"

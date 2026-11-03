@@ -153,7 +153,7 @@ jobs:
               ${{ needs.plan.outputs.detail }}
 
             `.github/factory/design-department.md`（進め方）を全部読んで、そのとおりに進めてください：
-            実例を集めて撮る → 参考の板（`factory-refs/board.md`）と方向 → `src/` に作る → 撮って実例と見比べて直す（最低3回）→ 仕上げ（確認コマンド・`docs/design.md`）。
+            （ゲームは最初に、ありきたりにしないための遊び方のアイデア）→ 実例を集めて撮る → 参考の板（`factory-refs/board.md`）と方向 → `src/` に作る → 撮って実例と見比べて直す（最低3回）→ 仕上げ（確認コマンド・`docs/design.md`）。
             書いてよい場所：`src/`、`public/`、`docs/design.md`、`factory-refs/`、`.shots/`、`factory-context.md`、`factory-todo.md`、`factory-pages.txt`（ゲームは `index.html` も）
             （道具を factory-add-lib.sh で入れると、package.json・package-lock.json・factory-libs.txt も変わる）。ほかは変えない。
           claude_args: '--model opus --max-turns 250 --allowedTools "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Bash(npm run build),Bash(npm run typecheck),Bash(npm run lint),Bash(npm run test),Bash(node .github/scripts/shot.mjs:*),Bash(.github/scripts/fetch-photos.sh:*),Bash(.github/scripts/factory-add-lib.sh:*)"'
@@ -212,6 +212,16 @@ jobs:
           for f in factory-context.md factory-libs.txt factory-todo.md; do
             if [ -f "$f" ] && [ ! -L "$f" ]; then cp "$f" "$d/${f#factory-}"; fi
           done
+          # ゲームの遊び方のアイデア（board.md の「## アイデア」の節）。結果のコメントに載せる
+          if [ -f factory-refs/board.md ] && [ ! -L factory-refs/board.md ]; then
+            python3 - factory-refs/board.md "$d/idea.md" <<'PY' || true
+          import re, sys
+          s = open(sys.argv[1], encoding="utf-8", errors="ignore").read()
+          m = re.search(r"^## アイデア[^\n]*\n(.*?)(?=^## |\Z)", s, re.S | re.M)
+          if m and m.group(1).strip():
+              open(sys.argv[2], "w", encoding="utf-8").write(m.group(1).strip()[:3000] + "\n")
+          PY
+          fi
           # 確認コマンドが通った物だけを、新しいリポジトリの中身として渡す（形は build ジョブの factory.sh がもう一度確かめる）
           if [ "$SITE_OK" = true ]; then
             mkdir -p "$d/site"
@@ -291,6 +301,7 @@ jobs:
           DESIGN_REF_DIR: ${{ runner.temp }}/design/ref
           SITE_DIR: ${{ runner.temp }}/design/site
           TODO_FILE: ${{ runner.temp }}/design/todo.md
+          IDEA_FILE: ${{ runner.temp }}/design/idea.md
         run: .github/scripts/factory.sh
 
   # AIが名前を決められなかったときも、黙って終わらない

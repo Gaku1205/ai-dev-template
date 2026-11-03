@@ -186,6 +186,13 @@ run_factory tap-rush webgame "説明" VERCEL_TOKEN=v S_VERCEL_TOKEN=vt > /dev/nu
 assert_contains "Vercel の鍵を写す" "$(cat "$T/calls.log")" "secret VERCEL_TOKEN o/tap-rush"
 assert_eq "Vercel が自分で公開しない（まとめて公開する）" "false" "$(file_in o/tap-rush vercel.json | jq -c .git.deploymentEnabled)"
 
+echo "== ゲーム：デザイン担当が選んだ遊び方のアイデアを、結果のコメントに畳んで載せる（@ は効かなくする）"
+printf '1. 影を踏む遊び（近い物：無し）\n選んだ：影踏み @someone\n' > "$T/idea.md"
+run_factory idea-game webgame "説明" IDEA_FILE="$T/idea.md" > /dev/null
+assert_contains "畳んで載せる" "$(cat "$T/comment.txt")" "<details><summary>遊び方のアイデア"
+assert_contains "中身" "$(cat "$T/comment.txt")" "選んだ：影踏み"
+assert_not_contains "@ で人を呼ばない" "$(cat "$T/comment.txt")" "@someone"
+
 echo "== ゲーム：デザイン担当が作ったゲーム（入口は src/main.ts、index.html も）を入れる"
 { echo "# デザイン仕様"; for i in $(seq 1 60); do echo "- 色や文字の決まり その$i：夜の地に光る数字"; done; } > "$T/design-ok.md"
 G="$T/game-site"; rm -rf "$G"; mkdir -p "$G/src/lib" "$G/public"
