@@ -79,6 +79,8 @@ jobs:
             echo "/.review/" >> .git/info/exclude
             # Ubuntu 24.04 は、Chrome の安全な囲い（sandbox）に要る仕組みを止めていることがあるので、使えるようにする
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 > /dev/null 2>&1 || true
+            # 日本語のフォントが無いと、canvas のゲームなど Web フォントを読まない画面の日本語が □ で撮れる
+            .github/scripts/install-ja-fonts.sh
           else
             echo "allowed=" >> "$GITHUB_OUTPUT"
             echo "prompt=" >> "$GITHUB_OUTPUT"

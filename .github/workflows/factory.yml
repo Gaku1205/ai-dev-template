@@ -132,6 +132,7 @@ jobs:
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 > /dev/null 2>&1 || true
           google-chrome --version || echo "::warning::Chrome が見つかりません（画面を撮れません）"
+          .github/scripts/install-ja-fonts.sh
       - name: Issue に貼られた画像を取る
         env:
           BODY: ${{ github.event.issue.body }}
