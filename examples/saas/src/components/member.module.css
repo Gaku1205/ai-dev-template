@@ -1,0 +1,18 @@
+/* ログイン・アカウントの画面の、最低限の見た目。デザイン担当が docs/design.md に合わせて作り直してよい */
+.page { max-width: 440px; margin: 0 auto; padding: 72px 20px 96px; display: grid; gap: 20px; }
+.title { margin: 0; font-size: 28px; line-height: 1.3; }
+.lead { margin: 0; line-height: 1.8; opacity: .75; }
+.form { display: grid; gap: 16px; }
+.field { display: grid; gap: 6px; font-size: 14px; }
+.field input { font: inherit; padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(0, 0, 0, .2); background: transparent; color: inherit; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; }
+.primary, .secondary, .link { font: inherit; cursor: pointer; border-radius: 10px; min-height: 44px; padding: 0 18px; }
+.primary { border: 0; background: #111; color: #fff; }
+.secondary { border: 1px solid rgba(0, 0, 0, .3); background: transparent; color: inherit; }
+.link { border: 0; background: none; padding: 0; text-decoration: underline; color: inherit; opacity: .7; }
+.primary:disabled, .secondary:disabled { opacity: .5; cursor: default; }
+.error { margin: 0; color: #b42318; font-size: 14px; }
+.note { margin: 0; padding: 12px 14px; border-radius: 10px; background: rgba(0, 0, 0, .05); line-height: 1.7; font-size: 14px; }
+.list { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 10px 20px; }
+.list dt { opacity: .6; }
+.list dd { margin: 0; }
