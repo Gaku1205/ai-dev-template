@@ -175,6 +175,15 @@ def apply(state, reply):
 
     if stage not in STAGES:
         return clarify("いまは選ぶ物がありません。")
+    # 前の段階の選び直し（「やっぱり案は 1,2」）：その段階に戻って選び直し、そこから先を作り直す
+    back = str(reply.get("stage") or "").strip()
+    if action == "back":
+        if back not in STAGES[:STAGES.index(stage)] or not state.get(back):
+            return clarify("どの段階を選び直すか読み取れませんでした。番号で書いてください。")
+        for later in STAGES[STAGES.index(back) + 1:]:
+            state.pop(later, None)
+            state.pop({"ideas": "idea", "looks": "look", "mocks": "mock"}.get(later, later), None)
+        state["stage"], stage, action = back, back, "pick"
     if action == "redo":
         return {"next": stage, "state": state, "message": ""}
     if action == "go" and stage != "confirm" and choice:

@@ -1,6 +1,7 @@
 # 工場の相談：「新サービス：〜」の1行から、いきなり作らず、オーナーに選んでもらいながら作る物と見た目を決める（.github/factory/talk.md）。
 #   案を5つ＋質問 → 見た目の方向を3つ → ざっくり画面を2案 → 最終確認 →「作る」で Factory（factory.yml）を動かす
 # 各段階で、選択肢と質問を Issue のコメントに書いて、オーナーの返事を待つ（ずっと待つ）。返事はコメントで書く（agent-desk からも書ける）。
+# AIが作っている途中の返事も捨てない（同じ Issue の実行は順番待ちになり、前の選択肢への返事として読む。前の段階の選び直しもできる）
 # 今までに決まった事は、コメントの印（factory-talk.py の state）に入れておく。画像は factory-talk ブランチに置く。
 # Issue に「全部おまかせ」とあれば、相談せずに今までどおり Factory が全部決めて作る。
 # テンプレート本体でだけ、オーナーのIssue・返事でだけ動く。
@@ -30,7 +31,7 @@ jobs:
         (github.event_name == 'issue_comment' &&
          !github.event.issue.pull_request &&
          github.event.comment.user.login == github.repository_owner &&
-         contains(github.event.issue.labels.*.name, 'factory:wait'))
+         contains(github.event.issue.labels.*.name, 'factory:talk'))
       )
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -65,14 +66,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number }}
           COMMENT: ${{ github.event.comment.body }}
+          CREATED: ${{ github.event.comment.created_at }}
         run: |
           # 同じ返事で2回動かないように、まず待ちの印を外す（次の選択肢を出すときに付け直す）
           gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/$ISSUE/labels/factory:wait" > /dev/null 2>&1 || true
           mkdir -p talk
           gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" | jq -s 'add // []' > talk/comments.json
           python3 .github/scripts/factory-talk.py state talk/comments.json > talk/state.json
+          # AIが作っている途中に書かれた返事（今の選択肢が出る前の返事）は、前の段階への返事として読む
+          last=$(jq -r '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- factory-talk:v1:")))] | last | .created_at // ""' talk/comments.json)
           rm -f talk/comments.json
-          if [ "$(jq -r '.stage // ""' talk/state.json)" = "" ]; then echo "::error::相談の記録が見つかりません"; exit 1; fi
+          stage=$(jq -r '.stage // ""' talk/state.json)
+          if [ "$stage" = "" ]; then echo "::error::相談の記録が見つかりません"; exit 1; fi
+          # 作り始めた後のコメントは、相談の返事ではない
+          if [ "$stage" = go ]; then echo "skip=true" >> "$GITHUB_OUTPUT"; echo "ai=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ -n "$last" ] && [[ "$CREATED" < "$last" ]]; then echo "前の選択肢への返事（$CREATED）" > talk/reply-late.txt; fi
           printf '%s' "$COMMENT" | head -c 4000 > talk/reply.txt
           # agent-desk のボタンからの返事は、形の決まった印が入っている（AIに読ませなくてよい）
           if printf '%s' "$COMMENT" | python3 .github/scripts/factory-talk.py answer > talk/reply.json && [ -s talk/reply.json ]; then
@@ -89,10 +97,10 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             工場の相談で、オーナーが返事を書きました。`.github/factory/talk.md` の「返事を読む（reply）」のとおりに、`talk/reply.json` を書いてください。
-            今の段階と、出した選択肢・質問は `talk/state.json`（stage・ideas・looks・mocks・confirm・ask）、返事は `talk/reply.txt` です。ほかのファイルは書かない。
+            今の段階と、出した選択肢・質問は `talk/state.json`（stage・ideas・looks・mocks・confirm・ask）、返事は `talk/reply.txt` です（`talk/reply-late.txt` があれば、今の選択肢が出る前に書かれた返事）。ほかのファイルは書かない。
           claude_args: '--model sonnet --max-turns 8 --allowedTools "Read,Write"'
       - name: 次の段階を決める
-        if: github.event_name == 'issue_comment'
+        if: github.event_name == 'issue_comment' && steps.reply.outputs.skip != 'true'
         run: |
           if [ ! -f talk/reply.json ] || [ -L talk/reply.json ] || ! jq -e 'type == "object"' talk/reply.json > /dev/null 2>&1; then
             echo '{"action":"unclear","message":"返事を読み取れませんでした。番号（例：2）か、やり直してほしい事を書いてください。"}' > talk/reply.json
@@ -100,10 +108,13 @@ jobs:
           python3 .github/scripts/factory-talk.py apply talk/state.json talk/reply.json > talk/applied.json
           jq '.state' talk/applied.json > talk/state.json
           jq '{next, message}' talk/applied.json > talk/route.json
-          rm -f talk/applied.json talk/reply.txt talk/reply.json
+          rm -f talk/applied.json talk/reply.txt talk/reply.json talk/reply-late.txt
       - name: 次の段階
         id: next
+        env:
+          SKIP: ${{ steps.reply.outputs.skip }}
         run: |
+          if [ "$SKIP" = true ]; then echo "作り始めた後のコメントなので、何もしない"; echo "next=none" >> "$GITHUB_OUTPUT"; exit 0; fi
           next=$(jq -r '.next' talk/route.json)
           case "$next" in ideas | looks | mocks | confirm | go | clarify) ;; *) echo "::error::知らない段階：$next"; exit 1 ;; esac
           echo "次：$next"
@@ -176,7 +187,7 @@ jobs:
   # 形を確かめて、画像を factory-talk ブランチに置き、オーナーに見せて返事を待つ。「作る」なら Factory を動かす（AIは動かない）
   publish:
     needs: [route, work]
-    if: ${{ !cancelled() && needs.route.result == 'success' }}
+    if: ${{ !cancelled() && needs.route.result == 'success' && needs.route.outputs.next != 'none' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
