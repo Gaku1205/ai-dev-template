@@ -187,12 +187,31 @@ def apply(state, reply):
     if action != "pick":
         return clarify(text(reply.get("message"), 300) or "どれにするか、番号で書いてください。")
     if stage == "ideas":
-        n = int(choice) if choice.isdigit() else 0
-        if not 1 <= n <= len(state.get("ideas", [])):
-            return clarify(f"案は 1〜{len(state.get('ideas', []))} の番号で選んでください。")
-        state["idea"] = n - 1
+        ideas = state.get("ideas", [])
+        # 「1,3」「1〜4」のように、いくつかを1つのサービスにまとめて選ぶこともできる
+        ns = []
+        for a, b in re.findall(r"(\d+)(?:\s*[-~〜～]\s*(\d+))?", choice):
+            ns += list(range(int(a), int(b) + 1)) if b and int(a) <= int(b) <= 99 else [int(a)]
+        ns = list(dict.fromkeys(ns))
+        if not ns or any(not 1 <= n <= len(ideas) for n in ns):
+            return clarify(f"案は 1〜{len(ideas)} の番号で選んでください（いくつかを1つにまとめるなら `1,3` のように）。")
+        if len(ns) == 1:
+            state["idea"] = ns[0] - 1
+        else:
+            parts = [ideas[n - 1] for n in ns]
+            stacks = [i["stack"] for i in parts if i["stack"] != "python"] or ["python"]
+            ideas.append({
+                "name": "", "stack": max(stacks, key=stacks.count), "title": "・".join(i["title"] for i in parts)[:60],
+                "pitch": "選んだ案（" + "・".join(f"{n}. {ideas[n - 1]['title']}" for n in ns) + "）を、1つのサービスにまとめる：" + " ／ ".join(i["pitch"] for i in parts),
+                "who": " ／ ".join(dict.fromkeys(i["who"] for i in parts if i.get("who"))),
+                "paid": " ／ ".join(i["paid"] for i in parts if i.get("paid")),
+                "novel": " ／ ".join(i["novel"] for i in parts if i.get("novel")),
+                "screen": " ／ ".join(i["screen"] for i in parts if i.get("screen")),
+                "parts": ns,
+            })
+            state["idea"] = len(ideas) - 1
         # 画面の無い物（python）は、見た目を選ばずに最終確認へ
-        state["stage"] = "confirm" if state["ideas"][n - 1]["stack"] == "python" else "looks"
+        state["stage"] = "confirm" if ideas[state["idea"]]["stack"] == "python" else "looks"
     elif stage == "looks":
         ns = [l["n"] for l in state.get("looks", [])]
         n = int(choice) if choice.isdigit() else 0
@@ -239,7 +258,7 @@ def render(state, root):
                 if i.get(k):
                     L.append(f"- **{label}**：{i[k]}")
             L.append("")
-        how = "番号で1つ選んでください（例：`2`・`2。名前はもっと短く`）。どれも違えば「全部ちがう。もっと〇〇」と書くと出し直します。"
+        how = "番号で1つ選んでください（例：`2`・`2。名前はもっと短く`）。いくつかを1つのサービスにまとめるなら `1,3` のように。どれも違えば「全部ちがう。もっと〇〇」と書くと出し直します。"
     elif stage == "looks":
         idea = state["ideas"][state["idea"]]
         L.append(f"## 🎨 「{idea['title']}」の見た目の方向を3つ作りました\n")
