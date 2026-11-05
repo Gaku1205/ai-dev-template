@@ -8,13 +8,22 @@ name: Factory
 on:
   issues:
     types: [opened]
+  # 工場の相談（factory-talk.yml）でオーナーが「作る」と言ったら、相談で決めた事を持って動く
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: 相談した「新サービス：」の Issue の番号
+        required: true
 
 jobs:
   plan:
+    # 新しい Issue は「全部おまかせ」のときだけ（ほかは factory-talk.yml が相談してから、ここを動かす）
     if: >-
-      github.event.repository.is_template &&
-      github.event.issue.user.login == github.repository_owner &&
-      (startsWith(github.event.issue.title, '新サービス：') || startsWith(github.event.issue.title, '新サービス:'))
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.event.repository.is_template) ||
+      (github.event.repository.is_template &&
+       github.event.issue.user.login == github.repository_owner &&
+       (startsWith(github.event.issue.title, '新サービス：') || startsWith(github.event.issue.title, '新サービス:')) &&
+       (contains(github.event.issue.title, '全部おまかせ') || contains(github.event.issue.body, '[x] 全部おまかせ')))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -26,19 +35,44 @@ jobs:
       stack: ${{ steps.check.outputs.stack }}
       desc: ${{ steps.check.outputs.desc }}
       memo: ${{ steps.check.outputs.memo }}
-      detail: ${{ steps.memo.outputs.detail }}
+      detail: ${{ steps.memo.outputs.detail || steps.talk.outputs.detail }}
+      body: ${{ github.event.issue.body || steps.talk.outputs.body }}
+      files: ${{ steps.talk.outputs.files }}
     steps:
       # 工場のIssueの印。題が書き換えられても、テンプレート自身で企画・実装が走らないようにする（claude-plan.yml・claude-implement.yml が見る）
       - name: 工場の印を付ける
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE: ${{ github.event.issue.number }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
         run: gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/labels" -f "labels[]=factory" > /dev/null || echo "::warning::factory の印を付けられませんでした"
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
+      # 相談してから作るとき：オーナーと決めた事（名前・種類・説明・選んだ案と見た目・答え・注文）を、相談の記録から読む（AIに決め直させない）
+      - name: 相談で決めた事を読む
+        id: talk
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ inputs.issue }}
+        run: |
+          [[ "$ISSUE" =~ ^[0-9]+$ ]] || { echo "::error::Issue の番号が違います"; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE" > "$RUNNER_TEMP/issue.json"
+          owner=$(jq -r '.user.login' "$RUNNER_TEMP/issue.json")
+          [ "$owner" = "$GITHUB_REPOSITORY_OWNER" ] || { echo "::error::オーナーの Issue ではありません"; exit 1; }
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" | jq -s 'add // []' > "$RUNNER_TEMP/comments.json"
+          python3 .github/scripts/factory-talk.py state "$RUNNER_TEMP/comments.json" > "$RUNNER_TEMP/state.json"
+          [ "$(jq -r '.stage // ""' "$RUNNER_TEMP/state.json")" = go ] || { echo "::error::相談で「作る」まで決まっていません"; exit 1; }
+          python3 .github/scripts/factory-talk.py brief "$RUNNER_TEMP/state.json" > "$RUNNER_TEMP/brief.json"
+          jq '{name, stack, description}' "$RUNNER_TEMP/brief.json" > factory-plan.json
+          memo=$(jq -r '.memo // ""' "$RUNNER_TEMP/state.json")
+          { echo 'memo<<MEMO_END'; printf '%s\n' "$memo"; echo 'MEMO_END'
+            echo 'detail<<DETAIL_END'; jq -r '.detail' "$RUNNER_TEMP/brief.json" | grep -v '^DETAIL_END$'; echo 'DETAIL_END'
+            echo 'body<<BODY_END'; jq -r '.body // ""' "$RUNNER_TEMP/issue.json" | tr -d '\r' | head -c 3000 | grep -v '^BODY_END$'; echo; echo 'BODY_END'
+            echo "files=$(jq -c '.files' "$RUNNER_TEMP/brief.json")"; } >> "$GITHUB_OUTPUT"
       - name: メモを取り出す
         id: memo
+        if: github.event_name == 'issues'
         env:
           TITLE: ${{ github.event.issue.title }}
           BODY: ${{ github.event.issue.body }}
@@ -51,6 +85,7 @@ jobs:
       # AIは名前・言語・説明を決めて、ファイルに書くだけ（ほかの操作は許さない。鍵も渡さない）
       - uses: anthropics/claude-code-action@v1
         id: claude
+        if: github.event_name == 'issues'
         continue-on-error: true
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -78,7 +113,7 @@ jobs:
       - name: AIが決めた物を確かめる
         id: check
         env:
-          MEMO: ${{ steps.memo.outputs.memo }}
+          MEMO: ${{ steps.memo.outputs.memo || steps.talk.outputs.memo }}
         run: |
           f=factory-plan.json
           if [ ! -f "$f" ] || [ -L "$f" ] || ! jq -e 'type == "object"' "$f" > /dev/null 2>&1; then
@@ -146,9 +181,23 @@ jobs:
           .github/scripts/install-ja-fonts.sh
       - name: Issue に貼られた画像を取る
         env:
-          BODY: ${{ github.event.issue.body }}
+          BODY: ${{ needs.plan.outputs.body }}
           GH_TOKEN: ${{ github.token }}
         run: .github/scripts/fetch-issue-images.sh || echo "::warning::Issue の画像を取れませんでした"
+      # 相談でオーナーが選んだざっくり画面（HTML と画像）と見た目の方向の板を、いちばん大事な実例として置く
+      - name: 相談で選んだ画面を取る
+        if: needs.plan.outputs.files != '' && needs.plan.outputs.files != '[]'
+        env:
+          FILES: ${{ needs.plan.outputs.files }}
+        run: |
+          mkdir -p factory-refs/issue
+          git fetch -q --depth 1 origin factory-talk || { echo "::warning::factory-talk ブランチを取れませんでした"; exit 0; }
+          jq -r '.[]' <<< "$FILES" | while IFS= read -r f; do
+            [[ "$f" =~ ^issue-[0-9]+/r[0-9]+-(looks|mocks)/(look-[1-3]-1440\.png|mock-[ab](-1440|-390)?\.(png|html))$ ]] || continue
+            dest=$(basename "$f" | sed -E 's/^mock-[ab]/chosen-mock/; s/^look-[1-3]-1440\.png$/chosen-look.png/')
+            git show "FETCH_HEAD:$f" > "factory-refs/issue/$dest" && echo "- $dest：オーナーが工場の相談で選んだ物（$f）" >> factory-refs/issue/INDEX.md
+          done
+          ls factory-refs/issue
       - uses: anthropics/claude-code-action@v1
         id: designer
         continue-on-error: true
@@ -163,6 +212,7 @@ jobs:
             - 詳しいメモ（載せたい中身・見た目の雰囲気など。あればこれも守る）：
               ${{ needs.plan.outputs.detail }}
 
+            ${{ needs.plan.outputs.files != '' && needs.plan.outputs.files != '[]' && 'オーナーと相談して、見た目の方向（factory-refs/issue/chosen-look.png）とざっくり画面（factory-refs/issue/chosen-mock.html・chosen-mock-1440.png・chosen-mock-390.png）がもう決まっています。方向を決め直さず、このざっくり画面の構図・色・文字を土台にして、本物の画面に仕上げてください（実例集めは、足りない部品の参考にする分だけでよい）。詳しいメモの「オーナーの注文」も守る。' || '' }}
             `.github/factory/design-department.md`（進め方）を全部読んで、そのとおりに進めてください：
             （ゲームは最初に、ありきたりにしないための遊び方のアイデア）→ 実例を集めて撮る → 参考の板（`factory-refs/board.md`）と方向 → `src/` に作る → 撮って実例と見比べて直す（最低3回）→ 仕上げ（確認コマンド・`docs/design.md`）。
             書いてよい場所：`src/`、`public/`、`docs/design.md`、`factory-refs/`、`.shots/`、`factory-context.md`、`factory-todo.md`、`factory-pages.txt`（ゲームは `index.html` も。会員と課金のサービスは `factory-price.txt` も）
@@ -278,7 +328,7 @@ jobs:
         env:
           HAS_FACTORY: ${{ secrets.FACTORY_TOKEN != '' }}
           GH_TOKEN: ${{ github.token }}
-          ISSUE: ${{ github.event.issue.number }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
         run: |
           if [ "$HAS_FACTORY" != true ]; then
             gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" -f body="⚠️ 新しいサービスを作るには、最初の1回だけ、Environment「factory」の Secret に FACTORY_TOKEN が要ります（作り方は docs/pipeline.md の「工場」）。登録したら、このIssueを閉じて、同じ1行でもう一度作ってください。" > /dev/null
@@ -289,7 +339,7 @@ jobs:
           GH_TOKEN: ${{ secrets.FACTORY_TOKEN }}
           COMMENT_TOKEN: ${{ github.token }}
           TEMPLATE: ${{ github.repository }}
-          ISSUE: ${{ github.event.issue.number }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
           MEMO: ${{ needs.plan.outputs.memo }}
           MEMO_DETAIL: ${{ needs.plan.outputs.detail }}
           APP_NAME: ${{ needs.plan.outputs.name }}
@@ -330,6 +380,6 @@ jobs:
     steps:
       - env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE: ${{ github.event.issue.number }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
         run: |
           gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" -f body="⚠️ 新しいサービスの名前と言語を、AIが決められませんでした（Actions の Factory の実行を見てください）。このIssueを閉じて、同じ1行でもう一度作れます。" > /dev/null

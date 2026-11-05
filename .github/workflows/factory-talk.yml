@@ -1,0 +1,208 @@
+# 工場の相談：「新サービス：〜」の1行から、いきなり作らず、オーナーに選んでもらいながら作る物と見た目を決める（.github/factory/talk.md）。
+#   案を5つ＋質問 → 見た目の方向を3つ → ざっくり画面を2案 → 最終確認 →「作る」で Factory（factory.yml）を動かす
+# 各段階で、選択肢と質問を Issue のコメントに書いて、オーナーの返事を待つ（ずっと待つ）。返事はコメントで書く（agent-desk からも書ける）。
+# 今までに決まった事は、コメントの印（factory-talk.py の state）に入れておく。画像は factory-talk ブランチに置く。
+# Issue に「全部おまかせ」とあれば、相談せずに今までどおり Factory が全部決めて作る。
+# テンプレート本体でだけ、オーナーのIssue・返事でだけ動く。
+name: Factory talk
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: factory-talk-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  # 何をするか決める：新しい Issue なら案から。返事なら、AIに返事を読ませて次の段階を決める
+  route:
+    if: >-
+      github.event.repository.is_template &&
+      (
+        (github.event_name == 'issues' &&
+         github.event.issue.user.login == github.repository_owner &&
+         (startsWith(github.event.issue.title, '新サービス：') || startsWith(github.event.issue.title, '新サービス:')) &&
+         !contains(github.event.issue.title, '全部おまかせ') && !contains(github.event.issue.body, '[x] 全部おまかせ'))
+        ||
+        (github.event_name == 'issue_comment' &&
+         !github.event.issue.pull_request &&
+         github.event.comment.user.login == github.repository_owner &&
+         contains(github.event.issue.labels.*.name, 'factory:wait'))
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    outputs:
+      next: ${{ steps.next.outputs.next }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - name: 始める（新しい Issue）
+        if: github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          TITLE: ${{ github.event.issue.title }}
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/labels" -f "labels[]=factory" -f "labels[]=factory:talk" > /dev/null || echo "::warning::印を付けられませんでした"
+          memo="${TITLE#新サービス：}"; memo="${memo#新サービス:}"; memo="$(printf '%s' "$memo" | sed 's/^[[:space:]]*//')"
+          detail="$(printf '%s' "$BODY" | tr -d '\r' | head -c 3000 | iconv -c -f utf-8 -t utf-8)"
+          mkdir -p talk
+          python3 .github/scripts/factory-talk.py init "$memo" "$detail" > talk/state.json
+          echo '{"next":"ideas","message":""}' > talk/route.json
+      - name: 返事を受け取る
+        if: github.event_name == 'issue_comment'
+        id: reply
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          COMMENT: ${{ github.event.comment.body }}
+        run: |
+          # 同じ返事で2回動かないように、まず待ちの印を外す（次の選択肢を出すときに付け直す）
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/$ISSUE/labels/factory:wait" > /dev/null 2>&1 || true
+          mkdir -p talk
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" | jq -s 'add // []' > talk/comments.json
+          python3 .github/scripts/factory-talk.py state talk/comments.json > talk/state.json
+          rm -f talk/comments.json
+          if [ "$(jq -r '.stage // ""' talk/state.json)" = "" ]; then echo "::error::相談の記録が見つかりません"; exit 1; fi
+          printf '%s' "$COMMENT" | head -c 4000 > talk/reply.txt
+          # agent-desk のボタンからの返事は、形の決まった印が入っている（AIに読ませなくてよい）
+          if printf '%s' "$COMMENT" | python3 .github/scripts/factory-talk.py answer > talk/reply.json && [ -s talk/reply.json ]; then
+            echo "ai=false" >> "$GITHUB_OUTPUT"
+          else
+            rm -f talk/reply.json
+            echo "ai=true" >> "$GITHUB_OUTPUT"
+          fi
+      # 文で書かれた返事を、AIが「どれを選んだか・質問の答え・注文」に読み替える（ファイルを書くだけ）
+      - uses: anthropics/claude-code-action@v1
+        if: steps.reply.outputs.ai == 'true'
+        continue-on-error: true
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            工場の相談で、オーナーが返事を書きました。`.github/factory/talk.md` の「返事を読む（reply）」のとおりに、`talk/reply.json` を書いてください。
+            今の段階と、出した選択肢・質問は `talk/state.json`（stage・ideas・looks・mocks・confirm・ask）、返事は `talk/reply.txt` です。ほかのファイルは書かない。
+          claude_args: '--model sonnet --max-turns 8 --allowedTools "Read,Write"'
+      - name: 次の段階を決める
+        if: github.event_name == 'issue_comment'
+        run: |
+          if [ ! -f talk/reply.json ] || [ -L talk/reply.json ] || ! jq -e 'type == "object"' talk/reply.json > /dev/null 2>&1; then
+            echo '{"action":"unclear","message":"返事を読み取れませんでした。番号（例：2）か、やり直してほしい事を書いてください。"}' > talk/reply.json
+          fi
+          python3 .github/scripts/factory-talk.py apply talk/state.json talk/reply.json > talk/applied.json
+          jq '.state' talk/applied.json > talk/state.json
+          jq '{next, message}' talk/applied.json > talk/route.json
+          rm -f talk/applied.json talk/reply.txt talk/reply.json
+      - name: 次の段階
+        id: next
+        run: |
+          next=$(jq -r '.next' talk/route.json)
+          case "$next" in ideas | looks | mocks | confirm | go | clarify) ;; *) echo "::error::知らない段階：$next"; exit 1 ;; esac
+          echo "次：$next"
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: talk-route
+          path: talk/
+          retention-days: 3
+
+  # AIが段階の物を作る（案・見た目の方向の板・ざっくり画面・最終確認）。talk/ にファイルを書くだけで、鍵は持たない
+  work:
+    needs: route
+    if: contains(fromJSON('["ideas","looks","mocks","confirm"]'), needs.route.outputs.next)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v7
+        with:
+          name: talk-route
+          path: talk
+      # ざっくり画面は、選んだ方向の板を見ながら作る
+      - name: 選んだ方向の板を取る
+        if: needs.route.outputs.next == 'mocks'
+        run: |
+          path=$(jq -r '.assets.looks // ""' talk/state.json); n=$(jq -r '.look // ""' talk/state.json)
+          git fetch -q --depth 1 origin factory-talk && git show "FETCH_HEAD:$path/look-$n-1440.png" > talk/chosen-look.png || echo "::warning::選んだ方向の板を取れませんでした"
+      - name: 撮影の準備
+        if: needs.route.outputs.next == 'looks' || needs.route.outputs.next == 'mocks'
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 > /dev/null 2>&1 || true
+          google-chrome --version || echo "::warning::Chrome が見つかりません（画面を撮れません）"
+          .github/scripts/install-ja-fonts.sh
+      - name: 手順書とスクリプトを読み取り専用にする
+        run: chmod -R a-w .github .claude CLAUDE.md AGENTS.md
+      - uses: anthropics/claude-code-action@v1
+        continue-on-error: true
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            あなたは工場の相談役です。`.github/factory/talk.md` を全部読み、「${{ needs.route.outputs.next }}」の段階を受け持ってください
+            （ideas＝1. 案、looks＝2. 見た目の方向、mocks＝3. ざっくり画面、confirm＝4. 最終確認）。
+            今までに決まった事は `talk/state.json` です（memo・detail＝オーナーの1行と詳しいメモ、ideas と idea＝出した案と選んだ案、looks と look、mocks と mock、
+            answers＝質問の答え、notes＝オーナーの注文。notes に今の段階の注文があれば、前に出した物をそのとおりに直して出し直す）。
+            書いてよい場所は `talk/` だけです。
+          claude_args: '--model ${{ needs.route.outputs.next == ''confirm'' && ''sonnet'' || ''opus'' }} --max-turns 150 --allowedTools "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Bash(node .github/scripts/shot.mjs:*)"'
+      - uses: actions/upload-artifact@v6
+        if: ${{ !cancelled() }}
+        with:
+          name: talk-out
+          path: |
+            talk/*.json
+            talk/*.html
+            talk/look-*-1440.png
+            talk/mock-*-1440.png
+            talk/mock-*-390.png
+            !talk/state.json
+            !talk/route.json
+          retention-days: 3
+
+  # 形を確かめて、画像を factory-talk ブランチに置き、オーナーに見せて返事を待つ。「作る」なら Factory を動かす（AIは動かない）
+  publish:
+    needs: [route, work]
+    if: ${{ !cancelled() && needs.route.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      issues: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: actions/download-artifact@v7
+        with:
+          name: talk-route
+          path: talk
+      - uses: actions/download-artifact@v7
+        if: needs.work.result == 'success'
+        continue-on-error: true
+        with:
+          name: talk-out
+          path: out
+      - name: 見せる・待つ
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          NEXT: ${{ needs.route.outputs.next }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
+          AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
+        run: .github/scripts/factory-talk-publish.sh
