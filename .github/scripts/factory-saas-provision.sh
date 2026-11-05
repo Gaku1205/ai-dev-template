@@ -120,7 +120,7 @@ insert into app_meta.migrations (name) values ('0001_billing.sql') on conflict d
   if sb PATCH "/v1/projects/$ref/config/auth" --data-binary '{"mailer_autoconfirm":true}'; then
     say "✅ ログインの設定：確認メールを送らずに登録できるようにした"
   else
-    bad "ログインの設定を変えられませんでした（$(why)。トークンの Auth Config の Read and write が要る）"
+    bad "ログインの設定を変えられませんでした（$(why)。トークンの Auth Config と Project Settings の両方に Read and write が要る）"
   fi
   # あとで表を足すための接続先（プロジェクトだけに効く。IPv4 で届く接続の取りまとめ役（pooler）の、セッションの形）
   if sb GET "/v1/projects/$ref/config/database/pooler"; then

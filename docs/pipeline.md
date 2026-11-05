@@ -195,7 +195,7 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 会員登録・ログインと、月額の有料プランがあるサービス。Next.js に、Supabase（ログインとデータベース）と Stripe（課金）の土台（`examples/saas`。説明は新しいリポジトリの `docs/billing.md`）が入る。
 
 - 最初の1回だけ、Environment「factory」の Secret に2つ入れる
-  - `SUPABASE_ACCESS_TOKEN`：supabase.com → Account preferences → Access Tokens。Resource access は **Organization**（自分の組織。新しく作るプロジェクトにも効く）。Permissions は Project Settings（Read）・Database と Migrations（Read and write）・Connection Pooling（Read）・API Keys（Read and write）・API Key Secrets（Read）・Auth Config（Read and write）・Organizations（Read）・Organization Projects（Read and write）・Projects (account-wide)（Read）。ほかは None
+  - `SUPABASE_ACCESS_TOKEN`：supabase.com → Account preferences → Access Tokens。Resource access は **Organization**（自分の組織。新しく作るプロジェクトにも効く）。Permissions は Project Settings（Read and write。ログインの設定を変えるのに Auth Config と両方要る）・Database と Migrations（Read and write）・Connection Pooling（Read）・API Keys（Read and write）・API Key Secrets（Read）・Auth Config（Read and write）・Organizations（Read）・Organization Projects（Read and write）・Projects (account-wide)（Read）。ほかは None
   - `STRIPE_SECRET_KEY`：Stripe のダッシュボード（テスト環境）→ 開発者 → API キーのシークレットキー（**`sk_test_` だけ**。本番の鍵は工場が使わない）
 - 工場がサービスごとに作る物：Supabase のプロジェクト（東京。最初の表と、確認メールを送らない設定）、Stripe の商品・月額の値段（デザイン担当が決めた円。既定 500 円）・会員ページの設定・通知の受け口（`<公開アドレス>/api/stripe/webhook`）、Vercel の環境変数（`docs/billing.md` の表）、新しいリポジトリの Secret `SUPABASE_DB_URL`（あとで表を足す公開が使う）
 - あとのIssueで表を足すときは、AIが `supabase/migrations/0002_〜.sql` を足し、マージ後の公開（`supabase`）が流す。RLS は必須
