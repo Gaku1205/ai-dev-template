@@ -12,6 +12,7 @@ make_label "ai:queue" "BFD4F2" "順番待ち。前の物がマージされたら
 make_label "ai:hold" "E8A33D" "自動で進めるが、最後のマージだけ人間が押す"
 make_label "ai:stuck" "F2555A" "自動で進められず止まった。人間の確認待ち"
 make_label "ai:question" "E8A33D" "企画AIが質問している。コメントで答えると、自動で清書の続きをする"
+make_label "ai:mocks" "8B5CF6" "作る前に、ざっくり画面を2案作ってオーナーに選んでもらう"
 make_label "ai:skip" "EDEDED" "まだ自動で動かさない（外すと企画に回る）"
 make_label "ai:retry" "BFD4F2" "AIが一時的に止まった（使用量の上限など）。見張り役が時間をおいて自動でやり直す"
 make_label "visual:update" "C5DEF5" "見た目のテストの基準の画像を、CIの環境で撮り直す"

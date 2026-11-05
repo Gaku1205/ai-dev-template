@@ -1,0 +1,95 @@
+# 画面案：見た目の大きい作り直し・新しい画面の Issue は、作る前にざっくり画面を2案作って、オーナーに選んでもらう（企画AIが MOCKS と決めると ai:mocks が付く）。
+# AIは今の画面とデザイン仕様を見て、1枚の HTML を2案（PC とスマホ）作るだけ。画像は ai-mocks ブランチに置き、Issue に選択肢と質問を書いて ai:question で待つ。
+# オーナーが答えると answer.yml が企画に戻し、企画AIが選んだ画面を「目標の画面」として Issue に書く（実装AIはそれに合わせて作る）
+name: Claude Mocks
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  work:
+    if: github.event.label.name == 'ai:mocks'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: mocks-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: 撮影の準備
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 > /dev/null 2>&1 || true
+          .github/scripts/install-ja-fonts.sh
+          mkdir -p mocks
+      # 今の画面を撮っておく（AIが今の見た目を見て、そこからの作り直しを考えるため。撮れなくても続ける）
+      - name: 今の画面を撮る
+        continue-on-error: true
+        run: |
+          if [ -f package.json ] && [ "$(jq -r '.scripts.start != null' package.json)" = true ]; then
+            npm ci --no-audit --no-fund && npm run build && node .github/scripts/shot.mjs --serve --out mocks/now --widths 1440,390 /
+          fi
+      - name: Issue を読む
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: gh issue view "$ISSUE" --comments > mocks/issue.txt
+      - name: 手順書とスクリプトを読み取り専用にする
+        run: chmod -R a-w .github .claude CLAUDE.md AGENTS.md 2> /dev/null || true
+      - uses: anthropics/claude-code-action@v1
+        continue-on-error: true
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            このリポジトリ（${{ github.repository }}）の Issue #${{ github.event.issue.number }} は、見た目の大きい作り直しか新しい画面です。作る前に、オーナーに選んでもらうざっくり画面を2案作ってください。
+            - Issue とコメントは `mocks/issue.txt`（前に出した画面案への注文があれば、それに合わせて出し直す）。今の画面は `mocks/now/`（あれば）
+            - `docs/spec.md`・`docs/design.md`・`docs/design-ref/` を読む。Issue が変えろと言っていない色・文字・決まりは、今のまま使う
+            - `.github/factory/talk.md` の「3. ざっくり画面（mocks）」のとおりに作る。ただし、ファイルの置き場は `talk/` ではなく `mocks/`（`mocks/mock-a.html`・`mocks/mock-b.html`、`mocks/mocks.json`）、撮るのは `node .github/scripts/shot.mjs --out mocks --widths 1440,390 mocks/mock-a.html mocks/mock-b.html`
+            - `.github/factory/design-department.md` の「AIっぽさの型（使わない）」を守る
+            - 書いてよい場所は `mocks/` だけ
+          claude_args: '--model opus --max-turns 120 --allowedTools "Read,Write,Edit,Glob,Grep,Bash(node .github/scripts/shot.mjs:*)"'
+      - uses: actions/upload-artifact@v6
+        if: ${{ !cancelled() }}
+        with:
+          name: mocks-out
+          path: |
+            mocks/mocks.json
+            mocks/mock-*.html
+            mocks/mock-*-1440.png
+            mocks/mock-*-390.png
+          retention-days: 3
+
+  publish:
+    needs: work
+    if: ${{ !cancelled() && github.event.label.name == 'ai:mocks' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: actions/download-artifact@v7
+        if: needs.work.result == 'success'
+        continue-on-error: true
+        with:
+          name: mocks-out
+          path: out
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
+          AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
+        run: .github/scripts/mocks-publish.sh

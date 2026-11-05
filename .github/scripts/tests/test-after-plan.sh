@@ -39,4 +39,9 @@ init_state '{"labels":{"3":["ai:question"]}}'
 (ISSUE=3 GH_TOKEN=pipe GITHUB_TOKEN_FOR_LABELS=x bash "$SCRIPTS_DIR/after-answer.sh" > /dev/null 2>&1)
 assert_eq "質問の印を外して ai:plan" "ai:plan" "$(labels_of 3)"
 
+echo "== 見た目の大きい作り直しは、作る前に画面案（ai:mocks。パイプラインの鍵で付けて画面案のワークフローを動かす）"
+init_state '{"labels":{"3":["ai:plan"]}}'
+(cd "$work" && printf 'MOCKS\nPARALLEL\n' > plan-result.txt && ISSUE=3 PLAN_OUTCOME=success GH_TOKEN=pipe GITHUB_TOKEN_FOR_LABELS=x bash "$SCRIPTS_DIR/after-plan.sh" > /dev/null 2>&1)
+assert_eq "画面案の印" "ai:mocks" "$(labels_of 3)"
+
 finish

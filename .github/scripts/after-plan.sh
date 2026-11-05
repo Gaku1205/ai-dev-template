@@ -4,6 +4,7 @@
 #                            進行中の作業とぶつかる（企画AIが WAIT と判断）・上限に達しているなら、代わりに ai:queue
 #   QUESTION              → ai:stuck を付けて人間に回す（人間にしかできない作業。頼みごとはIssueのコメントにある）
 #   ASK                   → ai:question を付けて答えを待つ（選択式の質問はIssueのコメントにある。答えると answer.yml が ai:plan に戻す）
+#   MOCKS                 → ai:mocks を付ける（claude-mocks.yml がざっくり画面を2案作って、ai:question で答えを待つ）
 #
 # 環境変数：ISSUE、PLAN_OUTCOME、GITHUB_TOKEN_FOR_LABELS（ワークフローのトークン）、EXECUTION_FILE（AIの実行記録。失敗の原因の分類に使う）
 source "$(dirname "$0")/pipeline-lib.sh"
@@ -62,6 +63,15 @@ case "$result" in
       fi
     else
       notify manual "Issueを清書しました" "#${ISSUE} ${title}：ai:implement を付けると実装が始まります" 3
+    fi
+    ;;
+  MOCKS*)
+    if [ -n "$pipeline_token" ]; then
+      # オーナーのトークンで付けるので、画面案のワークフローが動く
+      GH_TOKEN="$pipeline_token" add_label "$ISSUE" "ai:mocks"
+      echo "#$ISSUE：作る前に画面案を作ります"
+    else
+      notify manual "画面案を作る前に止まりました" "#${ISSUE} ${title}：ai:mocks を付けると画面案を作ります" 3
     fi
     ;;
   ASK*)
