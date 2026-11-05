@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ops Console — 4つの実験卓（案A：表が主役）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#090E18; --panel:#111A2A; --line:#24314A; --text:#DCE3F0; --dim:#8794AD;
+    --push:#FF5A1F; --golf:#FFB23F; --bound:#4FD6E8; --rogue:#A7E36B; --reward:#F2709C;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:"Noto Sans JP",sans-serif;font-size:14px;line-height:1.6}
+  .mono{font-family:"JetBrains Mono",monospace}
+  .en{font-family:"Chakra Petch",sans-serif}
+  .glow{filter:drop-shadow(0 0 3px currentColor)}
+
+  /* top band */
+  .band{display:flex;align-items:stretch;height:40px;border-bottom:1px solid var(--line);font-family:"JetBrains Mono",monospace;font-size:12px;white-space:nowrap;overflow:hidden}
+  .band > div{display:flex;align-items:center;gap:8px;padding:0 16px;border-right:1px solid var(--line)}
+  .band .live{background:var(--text);color:var(--bg);font-weight:700}
+  .band .live i{width:7px;height:7px;background:var(--reward);display:inline-block}
+  .band .room b{color:var(--golf)}
+  .band .ticker{flex:1;border-right:0;overflow:hidden;gap:28px;color:var(--dim)}
+  .band .ticker span b{color:var(--text);font-weight:500}
+  .band .sound{border-left:1px solid var(--line);color:var(--dim)}
+  .band .sound s{text-decoration:none;color:var(--text)}
+
+  .wrap{max-width:1440px;margin:0 auto;padding:0 48px}
+
+  /* header */
+  .head{display:flex;align-items:flex-end;justify-content:space-between;padding:28px 0 20px;border-bottom:1px solid var(--line)}
+  .head h1{font-family:"Chakra Petch",sans-serif;font-weight:700;font-size:34px;line-height:1}
+  .head h1 small{font-family:"Noto Sans JP";font-weight:400;font-size:14px;color:var(--dim);margin-left:12px}
+  .total{display:flex;gap:32px;font-family:"JetBrains Mono",monospace}
+  .total div{text-align:right}
+  .total .k{font-size:11px;color:var(--dim)}
+  .total .v{font-size:22px;font-weight:500}
+  .total .v em{font-style:normal;color:var(--dim);font-size:14px}
+
+  /* main table */
+  .tbl{width:100%;border-collapse:collapse;margin-top:8px}
+  .tbl th{font-family:"JetBrains Mono",monospace;font-weight:400;font-size:11px;color:var(--dim);text-align:left;padding:10px 16px;border-bottom:1px solid var(--line)}
+  .tbl th span{font-family:"Noto Sans JP"}
+  .tbl td{padding:0 16px;border-bottom:1px solid var(--line);vertical-align:middle;height:148px}
+  .row{position:relative}
+  .row td:first-child{border-left:3px solid var(--c)}
+  .ch{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--c);width:64px}
+  .name{width:260px}
+  .name .t{font-family:"Chakra Petch",sans-serif;font-weight:600;font-size:22px;line-height:1.2}
+  .name .j{font-size:12px;color:var(--dim)}
+  .name .d{font-size:12px;color:var(--text);opacity:.8;margin-top:8px;line-height:1.5}
+  .sig{width:340px;padding:0 !important}
+  .sig svg{display:block;width:340px;height:146px;background:#0C1320;border-left:1px solid var(--line);border-right:1px solid var(--line)}
+  .prog{width:220px}
+  .ticks{display:flex;gap:4px;margin-bottom:6px}
+  .ticks i{flex:1;height:14px;border:1px solid var(--line)}
+  .ticks i.on{background:var(--c);border-color:var(--c)}
+  .ticks i.now{border-color:var(--c)}
+  .prog .s{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--dim)}
+  .prog .s b{color:var(--text);font-weight:500}
+  .best{width:150px}
+  .best .k{font-size:11px;color:var(--dim)}
+  .best .v{font-family:"JetBrains Mono",monospace;font-size:30px;color:var(--c);line-height:1.1}
+  .best .u{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--dim)}
+  .go{text-align:right}
+  .btn{display:inline-flex;align-items:center;gap:8px;font-family:"Chakra Petch",sans-serif;font-weight:600;font-size:15px;padding:10px 18px;border:1px solid var(--line);color:var(--text);text-decoration:none;white-space:nowrap}
+  .btn.primary{background:var(--push);border-color:var(--push);color:#160700}
+  .btn small{font-family:"Noto Sans JP";font-weight:500;font-size:11px;opacity:.85}
+  .note-first{font-size:11px;color:var(--golf);margin-top:8px;font-family:"JetBrains Mono",monospace}
+
+  /* lower */
+  .lower{display:grid;grid-template-columns:1fr 1fr;gap:0;border-bottom:1px solid var(--line);margin-top:28px;border-top:1px solid var(--line)}
+  .lower > section{padding:20px 24px}
+  .lower > section + section{border-left:1px solid var(--line)}
+  .lower h2{font-family:"Chakra Petch",sans-serif;font-weight:600;font-size:17px;display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+  .lower h2 small{font-family:"Noto Sans JP";font-weight:400;font-size:12px;color:var(--dim)}
+  .lower h2 .pass{margin-left:auto;font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--dim)}
+  .lower h2 .pass b{color:var(--golf);font-weight:500}
+  .rank{width:100%;border-collapse:collapse;font-family:"JetBrains Mono",monospace;font-size:13px}
+  .rank td{padding:6px 0;border-bottom:1px solid #182338}
+  .rank td.n{width:36px;color:var(--dim)}
+  .rank td.r{text-align:right}
+  .rank tr.me td{color:var(--golf)}
+  .rank td .c{display:inline-block;width:8px;height:8px;margin-right:6px}
+  .log{list-style:none;font-size:13px}
+  .log li{display:grid;grid-template-columns:96px 1fr;gap:12px;padding:7px 0;border-bottom:1px solid #182338}
+  .log time{font-family:"JetBrains Mono",monospace;color:var(--dim);font-size:12px}
+  .log b{font-weight:500}
+
+  .scale{display:grid;grid-template-columns:120px 1fr;align-items:center;gap:16px;padding:18px 0 28px;font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--dim)}
+  .scale .bar{height:8px;background:linear-gradient(90deg,#1B2A55,#2D63A8,#4FD6E8,#A7E36B,#FFB23F,#FF5A1F)}
+  .scale .lb{display:flex;justify-content:space-between;margin-top:4px}
+  .foot{font-size:12px;color:var(--dim);padding-bottom:32px}
+
+  /* phone */
+  @media (max-width:760px){
+    .band .ticker,.band .date{display:none}
+    .band > div{padding:0 12px}
+    .band .sound{margin-left:auto}
+    .wrap{padding:0 16px}
+    .head{flex-direction:column;align-items:flex-start;gap:14px;padding:20px 0 14px}
+    .head h1{font-size:26px}
+    .total{gap:20px}
+    .total div{text-align:left}
+    .total .v{font-size:18px}
+    .total .e{display:none}
+    .tbl thead{display:none}
+    .tbl,.tbl tbody,.tbl tr,.tbl td{display:block;width:100%}
+    .tbl tr.row{display:grid;grid-template-columns:1fr auto;border-left:3px solid var(--c);border-bottom:1px solid var(--line);padding:14px 0 16px 12px;column-gap:12px}
+    .tbl td{height:auto;border:0 !important;padding:0}
+    .tbl td.ch{display:none}
+    .tbl td.name{grid-column:1;grid-row:1}
+    .tbl td.best{grid-column:2;grid-row:1;width:auto;text-align:right}
+    .tbl td.sig{grid-column:1 / 3;grid-row:2;margin:10px 0}
+    .sig svg{width:100%;height:110px;border:1px solid var(--line) !important}
+    .tbl td.prog{grid-column:1;grid-row:3;width:auto;align-self:center}
+    .tbl td.go{grid-column:2;grid-row:3;width:auto}
+    .name .t{font-size:19px}
+    .name .d{display:none}
+    .best .v{font-size:24px}
+    .btn{padding:9px 14px;font-size:14px}
+    .btn small{display:none}
+    .lower{grid-template-columns:1fr}
+    .lower > section{padding:16px 0}
+    .lower > section + section{border-left:0;border-top:1px solid var(--line)}
+    .log li{grid-template-columns:80px 1fr}
+    .scale{grid-template-columns:1fr;gap:6px}
+  }
+</style>
+</head>
+<body>
+
+<div class="band">
+  <div class="live"><i></i>LIVE</div>
+  <div class="room">CLASS <b>ML-2B</b></div>
+  <div class="ticker">
+    <span>GRADIENT GOLF 1位 <b>tanaka −6</b></span>
+    <span>BOUNDARY 1位 <b>mori W10 全面クリア</b></span>
+    <span>MODEL ROGUE <b>F7 到達 3人</b></span>
+    <span>REWARD LAB <b>ito S9 5 rules</b></span>
+  </div>
+  <div class="sound">SOUND <s>OFF</s></div>
+  <div class="date">2026.11.05 17:20</div>
+</div>
+
+<div class="wrap">
+  <header class="head">
+    <h1>Ops Console<small>機械学習の4つの実験卓</small></h1>
+    <div class="total">
+      <div><div class="k"><span class="e">stages / </span>クリアした面</div><div class="v">14<em> / 40</em></div></div>
+      <div><div class="k"><span class="e">class rank / </span>クラス順位</div><div class="v">7<em> / 31</em></div></div>
+      <div><div class="k"><span class="e">play time / </span>遊んだ時間</div><div class="v">2h 35m</div></div>
+    </div>
+  </header>
+
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th>CH</th>
+        <th>Game <span>／ ゲーム</span></th>
+        <th>Last run <span>／ 前回の記録</span></th>
+        <th>Stages <span>／ 面の進み</span></th>
+        <th>Best <span>／ 最高記録</span></th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- CH1 Gradient Golf -->
+      <tr class="row" style="--c:var(--golf)">
+        <td class="ch">CH1</td>
+        <td class="name">
+          <div class="t">Gradient Golf</div>
+          <div class="j">勾配ゴルフ ／ 勾配降下法</div>
+          <div class="d">学習率と最適化手法を選んで打ち、損失の谷底のカップを狙う。</div>
+          <div class="note-first">→ 最初はここから</div>
+        </td>
+        <td class="sig">
+          <svg viewBox="0 0 340 146" preserveAspectRatio="xMidYMid slice">
+            <g fill="none" stroke="#FFB23F" stroke-width="1" opacity=".55">
+              <ellipse cx="220" cy="84" rx="150" ry="78" transform="rotate(-14 220 84)"/>
+              <ellipse cx="220" cy="84" rx="112" ry="58" transform="rotate(-14 220 84)"/>
+              <ellipse cx="220" cy="84" rx="78" ry="40" transform="rotate(-14 220 84)"/>
+              <ellipse cx="220" cy="84" rx="46" ry="24" transform="rotate(-14 220 84)"/>
+              <ellipse cx="220" cy="84" rx="20" ry="10" transform="rotate(-14 220 84)"/>
+            </g>
+            <polyline class="glow" points="30,24 92,46 118,92 160,70 184,96 204,80 216,88 220,84" fill="none" stroke="#DCE3F0" stroke-width="1.5" stroke-dasharray="4 3"/>
+            <g fill="#DCE3F0"><circle cx="30" cy="24" r="2.5"/><circle cx="92" cy="46" r="2.5"/><circle cx="118" cy="92" r="2.5"/><circle cx="160" cy="70" r="2.5"/><circle cx="184" cy="96" r="2.5"/><circle cx="204" cy="80" r="2.5"/></g>
+            <circle cx="220" cy="84" r="5" fill="none" stroke="#FF5A1F" stroke-width="1.5"/>
+            <text x="10" y="138" fill="#8794AD" font-family="JetBrains Mono" font-size="10">HOLE 5 · Adam lr 0.08 · 6 打（PAR 5）</text>
+          </svg>
+        </td>
+        <td class="prog">
+          <div class="ticks"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="now"></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="s">HOLE <b>5</b> / 10 ・ 4面クリア</div>
+        </td>
+        <td class="best">
+          <div class="k">best / 最高記録</div>
+          <div class="v">−4</div>
+          <div class="u">PAR比 / 4ホール</div>
+        </td>
+        <td class="go"><a class="btn primary" href="#">Continue ▸ <small>HOLE 5から</small></a></td>
+      </tr>
+
+      <!-- CH2 Boundary Defense -->
+      <tr class="row" style="--c:var(--bound)">
+        <td class="ch">CH2</td>
+        <td class="name">
+          <div class="t">Boundary Defense</div>
+          <div class="j">境界防衛線 ／ ニューラルネットの分類</div>
+          <div class="d">ニューロンを置いて境界線を引き、押し寄せる点の波を仕分ける。</div>
+        </td>
+        <td class="sig">
+          <svg viewBox="0 0 340 146" preserveAspectRatio="xMidYMid slice">
+            <g stroke="#24314A" stroke-width="1"><line x1="0" y1="48" x2="340" y2="48"/><line x1="0" y1="96" x2="340" y2="96"/><line x1="113" y1="0" x2="113" y2="146"/><line x1="226" y1="0" x2="226" y2="146"/></g>
+            <path class="glow" d="M0,128 C70,124 110,90 160,62 S260,20 340,16" fill="none" stroke="#4FD6E8" stroke-width="1.5"/>
+            <g fill="#4FD6E8"><rect x="36" y="30" width="5" height="5"/><rect x="70" y="58" width="5" height="5"/><rect x="104" y="22" width="5" height="5"/><rect x="40" y="88" width="5" height="5"/><rect x="150" y="30" width="5" height="5"/><rect x="200" y="12" width="5" height="5"/></g>
+            <g fill="#F2709C"><circle cx="120" cy="118" r="3"/><circle cx="190" cy="96" r="3"/><circle cx="240" cy="70" r="3"/><circle cx="290" cy="104" r="3"/><circle cx="310" cy="58" r="3"/><circle cx="168" cy="130" r="3"/><circle cx="96" cy="70" r="3" stroke="#FF5A1F" stroke-width="1.5"/></g>
+            <text x="10" y="138" fill="#8794AD" font-family="JetBrains Mono" font-size="10">WAVE 7 · neurons 5 · 漏れ 1</text>
+          </svg>
+        </td>
+        <td class="prog">
+          <div class="ticks"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="now"></i><i></i><i></i><i></i></div>
+          <div class="s">WAVE <b>7</b> / 10 ・ 6面クリア</div>
+        </td>
+        <td class="best">
+          <div class="k">best / 最高記録</div>
+          <div class="v">W6</div>
+          <div class="u">lives 3 のまま</div>
+        </td>
+        <td class="go"><a class="btn" href="#">Play ▸ <small>WAVE 7から</small></a></td>
+      </tr>
+
+      <!-- CH3 Model Rogue -->
+      <tr class="row" style="--c:var(--rogue)">
+        <td class="ch">CH3</td>
+        <td class="name">
+          <div class="t">Model Rogue</div>
+          <div class="j">モデル・ローグ ／ モデルの組み方</div>
+          <div class="d">層・Dropout・データ拡張のカードで、階ごとのデータセットに挑む。</div>
+        </td>
+        <td class="sig">
+          <svg viewBox="0 0 340 146" preserveAspectRatio="xMidYMid slice">
+            <g stroke="#24314A" stroke-width="1"><line x1="0" y1="36" x2="340" y2="36"/><line x1="0" y1="72" x2="340" y2="72"/><line x1="0" y1="108" x2="340" y2="108"/></g>
+            <polyline class="glow" points="0,128 30,104 60,84 100,66 150,52 200,44 250,40 300,38 340,37" fill="none" stroke="#A7E36B" stroke-width="1.5"/>
+            <polyline points="0,130 30,110 60,94 100,80 150,72 200,74 250,82 300,92 340,100" fill="none" stroke="#A7E36B" stroke-width="1.2" stroke-dasharray="4 3" opacity=".7"/>
+            <line x1="200" y1="0" x2="200" y2="146" stroke="#FF5A1F" stroke-width="1" stroke-dasharray="2 3"/>
+            <text x="206" y="22" fill="#FF5A1F" font-family="JetBrains Mono" font-size="10">overfit</text>
+            <text x="10" y="138" fill="#8794AD" font-family="JetBrains Mono" font-size="10">F3 BOSS · train 0.96 / val 0.81</text>
+          </svg>
+        </td>
+        <td class="prog">
+          <div class="ticks"><i class="on"></i><i class="on"></i><i class="now"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="s">FLOOR <b>3</b> / 10 ・ 2面クリア</div>
+        </td>
+        <td class="best">
+          <div class="k">best / 最高記録</div>
+          <div class="v">F5</div>
+          <div class="u">val acc 0.87</div>
+        </td>
+        <td class="go"><a class="btn" href="#">Play ▸ <small>F1から（周回3）</small></a></td>
+      </tr>
+
+      <!-- CH4 Reward Lab -->
+      <tr class="row" style="--c:var(--reward)">
+        <td class="ch">CH4</td>
+        <td class="name">
+          <div class="t">Reward Lab</div>
+          <div class="j">報酬設計室 ／ 強化学習の報酬</div>
+          <div class="d">ズルして点を稼ぐロボットを、報酬の条件で塞いでいく。</div>
+        </td>
+        <td class="sig">
+          <svg viewBox="0 0 340 146" preserveAspectRatio="xMidYMid slice">
+            <g stroke="#24314A" stroke-width="1">
+              <line x1="0" y1="29" x2="340" y2="29"/><line x1="0" y1="58" x2="340" y2="58"/><line x1="0" y1="87" x2="340" y2="87"/><line x1="0" y1="116" x2="340" y2="116"/>
+              <line x1="57" y1="0" x2="57" y2="146"/><line x1="114" y1="0" x2="114" y2="146"/><line x1="171" y1="0" x2="171" y2="146"/><line x1="228" y1="0" x2="228" y2="146"/><line x1="285" y1="0" x2="285" y2="146"/>
+            </g>
+            <rect x="236" y="36" width="42" height="44" fill="none" stroke="#F2709C" stroke-width="1.5"/>
+            <text x="242" y="62" fill="#F2709C" font-family="JetBrains Mono" font-size="10">GOAL</text>
+            <circle class="glow" cx="86" cy="72" r="16" fill="none" stroke="#F2709C" stroke-width="1.2" stroke-dasharray="3 3"/>
+            <rect x="81" y="67" width="10" height="10" fill="#DCE3F0"/>
+            <text x="110" y="104" fill="#FF5A1F" font-family="JetBrains Mono" font-size="10">その場で回って +40</text>
+            <text x="10" y="138" fill="#8794AD" font-family="JetBrains Mono" font-size="10">STAGE 2 · rules 3 · 試行 12</text>
+          </svg>
+        </td>
+        <td class="prog">
+          <div class="ticks"><i class="on"></i><i class="on"></i><i class="now"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="s">STAGE <b>3</b> / 10 ・ 2面クリア</div>
+        </td>
+        <td class="best">
+          <div class="k">best / 最高記録</div>
+          <div class="v">S2</div>
+          <div class="u">rules 3 / 試行 12</div>
+        </td>
+        <td class="go"><a class="btn" href="#">Play ▸ <small>STAGE 3から</small></a></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="lower">
+    <section>
+      <h2>Class board<small>クラスの順位表</small><span class="pass">合言葉 <b>ML-2B</b> ・ 31人</span></h2>
+      <table class="rank">
+        <tr><td class="n">1</td><td>tanaka</td><td class="r">36 / 40 面</td></tr>
+        <tr><td class="n">2</td><td>mori</td><td class="r">33 / 40 面</td></tr>
+        <tr><td class="n">3</td><td>ito</td><td class="r">29 / 40 面</td></tr>
+        <tr class="me"><td class="n">7</td><td>あなた（sato）</td><td class="r">14 / 40 面</td></tr>
+      </table>
+    </section>
+    <section>
+      <h2>Lab notes<small>実験ノート</small></h2>
+      <ul class="log">
+        <li><time>11.05 16:58</time><span><b>HOLE 4</b> lr を 0.3 → 0.08 に下げたら、谷の手前で暴れずに入った。</span></li>
+        <li><time>11.05 16:41</time><span><b>F3</b> 訓練は 0.96 なのに検証が 0.81。Dropout を足して再挑戦。</span></li>
+        <li><time>11.04 21:12</time><span><b>WAVE 6</b> ReLU を2つ重ねたら、曲がった境界が引けた。</span></li>
+      </ul>
+    </section>
+  </div>
+
+  <div class="scale">
+    <div>loss ／ 損失の色</div>
+    <div><div class="bar"></div><div class="lb"><span>0.00</span><span>0.25</span><span>0.50</span><span>1.0</span><span>2.0</span><span>OB</span></div></div>
+  </div>
+  <p class="foot">記録はこのブラウザに保存されます（ログインなし）。順位表は合言葉を入れた人だけに見えます。</p>
+</div>
+</body>
+</html>
