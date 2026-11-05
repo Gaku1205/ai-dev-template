@@ -13,7 +13,8 @@
 # 環境変数：
 #   GH_TOKEN（FACTORY_TOKEN：リポジトリを作れる鍵）、TEMPLATE（owner/repo）、ISSUE（元のIssueの番号）、MEMO（1行のメモ）
 #   MEMO_DETAIL（任意）：元のIssueの本文（詳しいメモ：載せたい中身・見た目のスタイルなど）。最初のIssueの本文に添える
-#   APP_NAME・APP_STACK（nextjs・python・game・webgame）・APP_DESC（1行の説明）：AIが決めた物
+#   APP_NAME・APP_STACK（nextjs・saas・python・game・webgame）・APP_DESC（1行の説明）：AIが決めた物
+#   saas のとき：SUPABASE_ACCESS_TOKEN・STRIPE_SECRET_KEY（Environment「factory」）、PRICE_FILE（任意。デザイン担当が決めた月額の円）
 #   S_<名前>：写す秘密の値（S_CLAUDE_CODE_OAUTH_TOKEN など）、V_<名前>：写す変数の値（V_PIPELINE_APP_ID など）
 #   DESIGN_FILE・CONTEXT_FILE・LIBS_FILE（任意）：デザイン担当が書いたデザイン仕様・使う人と場面・入れた道具（1行1つ）
 #   SITE_DIR（任意）：デザイン担当が作った画面（src/ と public/）。確認コマンドが通った印（.checks-ok）があり、形が正しいときだけ入れる
@@ -51,7 +52,7 @@ $(printf -- '- %s\n' "${report[@]}")${gallery}"
 # ---- 0. AIが決めた物の形を確かめる（ここで使う値は、この形の物だけ） ----
 valid_plan() {
   [[ "$APP_NAME" =~ ^[a-z][a-z0-9-]{2,38}$ ]] || { echo "名前「$APP_NAME」は小文字の英数字と - で3〜39文字にする"; return 1; }
-  case "$APP_STACK" in nextjs | python | game | webgame) ;; *) echo "言語「$APP_STACK」は nextjs・python・game・webgame のどれか"; return 1 ;; esac
+  case "$APP_STACK" in nextjs | saas | python | game | webgame) ;; *) echo "言語「$APP_STACK」は nextjs・saas・python・game・webgame のどれか"; return 1 ;; esac
   [ -n "$APP_DESC" ] && [ "${#APP_DESC}" -le 120 ] || { echo "説明は1〜120文字"; return 1; }
   case "$APP_DESC" in *$'\n'* | *'`'* | *'$('*) echo "説明に改行・記号（\` \$( ）は使わない"; return 1 ;; esac
 }
@@ -82,7 +83,7 @@ for n in $COPY_SECRETS; do
   v="S_$n"; val="${!v:-}"
   [ -z "$val" ] && continue
   # Vercel の鍵は、Vercel で公開する物（Next.js・Web のゲーム）にだけ入れる（公開をまとめて頼む deploy-vercel.yml が使う）
-  [ "$n" = VERCEL_TOKEN ] && [ "$APP_STACK" != nextjs ] && [ "$APP_STACK" != webgame ] && continue
+  [ "$n" = VERCEL_TOKEN ] && [ "$APP_STACK" != nextjs ] && [ "$APP_STACK" != saas ] && [ "$APP_STACK" != webgame ] && continue
   if printf '%s' "$val" | gh secret set "$n" --repo "$NEW" > /dev/null 2>&1; then copied+=("$n"); else note "⚠️ 秘密 $n を写せませんでした（FACTORY_TOKEN に Secrets（Read and write）が要ります）"; fi
 done
 for n in $COPY_VARS; do
@@ -94,7 +95,7 @@ done
 
 # ---- 3. Vercel ----
 vercel_note=""
-if [ "$APP_STACK" = nextjs ] || [ "$APP_STACK" = webgame ]; then
+if [ "$APP_STACK" = nextjs ] || [ "$APP_STACK" = saas ] || [ "$APP_STACK" = webgame ]; then
   framework=nextjs; [ "$APP_STACK" = webgame ] && framework=vite
   if vout=$(REPO_FULL="$NEW" PROJECT="$name" FRAMEWORK="$framework" "$HERE/factory-vercel.sh" 2>&1); then
     note "✅ Vercel のプロジェクトを作ってつないだ"
@@ -102,6 +103,20 @@ if [ "$APP_STACK" = nextjs ] || [ "$APP_STACK" = webgame ]; then
   else
     note "⚠️ $vout"
   fi
+fi
+
+# ---- 3b. 会員と課金（saas）：Supabase のプロジェクト・Stripe の商品と値段・Vercel の環境変数（最初の公開より前に入れる） ----
+saas_state=$(mktemp); saas_notes=$(mktemp)
+vproject="${vercel_note#Vercel：}"; [ -n "$vproject" ] || vproject="$name"
+if [ "$APP_STACK" = saas ]; then
+  price=500
+  if [ -n "${PRICE_FILE:-}" ] && [ -f "$PRICE_FILE" ] && [ ! -L "$PRICE_FILE" ]; then
+    p=$(head -c 20 "$PRICE_FILE" | tr -dc '0-9'); [ -n "$p" ] && [ "$p" -ge 100 ] && [ "$p" -le 10000 ] && price="$p"
+  fi
+  STATE_FILE="$saas_state" NOTES_FILE="$saas_notes" PROJECT="$vproject" REPO_FULL="$NEW" PRICE_YEN="$price" APP_TITLE="$name" \
+    "$HERE/factory-saas-provision.sh" init || true
+  while IFS= read -r line; do [ -n "$line" ] && note "$line"; done < "$saas_notes"
+  : > "$saas_notes"
 fi
 
 # ---- 4. 中身を整えて push ----
@@ -145,6 +160,10 @@ PY2
   if [ "$APP_STACK" = python ]; then
     "$HERE/factory-python.sh" . || exit 1
   fi
+  # 会員と月額課金：Next.js に、ログイン（Supabase）と有料プラン（Stripe）の土台を入れる（examples/saas）
+  if [ "$APP_STACK" = saas ]; then
+    "$HERE/factory-saas.sh" . lock || exit 1
+  fi
   # ゲーム：ブラウザの技術で作り、Electron で Windows の exe にする雛形（examples/game）に切り替える
   if [ "$APP_STACK" = game ]; then
     "$HERE/factory-game.sh" . exe || exit 1
@@ -182,6 +201,8 @@ PY3
     case "$APP_STACK" in game | webgame) entry=src/main.ts ;; esac
     if result=$(SITE_DIR="$SITE_DIR" SITE_ENTRY="$entry" python3 "$HERE/factory-site.py" . 2>&1); then
       echo "SITE=yes $result" > "$work/site.flag"
+      # デザイン担当の画面で src/ が置き換わるので、会員と課金の土台のうち無くなった物を戻す（作り直した見た目は残す）
+      [ "$APP_STACK" = saas ] && "$HERE/factory-saas.sh" . keep > /dev/null
     else
       echo "SITE=bad $(printf '%s' "$result" | tail -1 | cut -c1-200)" > "$work/site.flag"
     fi
@@ -228,7 +249,7 @@ PY3
   fi
   # Vercel の鍵を入れたら、Vercel がマージのたびに自分で公開するのを止め、deploy-vercel.yml が落ち着いてから1回だけ公開する
   # （無料プランの「1日100回まで」に当たらないように）。鍵が無いときは今までどおり Vercel が自分で公開する
-  if { [ "$APP_STACK" = nextjs ] || [ "$APP_STACK" = webgame ]; } && [ -n "${S_VERCEL_TOKEN:-}" ] && [ -f vercel.json ]; then
+  if { [ "$APP_STACK" = nextjs ] || [ "$APP_STACK" = saas ] || [ "$APP_STACK" = webgame ]; } && [ -n "${S_VERCEL_TOKEN:-}" ] && [ -f vercel.json ]; then
     # ignoreCommand（直前のコミットとの差だけを見る）は消す。まとめて公開すると、間のコミットの変更を見落として公開が飛ばされるため。
     # パイプラインの物しか変わっていない時に公開しないのは、deploy-vercel.sh が決める
     jq '.git.deploymentEnabled = false | del(.ignoreCommand)' vercel.json > vercel.json.new && mv vercel.json.new vercel.json
@@ -359,6 +380,17 @@ if [ -n "$vercel_note" ]; then
       note "🌐 公開アドレス：$site（リポジトリの Website 欄にも入れた。最初の画面は、公開が終わるとすぐ見られる）"
     else
       note "🌐 公開アドレス：$site（リポジトリの Website 欄にも入れた。最初の画面は、最初のIssueがマージされると出る）"
+    fi
+    # 会員と課金：公開アドレスが決まったので、Stripe の通知の受け口とログインの戻り先を入れ、環境変数を効かせるため公開をやり直す
+    if [ "$APP_STACK" = saas ] && [ -s "$saas_state" ]; then
+      STATE_FILE="$saas_state" NOTES_FILE="$saas_notes" PROJECT="$vproject" REPO_FULL="$NEW" \
+        "$HERE/factory-saas-provision.sh" url "$site" || true
+      while IFS= read -r line; do [ -n "$line" ] && note "$line"; done < "$saas_notes"
+      if [ -n "${S_VERCEL_TOKEN:-}" ] && GITHUB_REPOSITORY="$NEW" VERCEL_TOKEN="$S_VERCEL_TOKEN" VERCEL_TEAM_ID="${VERCEL_TEAM_ID:-}" VERCEL_FORCE=1 "$HERE/deploy-vercel.sh" > /dev/null 2>&1; then
+        note "✅ 環境変数を効かせるため、公開をやり直した"
+      else
+        note "⚠️ 公開をやり直せませんでした（次のマージのあとの公開で、Stripe の通知が効く）"
+      fi
     fi
   else
     note "⚠️ 公開アドレスがまだ決まっていません（Vercel の画面の Domains で確かめる）"

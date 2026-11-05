@@ -5,7 +5,7 @@
 #   - 最新の main が、もう公開に成功している（Vercel の状態が success）なら何もしない
 #   - 最後に公開に成功したコミットから、パイプラインの物（.github/・docs/pipeline.md）しか変わっていなければ何もしない
 #   - そうでなければ、Vercel の API で最新の main を本番に公開する（プロジェクトは、このリポジトリにつながっている物を探す）
-# 環境変数：VERCEL_TOKEN、VERCEL_TEAM_ID（任意）、GITHUB_REPOSITORY、GH_TOKEN、VERCEL_API（テスト用）
+# 環境変数：VERCEL_TOKEN、VERCEL_TEAM_ID（任意）、GITHUB_REPOSITORY、GH_TOKEN、VERCEL_FORCE（任意。1 なら必ず公開）、VERCEL_API（テスト用）
 # 終了コード：公開を頼んだ・何もしなくてよい → 0、頼めなかった → 1
 set -uo pipefail
 VERCEL_API="${VERCEL_API:-https://api.vercel.com}"
@@ -18,36 +18,40 @@ fi
 
 head=$(gh api "repos/$REPO/commits/main" -q .sha) || { echo "::error::main の先頭を調べられません"; exit 1; }
 
-# main の直近のコミットのうち、Vercel の公開に成功した物（新しい順に最大30件。飛ばした物は除く）
-last_ok=""
-for sha in $(gh api "repos/$REPO/commits?sha=main&per_page=30" -q '.[].sha'); do
-  # 「Canceled by Ignored Build Step」（vercel.json の ignoreCommand で飛ばした物）も success になるので、公開した物には数えない
-  state=$(gh api "repos/$REPO/commits/$sha/status" -q '[.statuses[] | select(.context | startswith("Vercel"))] | sort_by(.updated_at) | last
-    | if . == null then "" elif .state == "success" and ((.description // "") | test("Ignored Build Step"; "i")) then "ignored" else .state end' 2> /dev/null || true)
-  if [ "$state" = success ]; then last_ok="$sha"; break; fi
-done
-if [ "$last_ok" = "$head" ]; then
-  echo "::notice::最新の main（${head:0:7}）はもう公開されています"
-  exit 0
-fi
-head_state=$(gh api "repos/$REPO/commits/$head/status" -q '[.statuses[] | select(.context | startswith("Vercel"))] | sort_by(.updated_at) | last
-  | if . == null then "" elif .state == "success" and ((.description // "") | test("Ignored Build Step"; "i")) then "ignored" else .state end' 2> /dev/null || true)
-if [ "$head_state" = pending ]; then
-  echo "::notice::最新の main（${head:0:7}）は、いま公開中です"
-  exit 0
-fi
-# 最新の main を前に頼んだら、Vercel が vercel.json の ignoreCommand で飛ばした（直前のコミットとの差しか見ないため）。
-# 何度頼んでも同じなので、やり直さない（3時間ごとに頼み続けて、そのたびに通知が鳴るのを防ぐ）。ignoreCommand を消せば直る
-if [ "$head_state" = ignored ]; then
-  echo "::warning::最新の main（${head:0:7}）の公開は、Vercel の ignoreCommand で飛ばされました。公開をまとめて頼む形では、vercel.json の ignoreCommand を消してください（パイプラインの物しか変わっていない時は、ここで公開しないので要りません）"
-  exit 0
-fi
-if [ -n "$last_ok" ]; then
-  changed=$(gh api "repos/$REPO/compare/$last_ok...$head" -q '.files[].filename' 2> /dev/null || true)
-  if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -vqE '^(\.github/|docs/pipeline\.md$)'; then
-    echo "::notice::前の公開（${last_ok:0:7}）から、パイプラインの更新しか変わっていないので公開しません"
+# VERCEL_FORCE=1：調べずに、最新の main を必ず公開する（環境変数を変えたあとなど。同じコミットでも新しく作り直す）
+if [ "${VERCEL_FORCE:-}" != 1 ]; then
+  # main の直近のコミットのうち、Vercel の公開に成功した物（新しい順に最大30件。飛ばした物は除く）
+  last_ok=""
+  for sha in $(gh api "repos/$REPO/commits?sha=main&per_page=30" -q '.[].sha'); do
+    # 「Canceled by Ignored Build Step」（vercel.json の ignoreCommand で飛ばした物）も success になるので、公開した物には数えない
+    state=$(gh api "repos/$REPO/commits/$sha/status" -q '[.statuses[] | select(.context | startswith("Vercel"))] | sort_by(.updated_at) | last
+      | if . == null then "" elif .state == "success" and ((.description // "") | test("Ignored Build Step"; "i")) then "ignored" else .state end' 2> /dev/null || true)
+    if [ "$state" = success ]; then last_ok="$sha"; break; fi
+  done
+  if [ "$last_ok" = "$head" ]; then
+    echo "::notice::最新の main（${head:0:7}）はもう公開されています"
     exit 0
   fi
+  head_state=$(gh api "repos/$REPO/commits/$head/status" -q '[.statuses[] | select(.context | startswith("Vercel"))] | sort_by(.updated_at) | last
+    | if . == null then "" elif .state == "success" and ((.description // "") | test("Ignored Build Step"; "i")) then "ignored" else .state end' 2> /dev/null || true)
+  if [ "$head_state" = pending ]; then
+    echo "::notice::最新の main（${head:0:7}）は、いま公開中です"
+    exit 0
+  fi
+  # 最新の main を前に頼んだら、Vercel が vercel.json の ignoreCommand で飛ばした（直前のコミットとの差しか見ないため）。
+  # 何度頼んでも同じなので、やり直さない（3時間ごとに頼み続けて、そのたびに通知が鳴るのを防ぐ）。ignoreCommand を消せば直る
+  if [ "$head_state" = ignored ]; then
+    echo "::warning::最新の main（${head:0:7}）の公開は、Vercel の ignoreCommand で飛ばされました。公開をまとめて頼む形では、vercel.json の ignoreCommand を消してください（パイプラインの物しか変わっていない時は、ここで公開しないので要りません）"
+    exit 0
+  fi
+  if [ -n "$last_ok" ]; then
+    changed=$(gh api "repos/$REPO/compare/$last_ok...$head" -q '.files[].filename' 2> /dev/null || true)
+    if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -vqE '^(\.github/|docs/pipeline\.md$)'; then
+      echo "::notice::前の公開（${last_ok:0:7}）から、パイプラインの更新しか変わっていないので公開しません"
+      exit 0
+    fi
+  fi
+
 fi
 
 q=""; [ -n "${VERCEL_TEAM_ID:-}" ] && q="&teamId=${VERCEL_TEAM_ID}"

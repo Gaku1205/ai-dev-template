@@ -4,6 +4,7 @@
 #   expo            スマホアプリを Expo（EAS）で配る
 #   github-pages    静的なサイトを作って GitHub Pages に出す（build：作るコマンド、既定 npm run build。dir：出すフォルダ、既定 out。
 #                   Next.js なら next.config で output: "export" にしておく。Settings → Pages の Source を「GitHub Actions」にしておく）
+#   supabase        supabase/migrations/*.sql のうち、まだ流していない物を番号の順に流す（会員と課金のサービス。Secret の SUPABASE_DB_URL。工場が入れる）
 #   vercel          ここでは何もしない（deploy-vercel.yml が、マージが落ち着いてから最新の main を1回だけ公開する。VERCEL_TOKEN が無ければ Vercel が自分で公開する。pipeline.json が無いときの既定）
 # 結果はコミットの状態（deploy/<種類>）に書き、スマホに通知する。パイプラインの更新だけのコミットは公開しない。
 name: Deploy
@@ -42,6 +43,7 @@ jobs:
       expo_config: ${{ steps.plan.outputs.expo_config }}
       pages: ${{ steps.plan.outputs.pages }}
       pages_config: ${{ steps.plan.outputs.pages_config }}
+      supabase: ${{ steps.plan.outputs.supabase }}
     steps:
       - id: sha
         env:
@@ -220,6 +222,36 @@ jobs:
         run: .github/scripts/deploy-status.sh expo success "Expo で配りました" "https://expo.dev"
       - if: failure() && steps.token.outcome == 'success'
         run: .github/scripts/deploy-status.sh expo failure "Expo での配布が失敗しました" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+  # 表の変更：Vercel の公開（deploy-vercel.yml。CI のあと少し待ってから動く）より先に流す
+  supabase:
+    needs: plan
+    if: needs.plan.outputs.supabase == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      statuses: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SHA: ${{ needs.plan.outputs.sha }}
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - run: .github/scripts/deploy-status.sh supabase pending "表の変更を流しています"
+      - name: 表の変更を流す
+        id: migrate
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: .github/scripts/deploy-supabase.sh
+      - if: success()
+        run: .github/scripts/deploy-status.sh supabase success "表の変更を流しました（${{ steps.migrate.outputs.applied }} 個）"
+      - if: failure()
+        run: .github/scripts/deploy-status.sh supabase failure "表の変更を流せませんでした（ログを見てください）" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
   pages:
     needs: plan

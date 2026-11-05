@@ -22,7 +22,7 @@ STACK_FILE="${STACK_FILE:-pipeline.json}"
 
 # 確認コマンドに使えない文字：AIの許可の書き方（--allowedTools "Bash(..),Bash(..)"）を壊すので
 STACK_BAD_CHARS='[",()`$\\]'
-STACK_KINDS='vercel github-pages aws-apprunner github-release expo none'
+STACK_KINDS='vercel github-pages aws-apprunner github-release expo supabase none'
 STACK_TOOL_NAMES='node python go java dotnet'
 
 _stack_has_file() { [ -f "$STACK_FILE" ]; }

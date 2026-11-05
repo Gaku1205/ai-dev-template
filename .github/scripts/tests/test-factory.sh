@@ -186,6 +186,28 @@ run_factory tap-rush webgame "説明" VERCEL_TOKEN=v S_VERCEL_TOKEN=vt > /dev/nu
 assert_contains "Vercel の鍵を写す" "$(cat "$T/calls.log")" "secret VERCEL_TOKEN o/tap-rush"
 assert_eq "Vercel が自分で公開しない（まとめて公開する）" "false" "$(file_in o/tap-rush vercel.json | jq -c .git.deploymentEnabled)"
 
+echo "== 会員と課金（saas）：Next.js に Supabase と Stripe の土台を入れ、表の変更の公開を足す。鍵が無ければ外の準備を飛ばして知らせる"
+run_factory paid-notes saas "有料で使えるメモのサービス" VERCEL_TOKEN=v S_VERCEL_TOKEN=vt > /dev/null
+r=o/paid-notes
+assert_contains "Vercel は Next.js" "$(cat "$T/vercel-body.json")" '"framework":"nextjs"'
+assert_contains "Vercel の鍵を写す" "$(cat "$T/calls.log")" "secret VERCEL_TOKEN o/paid-notes"
+assert_contains "Next.js のまま" "$(file_in $r package.json)" '"next"'
+assert_contains "依存を入れる" "$(cat "$T/calls.log")" "@supabase/ssr"
+assert_contains "ログインの画面" "$(file_in $r src/app/login/page.tsx)" "LoginForm"
+assert_contains "課金の受け口" "$(file_in $r src/app/api/stripe/webhook/route.ts)" "constructEvent"
+assert_contains "見る人を調べる" "$(file_in $r src/lib/viewer.ts)" "getViewer"
+assert_contains "テンプレートのトップは残る" "$(file_in $r src/app/page.tsx)" "greeting"
+assert_contains "最初の表（RLS）" "$(file_in $r supabase/migrations/0001_billing.sql)" "enable row level security"
+assert_eq "公開先は Vercel と表の変更" '[{"kind":"vercel"},{"kind":"supabase"}]' "$(file_in $r pipeline.json | jq -c .deploy)"
+assert_contains "決まりの説明" "$(file_in $r docs/billing.md)" "getViewer()"
+claude=$(file_in $r CLAUDE.md)
+assert_contains "CLAUDE.md：Supabase と Stripe" "$claude" "会員登録・ログインは Supabase、月額の有料プランは Stripe。"
+assert_contains "CLAUDE.md：決まりの場所" "$claude" "docs/billing.md"
+assert_contains "仕様書：無料と有料" "$(file_in $r docs/spec.md)" "## 無料と有料"
+assert_contains "鍵が無いと知らせる（Supabase）" "$(cat "$T/comment.txt")" "SUPABASE_ACCESS_TOKEN が無い"
+assert_contains "鍵が無いと知らせる（Stripe）" "$(cat "$T/comment.txt")" "STRIPE_SECRET_KEY が無い"
+assert_contains "作るのは止めない" "$(cat "$T/comment.txt")" "新しいサービス **paid-notes** を作りました"
+
 echo "== ゲーム：デザイン担当が選んだ遊び方のアイデアを、結果のコメントに畳んで載せる（@ は効かなくする）"
 printf '1. 影を踏む遊び（近い物：無し）\n選んだ：影踏み @someone\n' > "$T/idea.md"
 run_factory idea-game webgame "説明" IDEA_FILE="$T/idea.md" > /dev/null
@@ -218,7 +240,7 @@ run_factory "Bad_Name" nextjs "x" > /dev/null
 assert_not_contains "作らない" "$(cat "$T/calls.log" 2> /dev/null)" "generate"
 assert_contains "理由を書く" "$(cat "$T/comment.txt")" "名前「Bad_Name」"
 run_factory good-name ruby "x" > /dev/null
-assert_contains "知らない言語" "$(cat "$T/comment.txt")" "nextjs・python・game・webgame のどれか"
+assert_contains "知らない言語" "$(cat "$T/comment.txt")" "nextjs・saas・python・game・webgame のどれか"
 run_factory good-name nextjs 'x $(id)' > /dev/null
 assert_contains "危ない記号" "$(cat "$T/comment.txt")" "記号"
 

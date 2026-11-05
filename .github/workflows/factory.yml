@@ -63,13 +63,17 @@ jobs:
             このサービスのリポジトリを作るために、次の3つを決め、`factory-plan.json` に JSON で書いてください（ほかのファイルは作らない）。
             {"name": "...", "stack": "...", "description": "..."}
             - name：リポジトリの名前。中身が分かる短い英語を、小文字の英数字と - でつなぐ（3〜39文字、先頭は英字。例：morning-board、receipt-sorter）
-            - stack：nextjs・python・game・webgame のどれか
+            - stack：nextjs・saas・python・game・webgame のどれか
               - 人が画面で使うWebのサービス（ページ・ダッシュボード・ツール）なら nextjs
+              - 会員登録・ログインがあり、月額の有料プラン（サブスク）でお金を取るWebのサービスなら saas（ログインは Supabase、課金は Stripe の土台が入る）。メモに「サブスク」「月額」「課金」「有料プラン」「会員」とあれば saas
               - 画面よりも処理が中心の物（API・データ処理・機械学習・定期的に動く処理）なら python
               - ゲーム（遊ぶ物）で、Windows の exe で配る物なら game
               - ゲームで、ブラウザ（スマホも）で URL を開いてすぐ遊べる物（Web ゲーム・ブラウザゲーム・SNS で広める物）なら webgame。exe と書いていないゲームは webgame
               - 迷ったら nextjs
             - description：何のサービスかを、日本語で1文（120文字以内。改行・バッククォートは使わない）
+            メモが「何を作るか」を任せている（中身が書かれていない・「任せる」とある）ときは、ありきたりでない案を10個考えてから1つ選ぶ。
+            よくある物（ToDo・家計簿・タイマー・割り勘・サブスク管理・日記・習慣トラッカー・メモ）は選ばない。saas なら、無料でも役に立ち、
+            それでも月額を払う理由（有料でだけできること）がはっきりしている物を選ぶ。選んだ理由は書かなくてよい（name と description に表す）
           claude_args: '--model sonnet --max-turns 5 --allowedTools "Write"'
       - name: AIが決めた物を確かめる
         id: check
@@ -82,7 +86,7 @@ jobs:
           fi
           name=$(jq -r '.name // ""' "$f"); stack=$(jq -r '.stack // ""' "$f"); desc=$(jq -r '.description // ""' "$f" | tr -d '\n`')
           [[ "$name" =~ ^[a-z][a-z0-9-]{2,38}$ ]] || { echo "::error::名前「$name」の形が違います"; exit 1; }
-          case "$stack" in nextjs | python | game | webgame) ;; *) echo "::error::言語「$stack」は nextjs・python・game・webgame のどれか"; exit 1 ;; esac
+          case "$stack" in nextjs | saas | python | game | webgame) ;; *) echo "::error::言語「$stack」は nextjs・saas・python・game・webgame のどれか"; exit 1 ;; esac
           [ -n "$desc" ] || { echo "::error::説明がありません"; exit 1; }
           desc="${desc:0:120}"
           echo "名前：$name／言語：$stack／説明：$desc"
@@ -98,7 +102,7 @@ jobs:
   # AIはファイルを書くことと、決まったコマンドを動かすことだけ（鍵は持たない）
   design:
     needs: plan
-    if: needs.plan.outputs.stack == 'nextjs' || needs.plan.outputs.stack == 'game' || needs.plan.outputs.stack == 'webgame'
+    if: needs.plan.outputs.stack == 'nextjs' || needs.plan.outputs.stack == 'saas' || needs.plan.outputs.stack == 'game' || needs.plan.outputs.stack == 'webgame'
     runs-on: ubuntu-latest
     timeout-minutes: 180
     permissions:
@@ -122,6 +126,13 @@ jobs:
           .github/scripts/factory-game.sh . "$MODE"
           git add -A
           git -c user.name=factory -c user.email=factory@example.invalid commit -qm "ゲームの雛形"
+      # 会員と月額課金：ログイン（Supabase）と有料プラン（Stripe）の土台を入れてから作る（デザイン担当が、ログイン・料金・アカウントの画面も作るため）
+      - name: 会員と課金の土台を入れる
+        if: needs.plan.outputs.stack == 'saas'
+        run: |
+          .github/scripts/factory-saas.sh . install
+          git add -A
+          git -c user.name=factory -c user.email=factory@example.invalid commit -qm "会員と課金の土台"
       - name: 道具を入れる
         run: npm ci --no-audit --no-fund
       # AIが動かしてよいスクリプトや手順書・ルールを、AI自身が書き換えられないようにする
@@ -145,7 +156,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             あなたはこのサービスのアートディレクター兼フロントエンドの作り手です。見た目を決めて、本物の画面を最後まで作ってください。
-            - 種類：${{ needs.plan.outputs.stack == 'game' && 'ゲーム（TypeScript・Vite・Canvas／WebGL で作り、Electron で Windows の exe にする。進め方の「ゲームのとき」と AGENTS.md も読む）' || (needs.plan.outputs.stack == 'webgame' && 'Web のゲーム（TypeScript・Vite・Canvas／WebGL で作り、Vercel で公開してスマホでも PC でもブラウザで遊ぶ。進め方の「ゲームのとき」と AGENTS.md も読む）' || 'Web のサービス（Next.js）') }}
+            - 種類：${{ needs.plan.outputs.stack == 'game' && 'ゲーム（TypeScript・Vite・Canvas／WebGL で作り、Electron で Windows の exe にする。進め方の「ゲームのとき」と AGENTS.md も読む）' || (needs.plan.outputs.stack == 'webgame' && 'Web のゲーム（TypeScript・Vite・Canvas／WebGL で作り、Vercel で公開してスマホでも PC でもブラウザで遊ぶ。進め方の「ゲームのとき」と AGENTS.md も読む）' || (needs.plan.outputs.stack == 'saas' && '会員登録と月額の有料プランがある Web のサービス（Next.js。ログインは Supabase、課金は Stripe の土台がもう入っている。最初に docs/billing.md を読む。無料でできること・有料でできることを決めて docs/design.md に書き、トップで「なぜ月額を払う価値があるか」が伝わるようにする。料金の画面（/pricing）も作る。ログイン（src/app/login/page.tsx・LoginForm.tsx）とアカウント（src/app/account/page.tsx）の画面は、決めた見た目で作り直してよいが、フォームの送り先と入力の name は変えない。docs/billing.md の「中身を変えない」ファイルは変えない。月額の値段（円。100〜3000）を factory-price.txt に数字だけ1行で書く。鍵が無いので、ログインした後の画面は撮れない。ログインしていない時の見た目と、料金の画面で見せる）' || 'Web のサービス（Next.js）')) }}
             - サービス名：${{ needs.plan.outputs.name }}
             - 説明：${{ needs.plan.outputs.desc }}
             - 元のメモ：${{ needs.plan.outputs.memo }}
@@ -154,7 +165,7 @@ jobs:
 
             `.github/factory/design-department.md`（進め方）を全部読んで、そのとおりに進めてください：
             （ゲームは最初に、ありきたりにしないための遊び方のアイデア）→ 実例を集めて撮る → 参考の板（`factory-refs/board.md`）と方向 → `src/` に作る → 撮って実例と見比べて直す（最低3回）→ 仕上げ（確認コマンド・`docs/design.md`）。
-            書いてよい場所：`src/`、`public/`、`docs/design.md`、`factory-refs/`、`.shots/`、`factory-context.md`、`factory-todo.md`、`factory-pages.txt`（ゲームは `index.html` も）
+            書いてよい場所：`src/`、`public/`、`docs/design.md`、`factory-refs/`、`.shots/`、`factory-context.md`、`factory-todo.md`、`factory-pages.txt`（ゲームは `index.html` も。会員と課金のサービスは `factory-price.txt` も）
             （道具を factory-add-lib.sh で入れると、package.json・package-lock.json・factory-libs.txt も変わる）。ほかは変えない。
           claude_args: '--model opus --max-turns 250 --allowedTools "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Bash(npm run build),Bash(npm run typecheck),Bash(npm run lint),Bash(npm run test),Bash(node .github/scripts/shot.mjs:*),Bash(.github/scripts/fetch-photos.sh:*),Bash(.github/scripts/factory-add-lib.sh:*)"'
       # 確認コマンドを、AIとは別にもう一度動かす（AIが「通った」と言っても、ここで通らなければ新しいリポジトリには入れない）
@@ -209,7 +220,7 @@ jobs:
         run: |
           d="$RUNNER_TEMP/design"; mkdir -p "$d"
           if [ -f docs/design.md ] && [ ! -L docs/design.md ]; then cp docs/design.md "$d/design.md"; fi
-          for f in factory-context.md factory-libs.txt factory-todo.md; do
+          for f in factory-context.md factory-libs.txt factory-todo.md factory-price.txt; do
             if [ -f "$f" ] && [ ! -L "$f" ]; then cp "$f" "$d/${f#factory-}"; fi
           done
           # ゲームの遊び方のアイデア（board.md の「## アイデア」の節）。結果のコメントに載せる
@@ -289,6 +300,10 @@ jobs:
           S_PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
           S_NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           S_VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          # 会員と課金（saas）のときだけ使う：新しい Supabase のプロジェクトを作る鍵と、Stripe のテストモードの鍵
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          PRICE_FILE: ${{ runner.temp }}/design/price.txt
           V_PIPELINE_APP_ID: ${{ vars.PIPELINE_APP_ID }}
           V_NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
           V_AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}

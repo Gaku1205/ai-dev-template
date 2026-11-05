@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 公開の計画：pipeline.json の deploy から、どの公開先を動かすかを決めて GITHUB_OUTPUT に書く。deploy.yml から呼ぶ。
-#   apprunner=true/false、release=true/false、release_os=["windows-latest",...]、expo=true/false、pages=true/false、skip_reason=...
+#   apprunner=true/false、release=true/false、release_os=["windows-latest",...]、expo=true/false、pages=true/false、supabase=true/false、skip_reason=...
 # パイプラインの更新だけのコミット（.github/ と docs/pipeline.md だけ）は公開しない（Vercel の ignoreCommand と同じ考え）。手で動かしたとき（GITHUB_EVENT_NAME=workflow_dispatch）は、いつも公開する。
 # 環境変数：GITHUB_OUTPUT（無ければ標準出力に書く）、CHANGED_FILES（テスト用。無ければ git diff HEAD^ HEAD で調べる）
 source "$(dirname "$0")/stack.sh"
@@ -29,6 +29,7 @@ has() { [ -z "$skip" ] && printf '%s\n' "$kinds" | grep -qx "$1" && echo true ||
   echo "release=$(has github-release)"
   echo "expo=$(has expo)"
   echo "pages=$(has github-pages)"
+  echo "supabase=$(has supabase)"
   # 公開先の設定（同じ種類が複数あれば最初の1つ）
   echo "apprunner_config=$(stack_deploy aws-apprunner | head -n 1)"
   echo "release_config=$(stack_deploy github-release | head -n 1)"

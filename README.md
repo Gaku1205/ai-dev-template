@@ -30,7 +30,7 @@
 
 最初の1回だけ準備（[docs/pipeline.md「工場」](docs/pipeline.md#工場1行から新しいサービスを作る)）をしたら、あとはこのリポジトリに **「新サービス：〜」というタイトルのIssueを1行書くだけ**。リポジトリの作成・鍵の登録・main の保護・Vercel・最初のIssueまで自動で進み、そこからはいつものパイプラインが実装・公開まで進める。下の「使い方」は、手で1つずつ作るときの手順。
 
-見た目は、デザイン担当のAIが決めて、**本物の画面まで作る**。描く前に、題材に近い実在の良いサイトを探して本物のブラウザで撮り、それを参考にする（Issue にリールのスクショや好きなサイトの画像を貼れば、それがいちばん大事な実例になる）。作った画面を撮って実例と見比べて直し、確認コマンドが通った物が、そのまま新しいリポジトリの最初の中身になる。決まりは「読める・押せる・スマホで崩れない・ブランドを写さない」だけ。動き・3D の道具は [GSAP](https://gsap.com)・[Lenis](https://github.com/darkroomengineering/lenis)・[Motion](https://motion.dev)・[three.js](https://threejs.org)・[PixiJS](https://pixijs.com) から選べる。ゲームを頼めば、ブラウザの技術で作り、Electron で Windows の exe にして Releases に置くか（[examples/game](examples/game)）、Vercel に出してスマホでもすぐ遊べる Web のゲームにする（[examples/webgame](examples/webgame)）。写真は [Openverse](https://openverse.org) の CC0・パブリックドメインの物だけ（`docs/pipeline.md`「工場」）。
+見た目は、デザイン担当のAIが決めて、**本物の画面まで作る**。描く前に、題材に近い実在の良いサイトを探して本物のブラウザで撮り、それを参考にする（Issue にリールのスクショや好きなサイトの画像を貼れば、それがいちばん大事な実例になる）。作った画面を撮って実例と見比べて直し、確認コマンドが通った物が、そのまま新しいリポジトリの最初の中身になる。決まりは「読める・押せる・スマホで崩れない・ブランドを写さない」だけ。動き・3D の道具は [GSAP](https://gsap.com)・[Lenis](https://github.com/darkroomengineering/lenis)・[Motion](https://motion.dev)・[three.js](https://threejs.org)・[PixiJS](https://pixijs.com) から選べる。ゲームを頼めば、ブラウザの技術で作り、Electron で Windows の exe にして Releases に置くか（[examples/game](examples/game)）、Vercel に出してスマホでもすぐ遊べる Web のゲームにする（[examples/webgame](examples/webgame)）。会員登録と月額の有料プランがあるサービス（サブスク）を頼めば、ログイン（Supabase）と課金（Stripe のテストモード）の土台を入れ、Supabase のプロジェクト・Stripe の値段・Vercel の鍵まで工場が用意する（[examples/saas](examples/saas)）。写真は [Openverse](https://openverse.org) の CC0・パブリックドメインの物だけ（`docs/pipeline.md`「工場」）。
 
 ## 使い方
 

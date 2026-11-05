@@ -55,6 +55,14 @@ assert_contains "OS の一覧" "$out" 'release_os=["windows-latest","macos-lates
 assert_contains "App Runner の設定" "$out" '"service":"hello-api"'
 assert_contains "Expo は動かさない" "$out" "expo=false"
 
+echo "== 計画：会員と課金（Vercel と表の変更の supabase）"
+echo '{"checks":[{"run":"npm run lint"}],"deploy":[{"kind":"vercel"},{"kind":"supabase"}]}' > pipeline.json
+out=$(plan "supabase/migrations/0002_notes.sql")
+assert_contains "表の変更を流す" "$out" "supabase=true"
+assert_contains "Pages は動かさない" "$out" "pages=false"
+out=$(plan ".github/workflows/ci.yml")
+assert_contains "パイプラインだけの更新では流さない" "$out" "supabase=false"
+
 echo "== 計画：GitHub Pages（作るコマンドと出すフォルダは既定がある）"
 echo '{"checks":[{"run":"npm run lint"}],"deploy":[{"kind":"github-pages"}]}' > pipeline.json
 out=$(plan "src/app/page.tsx")

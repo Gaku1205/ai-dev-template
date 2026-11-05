@@ -144,6 +144,7 @@ AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions
 | `aws-apprunner` | Docker のイメージを作って ECR に置き、App Runner で動かす。最初の公開でサービスを作り、2回目から差し替える。言語を選ばない（Web・API） | 下の「AWS App Runner」 | `service`（サービス名・小文字の英数字と `-` `_`。ECR の名前にも使う）、`port`（既定 8080）、`dockerfile`（既定 `Dockerfile`）、`cpu`（既定 256）、`memory`（既定 512）、`health`（HTTPのヘルスチェックのパス。省くとTCP） |
 | `github-release` | OS ごとに配布物（exe など）を作り、GitHub Releases に置く。ファイル名に OS が付く（`hello.exe` → `hello-windows.exe`）。タグは `build-<日時>-<コミット>` | なし | `build`（作るコマンド）、`files`（置くファイル。例 `dist/*`）、`os`（既定 `["windows-latest"]`。`macos-latest`・`ubuntu-latest` も） |
 | `expo` | スマホアプリを Expo（EAS）で配る。既定は `eas update`（アプリを入れ直さずに中身を更新） | Secret の `EXPO_TOKEN` | `command`（既定 `npx --yes eas-cli@latest update --auto --non-interactive`。ストアに出すなら `eas build --auto-submit ...`） |
+| `supabase` | `supabase/migrations/*.sql` のうち、まだ流していない物を番号の順に1ファイルずつ流す（`deploy-supabase.sh`。流した印は `app_meta.migrations`。1ファイル1まとまりで、失敗したら後ろは流さない）。Vercel の公開より先に動く | Secret の `SUPABASE_DB_URL`（工場が saas を作るときに入れる） | なし |
 | `none` | 公開しない | なし | なし |
 
 結果はコミットの状態（`deploy/<kind>`）に書き、スマホに通知する（`deploy-status.sh`）。
@@ -170,7 +171,7 @@ AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions
 
 ai-dev-template に、タイトルが **`新サービス：`** で始まるIssueを書くと（例：「新サービス：毎朝の天気と予定を1枚で見られるページ」）、`factory.yml` が新しいサービスのリポジトリを作って、いつものパイプラインに渡す。テンプレート本体で、オーナーが書いたIssueでだけ動く。Issue の本文は「詳しいメモ」として、名前決め・デザイン担当・最初のIssueに渡る（載せたい中身や、見た目の雰囲気。3000文字まで）。本文に**画像（リールのスクショ・好きなサイトの画面など）を貼ると**、デザイン担当がいちばん大事な実例として見る（`.github/scripts/fetch-issue-images.sh` が AI の前に取ってくる。10 枚まで）。URL を書けば、それも撮って見る。
 
-1. AIが、名前（英語の小文字と -）・種類（画面のあるWebなら Next.js、処理が中心なら Python、exe のゲームなら game、ブラウザで遊ぶゲームなら webgame）・1行の説明を決める（AIは名前を書くだけで、鍵は持たない）
+1. AIが、名前（英語の小文字と -）・種類（画面のあるWebなら Next.js、会員登録と月額の有料プランがあるWebなら saas、処理が中心なら Python、exe のゲームなら game、ブラウザで遊ぶゲームなら webgame）・1行の説明を決める（AIは名前を書くだけで、鍵は持たない）。メモが中身を任せているときは、ありきたりでない案を10個考えて1つ選ぶ（ToDo・家計簿・タイマー・割り勘・サブスク管理などは選ばない）
 2. **デザイン担当**（Next.js とゲームのとき。`.github/factory/design-department.md`）：AIが見た目を決めて、**本物の Next.js の画面を最後まで作る**。それがそのまま新しいリポジトリの最初の中身になる（前は、試作の HTML と文章の仕様を描いて、別のAIが作り直していた。伝言で質が落ちるのでやめた）
    - **実例から作る**：描く前に、題材と雰囲気に近い実在のサイトを 8〜15 個探して（日本語の組み方の参考になる日本のギャラリー（SANKOU! など）から先に。Issue にギャラリーの URL を書けば、そこから拾う） `shot.mjs --scrolls` で撮り、良い所を `factory-refs/board.md` に書いて、どれのどこを混ぜるか決める（言葉だけで考えると平均的な画面になるため）。Issue に貼った画像がいちばん大事な実例
    - **決まりは最低限**：読める・押せる・スマホで崩れない・動きを止められる・目的が果たせる・実在のブランドを写さない、だけ。色・書体・構図・質感・動きは全部AIが決める（前は禁止を足し続けていたが、無難で地味になったので全部外した。taste-skill・デザインの参考の書き起こし・審査役も外した）
@@ -178,15 +179,28 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
    - 最後に `docs/design.md`（あとのIssueで同じ見た目を作るための決まり）を書き直す。ワークフローが確認コマンド（typecheck・lint・test・build）をAIとは別に動かし（`.github/scripts/factory-checks.sh`）、通らなければ1回だけ直させる。**通った物だけ**を、`.github/scripts/factory-site.py` が形を確かめてから新しいリポジトリの `src/`・`public/` に入れ、最後に撮った画像を `docs/design-ref/` に入れる。通らなかったときは、今までどおりメモの1行を最初のIssueにして、実装AIが作る
    - **ゲームのとき**：design ジョブは最初に `.github/scripts/factory-game.sh` で見本（`examples/game`。TypeScript・Vite・Canvas／WebGL・Vitest・Electron）に切り替えてから、デザイン担当に渡す。デザイン担当はタイトル → 遊ぶ → 終わりまで作り、`/?scene=play` のように途中の場面を URL で開けるようにして、1280・1920 の幅で撮る。確認コマンドは `pipeline.json` にある物だけ（lint は無い）。exe は、新しいリポジトリの公開（`github-release`、Windows のランナーで `npm run dist`）が作って Releases に置く
    - **ゲームはありきたりにしない**：作る前に遊び方の案を 10 個出し、有名なゲームの遊び方そのまま（積み上げ・Flappy・ランナー・2048・マッチ3 など）や、見た目を変えただけの物は捨てて、見たことのない一ひねりがある物を選ぶ（`board.md` の「## アイデア」。結果のコメントに畳んで載せる）
+   - **会員と課金（saas）のとき**：design ジョブは最初に `.github/scripts/factory-saas.sh . install` で、ログイン（Supabase）と有料プラン（Stripe）の土台（`examples/saas`）を入れてから、デザイン担当に渡す。デザイン担当は無料と有料の違いを決め、トップ・料金（`/pricing`）・ログイン・アカウントの画面を作り、月額の値段を `factory-price.txt` に書く（課金の土台のファイルは変えない。下の「会員と課金」）
    - **Web のゲーム（webgame）のとき**：見本は `examples/webgame`（Electron を入れない）。スマホの縦画面をいちばん大事にして、タッチで遊べ、結果を共有できるように作る（`design-department.md`「Web のゲームのとき」）。390・1440 の幅で撮る。公開は Next.js と同じく Vercel（プロジェクトの種類は Vite）
 3. `factory.sh` が、テンプレートからリポジトリを作る（同じ名前があれば `-2` …）
 4. パイプラインの秘密（`CLAUDE_CODE_OAUTH_TOKEN`・`PIPELINE_APP_PRIVATE_KEY`・`PIPELINE_TOKEN`・`NTFY_TOPIC`）と変数（`PIPELINE_APP_ID`・`NOTIFY_EVENTS`・`AGENT_DESK_URL`）を、テンプレートの物から写す
-5. Next.js か Web のゲームで `VERCEL_TOKEN` があれば、Vercel のプロジェクトを作ってつなぐ
-6. `CLAUDE.md` の1行目・仕様書の「目的」・README に説明を書き、デザイン担当が作った画面とデザイン仕様と道具を入れ、Python なら見本（`examples/python`）に切り替えて（公開先は none）、ゲームなら見本（`examples/game`）に切り替えて（公開先は GitHub Releases の exe）、Web のゲームなら見本（`examples/webgame`）に切り替えて（公開先は Vercel）、main に push する。この push で Bootstrap が動く
+5. Next.js・saas・Web のゲームで `VERCEL_TOKEN` があれば、Vercel のプロジェクトを作ってつなぐ。saas なら続けて、Supabase のプロジェクト・Stripe の商品と値段を作り、鍵を Vercel の環境変数に入れる（`factory-saas-provision.sh init`。最初の公開より前）
+6. `CLAUDE.md` の1行目・仕様書の「目的」・README に説明を書き、デザイン担当が作った画面とデザイン仕様と道具を入れ、Python なら見本（`examples/python`）に切り替えて（公開先は none）、ゲームなら見本（`examples/game`）に切り替えて（公開先は GitHub Releases の exe）、Web のゲームなら見本（`examples/webgame`）に切り替えて（公開先は Vercel）、saas なら会員と課金の土台を入れて（公開先は Vercel と、表の変更の supabase）、main に push する。この push で Bootstrap が動く
 7. main を守る（PRと CI の `check` を必須にする。管理者は通れる）
-8. 最初のIssueを作る（自動で企画に回る）。デザイン担当が画面を作れていれば、作りきれなかった残り（`factory-todo.md`、3つまで）だけをIssueにする（無ければ作らない）。作れていなければ、1行のメモを最初のIssueにする（最初の画面を一から作るので `size:L`＝強いモデルで実装する）。Vercel につないだときは、本番の公開アドレスを調べて報告に書き、リポジトリの Website 欄にも入れる（同じ名前がほかの人に使われていると、アドレスの後ろに文字が付く）。元のIssueに結果を書いて閉じる（デザイン担当が撮った画面の画像も貼るので、公開を待たずにどんな画面か見られる）
+8. 最初のIssueを作る（自動で企画に回る）。デザイン担当が画面を作れていれば、作りきれなかった残り（`factory-todo.md`、3つまで）だけをIssueにする（無ければ作らない）。作れていなければ、1行のメモを最初のIssueにする（最初の画面を一から作るので `size:L`＝強いモデルで実装する）。Vercel につないだときは、本番の公開アドレスを調べて報告に書き、リポジトリの Website 欄にも入れる（同じ名前がほかの人に使われていると、アドレスの後ろに文字が付く）。saas なら、公開アドレスで Stripe の通知の受け口とログインの戻り先を登録し（`factory-saas-provision.sh url`）、環境変数を効かせるため公開をやり直す。元のIssueに結果を書いて閉じる（デザイン担当が撮った画面の画像も貼るので、公開を待たずにどんな画面か見られる）
 
 テンプレートの受付（intake）は、`新サービス：` のIssueを企画に回さない。工場は最初にIssueへ `factory` の印を付け、企画AI・実装AIは、題が `新サービス：` で始まるか、この印があるIssueを、テンプレート自身では受けない（題が書き換えられても止まる）。
+
+### 会員と課金（saas）
+
+会員登録・ログインと、月額の有料プランがあるサービス。Next.js に、Supabase（ログインとデータベース）と Stripe（課金）の土台（`examples/saas`。説明は新しいリポジトリの `docs/billing.md`）が入る。
+
+- 最初の1回だけ、Environment「factory」の Secret に2つ入れる
+  - `SUPABASE_ACCESS_TOKEN`：supabase.com → Account preferences → Access Tokens。Resource access は **Organization**（自分の組織。新しく作るプロジェクトにも効く）。Permissions は Project Settings（Read）・Database と Migrations（Read and write）・Connection Pooling（Read）・API Keys（Read and write）・API Key Secrets（Read）・Auth Config（Read and write）・Organizations（Read）・Organization Projects（Read and write）・Projects (account-wide)（Read）。ほかは None
+  - `STRIPE_SECRET_KEY`：Stripe のダッシュボード（テスト環境）→ 開発者 → API キーのシークレットキー（**`sk_test_` だけ**。本番の鍵は工場が使わない）
+- 工場がサービスごとに作る物：Supabase のプロジェクト（東京。最初の表と、確認メールを送らない設定）、Stripe の商品・月額の値段（デザイン担当が決めた円。既定 500 円）・会員ページの設定・通知の受け口（`<公開アドレス>/api/stripe/webhook`）、Vercel の環境変数（`docs/billing.md` の表）、新しいリポジトリの Secret `SUPABASE_DB_URL`（あとで表を足す公開が使う）
+- あとのIssueで表を足すときは、AIが `supabase/migrations/0002_〜.sql` を足し、マージ後の公開（`supabase`）が流す。RLS は必須
+- Supabase の無料プランは、動いているプロジェクトが2つまで。3つ目を作るときは、使わないプロジェクトを一時停止する（工場は作れなかった理由を Issue に書く）
+- 本物の課金にするのは人間の作業：Stripe の本人確認と口座、特定商取引法に基づく表記・利用規約・プライバシーポリシーのページ、Vercel の `STRIPE_SECRET_KEY`・`STRIPE_PRICE_ID`・`STRIPE_WEBHOOK_SECRET` を本番の物に差し替え
 
 ### 最初の1回だけの準備
 
@@ -194,6 +208,7 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 - **`FACTORY_TOKEN`**：リポジトリを作れる鍵。github.com → Settings → Developer settings → Fine-grained tokens で作る。Resource owner は自分、Expiration は **90日くらい**（切れたら作り直して入れ直す）、Repository access は **All repositories**、Permissions（Repository）は **Administration・Contents・Secrets・Variables・Issues を Read and write**（Metadata は自動で Read）。Administration は、リポジトリの削除までできる強い権限なので、この鍵はほかに使わない
 - **パイプラインの GitHub App** を、**All repositories** に入れておく（新しいリポジトリでも、すぐ鍵が使えるように）。App の画面 → Install App → 自分のアカウントの Configure
 - **Next.js を公開するなら**：`VERCEL_TOKEN`（Environment「factory」の Secret。Vercel → Account Settings → Tokens）と、Vercel の GitHub 連携を **All repositories** にしておく。チームで使うなら変数 `VERCEL_TEAM_ID`
+- **会員と課金（saas）を作るなら**：Environment「factory」の Secret に `SUPABASE_ACCESS_TOKEN` と `STRIPE_SECRET_KEY` を入れる（下の「会員と課金」）
 - 無い物があっても、作れる所までは作り、元のIssueに「何が無くて何をしなかったか」を書く
 - あとから Vercel につなぐとき（作ったときに VERCEL_TOKEN が無かった物など）：Actions → **Factory Vercel** → Run workflow で、リポジトリの名前を入れる（つないだあと、今の main で本番の公開を1回始め、公開アドレスを Website 欄に入れる。もうつないであるリポジトリなら、公開とアドレスの調べ直しだけ）
 
