@@ -29,4 +29,14 @@ run_plan "" > /dev/null
 assert_contains "やり直しのあとも書かなければ人間に回す" "$(labels_of 3)" "ai:stuck"
 assert_contains "理由を書く" "$(comments_of 3)" "清書の結果を書きませんでした"
 
+echo "== 迷いがあれば選択式で質問して待つ（ai:question。止まった扱いにはしない）"
+init_state '{"labels":{"3":["ai:plan"]}}'
+run_plan "ASK" > /dev/null
+assert_eq "質問の印だけ" "ai:question" "$(labels_of 3)"
+
+echo "== 答えたら清書に戻す（after-answer.sh）"
+init_state '{"labels":{"3":["ai:question"]}}'
+(ISSUE=3 GH_TOKEN=pipe GITHUB_TOKEN_FOR_LABELS=x bash "$SCRIPTS_DIR/after-answer.sh" > /dev/null 2>&1)
+assert_eq "質問の印を外して ai:plan" "ai:plan" "$(labels_of 3)"
+
 finish

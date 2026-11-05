@@ -2,7 +2,8 @@
 # 企画AI（ai:plan）のあと：清書の結果（plan-result.txt）を見て次へ進める。
 #   READY [size:S|size:L] → サイズのラベルを付けてから ai:implement を付ける（実装AIが動く）。
 #                            進行中の作業とぶつかる（企画AIが WAIT と判断）・上限に達しているなら、代わりに ai:queue
-#   QUESTION              → ai:stuck を付けて人間に回す（質問はIssueのコメントにある）
+#   QUESTION              → ai:stuck を付けて人間に回す（人間にしかできない作業。頼みごとはIssueのコメントにある）
+#   ASK                   → ai:question を付けて答えを待つ（選択式の質問はIssueのコメントにある。答えると answer.yml が ai:plan に戻す）
 #
 # 環境変数：ISSUE、PLAN_OUTCOME、GITHUB_TOKEN_FOR_LABELS（ワークフローのトークン）、EXECUTION_FILE（AIの実行記録。失敗の原因の分類に使う）
 source "$(dirname "$0")/pipeline-lib.sh"
@@ -62,6 +63,10 @@ case "$result" in
     else
       notify manual "Issueを清書しました" "#${ISSUE} ${title}：ai:implement を付けると実装が始まります" 3
     fi
+    ;;
+  ASK*)
+    add_label "$ISSUE" "ai:question" || true
+    notify question "質問があります" "#${ISSUE} ${title}：コメントで答えると続きを始めます" 4
     ;;
   *)
     add_label "$ISSUE" "ai:stuck" || true
