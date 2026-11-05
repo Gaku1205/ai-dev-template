@@ -198,10 +198,24 @@ jobs:
             git show "FETCH_HEAD:$f" > "factory-refs/issue/$dest" && echo "- $dest：オーナーが工場の相談で選んだ物（$f）" >> factory-refs/issue/INDEX.md
           done
           ls factory-refs/issue
+      # 起こしたボット（パイプラインの App や、工場の相談の github-actions）を、AIのアクションが断らないようにする。
+      # AI自身（claude[bot]）は許さない。Secret は使わない
+      - name: 起こしたボットを許可に入れる
+        id: bots
+        env:
+          SENDER: ${{ github.event.sender.login }}
+          SENDER_TYPE: ${{ github.event.sender.type }}
+        run: |
+          list=""
+          if [ "$SENDER_TYPE" = Bot ] && [ "$SENDER" != "claude[bot]" ]; then
+            list="${SENDER},${SENDER%\[bot\]}"
+          fi
+          echo "list=$list" >> "$GITHUB_OUTPUT"
       - uses: anthropics/claude-code-action@v1
         id: designer
         continue-on-error: true
         with:
+          allowed_bots: ${{ steps.bots.outputs.list }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             あなたはこのサービスのアートディレクター兼フロントエンドの作り手です。見た目を決めて、本物の画面を最後まで作ってください。
@@ -228,6 +242,7 @@ jobs:
         continue-on-error: true
         if: ${{ !cancelled() && steps.check1.outputs.ok == 'false' && steps.check1.outputs.site == 'true' }}
         with:
+          allowed_bots: ${{ steps.bots.outputs.list }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             あなたはこのサービスの画面を作ったデザイン担当です。作った画面で、確認コマンド（typecheck・lint・test・build）が通りませんでした。

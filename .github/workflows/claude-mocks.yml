@@ -43,11 +43,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number }}
         run: gh issue view "$ISSUE" --comments > mocks/issue.txt
+      # 起こしたボット（パイプラインの App や、工場の相談の github-actions）を、AIのアクションが断らないようにする。
+      # AI自身（claude[bot]）は許さない。Secret は使わない
+      - name: 起こしたボットを許可に入れる
+        id: bots
+        env:
+          SENDER: ${{ github.event.sender.login }}
+          SENDER_TYPE: ${{ github.event.sender.type }}
+        run: |
+          list=""
+          if [ "$SENDER_TYPE" = Bot ] && [ "$SENDER" != "claude[bot]" ]; then
+            list="${SENDER},${SENDER%\[bot\]}"
+          fi
+          echo "list=$list" >> "$GITHUB_OUTPUT"
       - name: 手順書とスクリプトを読み取り専用にする
         run: chmod -R a-w .github .claude CLAUDE.md AGENTS.md 2> /dev/null || true
       - uses: anthropics/claude-code-action@v1
         continue-on-error: true
         with:
+          allowed_bots: ${{ steps.bots.outputs.list }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             このリポジトリ（${{ github.repository }}）の Issue #${{ github.event.issue.number }} は、見た目の大きい作り直しか新しい画面です。作る前に、オーナーに選んでもらうざっくり画面を2案作ってください。
