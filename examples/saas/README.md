@@ -14,6 +14,7 @@
   `src/lib/env.ts`・`src/lib/billing.ts`・`src/lib/viewer.ts`・`src/lib/stripe.ts`・`src/lib/supabase/`・`src/proxy.ts`・`src/app/api/stripe/`・`src/app/auth/`・`src/app/login/actions.ts`・`supabase/migrations/0001_billing.sql`
   - 見た目（`src/app/login/page.tsx`・`LoginForm.tsx`・`src/app/account/page.tsx`・`src/components/member.module.css`）は、`docs/design.md` に合わせて作り直してよい。フォームの送り先（`/api/stripe/checkout`・`/api/stripe/portal`・`/auth/signout`）と、入力の `name`（`email`・`password`・`next`・`mode`）は変えない
 - 秘密の鍵（`SUPABASE_SECRET_KEY`・`STRIPE_SECRET_KEY` など）は、クライアントコンポーネント（`"use client"`）から import しない
+- 定期実行（`vercel.json` の `crons`）は、Vercel の無料プラン（Hobby）では**1日1回まで**（`*/15 * * * *` のように1日に何度も動く式にすると、公開そのものが断られる）。もっと細かく動かしたい物は、1日1回でまとめて済む作りにするか、Issue に「人間に頼むこと」として書く
 - 環境変数が無いとき（手元・CI）は、ログインと課金が止まって画面だけ動く（`authEnabled()`・`billingEnabled()`）。テストやビルドは、鍵が無くても通るように書く
 
 ## 流れ
