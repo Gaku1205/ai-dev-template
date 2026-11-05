@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loss Lab — 案A 数字の帯が上・盤が全幅・操作の棚が下</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=JetBrains+Mono:wght@400;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#090E18; --panel:#111A2A; --rule:#24314A; --text:#DCE3F0; --dim:#8794AD; --press:#FF5A1F;
+  --golf:#FFB23F; --bd:#4FD6E8; --rogue:#A7E36B; --rw:#F2709C;
+  --en:'Chakra Petch',sans-serif; --jp:'Noto Sans JP',sans-serif; --mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#04070D;color:var(--text);font-family:var(--jp);font-size:14px;line-height:1.6}
+.cap{max-width:1440px;margin:0 auto;padding:30px 40px 10px;font-family:var(--mono);font-size:12px;color:var(--dim)}
+.cap b{color:var(--text);font-weight:600}
+.screen{max-width:1440px;min-height:900px;margin:0 auto;background:var(--bg);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);display:flex;flex-direction:column}
+.jp{font-family:var(--jp);font-size:11px;color:var(--dim);margin-left:8px;font-weight:400}
+.mono{font-family:var(--mono)}
+.glow{filter:drop-shadow(0 0 3px currentColor)}
+kbd{display:inline-block;font-family:var(--mono);font-size:10px;line-height:1;border:1px solid var(--rule);border-bottom-width:2px;padding:3px 5px;color:var(--dim);vertical-align:1px;margin-right:6px}
+
+/* 上の細い帯 */
+.bar{display:flex;align-items:stretch;border-bottom:1px solid var(--rule);white-space:nowrap;height:48px}
+.bar>*{display:flex;align-items:center;padding:0 20px;border-right:1px solid var(--rule)}
+.bar .logo{font-family:var(--en);font-weight:700;font-size:18px}
+.bar .back{font-family:var(--en);font-weight:600;font-size:13px;color:var(--dim)}
+.bar .gm{font-family:var(--en);font-weight:700;font-size:15px}
+.bar .gm i{width:10px;height:10px;margin-right:10px}
+.bar .r{margin-left:auto;border-right:0;border-left:1px solid var(--rule);font-family:var(--mono);font-size:12px;color:var(--dim)}
+.bar .r b{color:var(--text);font-weight:600;margin:0 4px}
+
+/* 数字の帯 */
+.hud{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border-bottom:1px solid var(--rule)}
+.hud>div{padding:14px 24px 16px;border-right:1px solid var(--rule)}
+.hud>div:last-child{border-right:0}
+.hud .l{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.hud .v{font-family:var(--mono);font-weight:600;font-size:48px;line-height:1.05}
+.hud .v small{font-size:18px;color:var(--dim);font-weight:400}
+.hud .t{font-family:var(--en);font-weight:700;font-size:28px;line-height:1.25;margin-top:4px}
+.hud svg{display:block;width:100%;height:48px;margin-top:4px}
+
+/* 全幅の盤 */
+.board{position:relative;flex:1;border-bottom:1px solid var(--rule);overflow:hidden}
+.board svg{display:block;width:100%;height:100%;min-height:520px}
+.tag{position:absolute;font-family:var(--mono);font-size:11px;color:var(--dim);background:rgba(9,14,24,.92);border:1px solid var(--rule);padding:4px 9px;white-space:nowrap}
+
+/* 下の操作の棚 */
+.note{display:flex;gap:14px;align-items:baseline;padding:10px 24px;border-bottom:1px solid var(--rule);font-size:13px}
+.note .d{font-family:var(--mono);font-size:11px;color:var(--dim);white-space:nowrap}
+.drawer{display:flex;background:var(--panel);align-items:stretch}
+.drawer>div{padding:14px 24px 16px;border-right:1px solid var(--rule)}
+.drawer>.go{border-right:0;margin-left:auto;display:flex;align-items:center}
+.drawer h4{font-family:var(--en);font-weight:600;font-size:13px;color:var(--dim);margin-bottom:8px;white-space:nowrap}
+.opt{display:flex;border:1px solid var(--rule)}
+.opt span{padding:7px 14px;font-family:var(--mono);font-size:12px;border-right:1px solid var(--rule);white-space:nowrap}
+.opt span:last-child{border-right:0}
+.opt span kbd{margin-right:6px}
+.opt .on{background:var(--golf);color:#0B0F18;font-weight:600}
+.opt .on kbd{color:#0B0F18;border-color:#0B0F18}
+.slider{position:relative;height:26px;width:320px}
+.slider .tr{position:absolute;left:0;right:0;top:12px;height:2px;background:var(--rule)}
+.slider .fl{position:absolute;left:0;top:12px;height:2px}
+.slider .kn{position:absolute;top:5px;width:10px;height:16px;background:var(--text)}
+.ticks{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--dim);width:320px}
+.chip{display:inline-block;border:1px solid var(--rule);padding:6px 12px;font-family:var(--mono);font-size:12px;margin:0 6px 6px 0;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;white-space:nowrap;background:var(--press);color:#0B0F18;font-family:var(--en);font-weight:700;font-size:17px;padding:12px 22px}
+.btn kbd{color:#0B0F18;border-color:#0B0F18;margin:0 10px 0 0}
+.btn small{font-family:var(--jp);font-weight:500;font-size:11px;margin-left:8px}
+.hand{display:flex;gap:8px}
+.card{border:1px solid var(--rule);background:var(--bg);padding:8px 10px;width:158px;flex:none}
+.card .c{font-family:var(--mono);font-size:10px;color:var(--dim)}
+.card .c kbd{margin-right:4px}
+.card .n{font-family:var(--en);font-weight:700;font-size:15px}
+.card .e{font-size:11px;color:var(--dim);line-height:1.45}
+.card.up{border-color:var(--rogue);transform:translateY(-8px)}
+.card.up .c{color:var(--rogue)}
+
+/* メニュー：1行1ゲームの表 */
+.menu{flex:1;display:flex;flex-direction:column}
+.thead,.row{display:grid;grid-template-columns:10px 340px 1fr 210px 150px 170px;align-items:center}
+.thead{border-bottom:1px solid var(--rule);font-family:var(--mono);font-size:11px;color:var(--dim)}
+.thead>div{padding:10px 20px}
+.thead>div:first-child{padding:0}
+.row{flex:1;border-bottom:1px solid var(--rule);min-height:130px}
+.row>div{padding:0 20px}
+.row>i{align-self:stretch}
+.row .n{font-family:var(--en);font-weight:700;font-size:30px;line-height:1.15}
+.row .s{font-size:13px;color:var(--dim);margin-top:4px}
+.row svg{display:block;width:100%;height:96px}
+.row .p{font-family:var(--mono);font-size:12px;color:var(--dim)}
+.row .p b{font-size:20px;color:var(--text);font-weight:600}
+.steps{display:flex;gap:3px;margin-top:6px}
+.steps span{width:13px;height:8px;border:1px solid var(--rule)}
+.row .best{font-family:var(--mono);font-weight:600;font-size:40px;line-height:1}
+.row .best small{display:block;font-size:11px;font-weight:400;color:var(--dim);margin-top:6px}
+.row.sel{background:var(--panel)}
+.first{display:inline-block;font-family:var(--mono);font-size:11px;color:var(--press);border:1px solid var(--press);padding:1px 7px;margin-left:12px;vertical-align:6px}
+.play{display:inline-flex;align-items:center;border:1px solid var(--rule);font-family:var(--en);font-weight:700;font-size:15px;padding:9px 16px;white-space:nowrap}
+.row.sel .play{background:var(--press);border-color:var(--press);color:#0B0F18}
+.row.sel .play kbd{color:#0B0F18;border-color:#0B0F18}
+.lb{display:grid;grid-template-columns:240px repeat(4,1fr);font-family:var(--mono);font-size:12px}
+.lb>div{padding:12px 20px;border-right:1px solid var(--rule)}
+.lb>div:last-child{border-right:0}
+.lb h5{font-family:var(--en);font-size:13px;font-weight:600;margin-bottom:4px}
+.lb p{display:flex;justify-content:space-between;color:var(--dim);line-height:1.75}
+.lb p.me{color:var(--text)}
+.lb .k{font-size:28px;font-weight:600;font-family:var(--mono);line-height:1.2}
+
+@media (max-width:760px){
+  .cap{padding:24px 14px 8px}
+  .screen{min-height:0}
+  .bar{height:44px}
+  .bar>*{padding:0 12px}
+  .bar .logo{font-size:16px}
+  .bar .hide-s,.hide-s{display:none}
+  .hud{grid-auto-flow:row;grid-template-columns:1fr 1fr}
+  .hud>div{padding:8px 14px;border-bottom:1px solid var(--rule)}
+  .hud>div:nth-child(2n){border-right:0}
+  .hud>div.w{grid-column:1/-1;border-right:0}
+  .hud .v{font-size:30px}
+  .hud .t{font-size:20px}
+  .board{flex:none}
+  .board svg{height:320px;min-height:0}
+  .tag{font-size:10px}
+  .note{padding:10px 14px;flex-direction:column;gap:2px}
+  .drawer{flex-direction:column}
+  .drawer>div{border-right:0;border-bottom:1px solid var(--rule);padding:12px 14px}
+  .drawer>.go{margin-left:0;border-bottom:0}
+  .drawer .btn{width:100%;justify-content:center}
+  .opt{flex-wrap:wrap}
+  .slider,.ticks{width:100%}
+  .hand{flex-wrap:wrap}
+  .card{width:calc(50% - 4px)}
+  .card.up{transform:none}
+  kbd{display:none}
+  .thead{display:none}
+  .row{grid-template-columns:6px 1fr auto;grid-template-areas:"c n b" "c p b" "c g g";min-height:0;padding:12px 0}
+  .row>i{grid-area:c}
+  .row>div{padding:0 14px}
+  .row .nm{grid-area:n}
+  .row .pr{grid-area:p;margin-top:6px}
+  .row .gr{grid-area:g;margin-top:8px}
+  .row .bs{grid-area:b;text-align:right}
+  .row .pl{display:none}
+  .row .n{font-size:21px}
+  .row .s{font-size:12px}
+  .row .best{font-size:28px}
+  .row svg{height:56px}
+  .first{display:block;width:max-content;margin:6px 0 0;vertical-align:0}
+  .lb{grid-template-columns:1fr 1fr}
+  .lb>div{border-bottom:1px solid var(--rule)}
+  .lb>div:nth-child(2n+1){border-right:0}
+  .lb>div:first-child{grid-column:1/-1}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ 0. メニュー ============ -->
+<p class="cap"><b>案A ― 1 / MENU</b>　最初に開く1ページ。1行1ゲームの表が画面の縦いっぱい。行の中にいまの盤の小さな線と最高記録。下の帯にクラスの順位</p>
+<section class="screen">
+  <div class="bar">
+    <div class="logo">Loss Lab</div>
+    <div class="back hide-s">MENU<span class="jp">ゲームを選ぶ</span></div>
+    <div class="r"><span class="hide-s">CLASS</span><b>ML-2B</b>／<b>sora</b><span class="hide-s">　SOUND</span><b class="hide-s">OFF</b></div>
+  </div>
+  <div class="menu">
+    <div class="thead"><div></div><div>GAME ／ ゲーム</div><div>LAST RUN ／ 前回の記録</div><div>PROGRESS ／ 進み具合</div><div>BEST ／ 最高記録</div><div></div></div>
+
+    <div class="row sel">
+      <i style="background:var(--golf)"></i>
+      <div class="nm"><div class="n">Gradient Golf<span class="first">最初はここから</span></div><div class="s">勾配ゴルフ　学習率と最適化手法で、損失の谷のカップを狙う</div></div>
+      <div class="gr"><svg viewBox="0 0 600 96" preserveAspectRatio="none"><g fill="none" stroke="#FFB23F" stroke-width="1" opacity=".35"><ellipse cx="400" cy="52" rx="220" ry="36"/><ellipse cx="410" cy="52" rx="130" ry="20"/><ellipse cx="420" cy="52" rx="50" ry="8"/></g><polyline class="glow" style="color:#FFB23F" points="40,84 160,40 250,70 340,44 410,54" fill="none" stroke="#FFB23F" stroke-width="1.6"/><circle cx="420" cy="52" r="4" fill="none" stroke="#FF5A1F" stroke-width="1.5"/></svg></div>
+      <div class="pr"><div class="p"><b>HOLE 4</b> / 10</div><div class="steps"><span style="background:var(--golf);border-color:var(--golf)"></span><span style="background:var(--golf);border-color:var(--golf)"></span><span style="background:var(--golf);border-color:var(--golf)"></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div></div>
+      <div class="bs"><div class="best" style="color:var(--golf)">−4<small>3ホール合計</small></div></div>
+      <div class="pl"><span class="play"><kbd>1</kbd>Play ▸</span></div>
+    </div>
+
+    <div class="row">
+      <i style="background:var(--bd)"></i>
+      <div class="nm"><div class="n">Boundary Defense</div><div class="s">境界防衛線　ニューロンを置いて、流れ込む点を境界で仕分ける</div></div>
+      <div class="gr"><svg viewBox="0 0 600 96" preserveAspectRatio="none"><path class="glow" style="color:#4FD6E8" d="M0 86 C160 84 260 40 380 30 S540 14 600 10" fill="none" stroke="#4FD6E8" stroke-width="1.6"/><g fill="#4FD6E8"><rect x="60" y="20" width="5" height="5"/><rect x="180" y="12" width="5" height="5"/><rect x="300" y="8" width="5" height="5"/></g><g fill="#F2709C"><circle cx="260" cy="76" r="3"/><circle cx="420" cy="62" r="3"/><circle cx="530" cy="70" r="3"/></g></svg></div>
+      <div class="pr"><div class="p"><b>STAGE 3</b> / 10</div><div class="steps"><span style="background:var(--bd);border-color:var(--bd)"></span><span style="background:var(--bd);border-color:var(--bd)"></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div></div>
+      <div class="bs"><div class="best" style="color:var(--bd)">W12<small>守った波</small></div></div>
+      <div class="pl"><span class="play"><kbd>2</kbd>Play ▸</span></div>
+    </div>
+
+    <div class="row">
+      <i style="background:var(--rogue)"></i>
+      <div class="nm"><div class="n">Model Rogue</div><div class="s">モデル・ローグ　層や Dropout のカードで組み、階のデータセットを倒す</div></div>
+      <div class="gr"><svg viewBox="0 0 600 96" preserveAspectRatio="none"><path class="glow" style="color:#A7E36B" d="M0 90 C120 50 240 26 380 18 S540 12 600 12" fill="none" stroke="#A7E36B" stroke-width="1.6"/><path d="M0 92 C120 60 240 40 380 36 S540 44 600 50" fill="none" stroke="#A7E36B" stroke-width="1" stroke-dasharray="4 4" opacity=".6"/></svg></div>
+      <div class="pr"><div class="p"><b>FLOOR 5</b> / 10　RUN #14</div><div class="steps"><span style="background:var(--rogue);border-color:var(--rogue)"></span><span style="background:var(--rogue);border-color:var(--rogue)"></span><span style="background:var(--rogue);border-color:var(--rogue)"></span><span style="background:var(--rogue);border-color:var(--rogue)"></span><span></span><span></span><span></span><span></span><span></span><span></span></div></div>
+      <div class="bs"><div class="best" style="color:var(--rogue)">F5<small>val acc 0.872</small></div></div>
+      <div class="pl"><span class="play"><kbd>3</kbd>Play ▸</span></div>
+    </div>
+
+    <div class="row">
+      <i style="background:var(--rw)"></i>
+      <div class="nm"><div class="n">Reward Lab</div><div class="s">報酬設計室　ズルするロボットを、報酬のルールで塞いでいく</div></div>
+      <div class="gr"><svg viewBox="0 0 600 96" preserveAspectRatio="none"><polyline class="glow" style="color:#F2709C" points="0,88 80,80 160,70 240,40 300,14 340,14 380,62 460,50 540,36 600,30" fill="none" stroke="#F2709C" stroke-width="1.6"/><line x1="300" y1="0" x2="300" y2="96" stroke="#FF5A1F" stroke-dasharray="3 3"/></svg></div>
+      <div class="pr"><div class="p"><b>STAGE 5</b> / 10</div><div class="steps"><span style="background:var(--rw);border-color:var(--rw)"></span><span style="background:var(--rw);border-color:var(--rw)"></span><span style="background:var(--rw);border-color:var(--rw)"></span><span style="background:var(--rw);border-color:var(--rw)"></span><span></span><span></span><span></span><span></span><span></span><span></span></div></div>
+      <div class="bs"><div class="best" style="color:var(--rw)">S4<small>ルール 6 個</small></div></div>
+      <div class="pl"><span class="play"><kbd>4</kbd>Play ▸</span></div>
+    </div>
+
+    <div class="lb">
+      <div><h5>Leaderboard<span class="jp">合言葉の順位表</span></h5><div class="k">ML-2B</div><p>メンバー 23人</p></div>
+      <div><h5 style="color:var(--golf)">Gradient Golf</h5><p><span>1 tanaka</span><span>−6</span></p><p><span>2 yui</span><span>−5</span></p><p class="me"><span>3 sora</span><span>−4</span></p></div>
+      <div><h5 style="color:var(--bd)">Boundary Defense</h5><p><span>1 kenji_k</span><span>W18</span></p><p><span>2 mio</span><span>W15</span></p><p class="me"><span>5 sora</span><span>W12</span></p></div>
+      <div><h5 style="color:var(--rogue)">Model Rogue</h5><p><span>1 yui</span><span>F8</span></p><p><span>2 tanaka</span><span>F7</span></p><p class="me"><span>4 sora</span><span>F5</span></p></div>
+      <div><h5 style="color:var(--rw)">Reward Lab</h5><p><span>1 mio</span><span>S7</span></p><p><span>2 sora</span><span>S4</span></p><p><span>3 kenji_k</span><span>S4</span></p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 1. 勾配ゴルフ ============ -->
+<p class="cap"><b>案A ― 2 / Gradient Golf</b>　上に数字の帯、全幅のコース（上から見た等高線と2打の軌跡）、下に前の1打のメモと操作の棚</p>
+<section class="screen">
+  <div class="bar">
+    <div class="back">← MENU<span class="jp hide-s">Esc</span></div>
+    <div class="gm"><i style="background:var(--golf)"></i>Gradient Golf<span class="jp hide-s">勾配ゴルフ</span></div>
+    <div class="r">HOLE<b>4</b>/ 10<span class="hide-s">　細長い谷</span></div>
+  </div>
+  <div class="hud">
+    <div><div class="l">STROKES ／ 打数</div><div class="v" style="color:var(--golf)">2<small> / par 3</small></div></div>
+    <div><div class="l">LOSS ／ いまの損失</div><div class="v">0.61</div></div>
+    <div><div class="l">TO CUP ／ カップまで</div><div class="v">0.59</div></div>
+    <div class="w hide-s"><div class="l">LOSS ／ 打つごとの損失</div><svg viewBox="0 0 300 48" preserveAspectRatio="none"><polyline class="glow" style="color:#FFB23F" points="0,4 150,20 300,30" fill="none" stroke="#FFB23F" stroke-width="1.6"/><g fill="#FFB23F"><circle cx="0" cy="4" r="0"/><circle cx="150" cy="20" r="3"/><circle cx="296" cy="30" r="3"/></g></svg></div>
+  </div>
+  <div class="board">
+    <svg viewBox="0 0 1440 560" preserveAspectRatio="xMidYMid slice">
+      <g fill="none" stroke="#FFB23F" stroke-width="1">
+        <ellipse cx="800" cy="290" rx="760" ry="250" transform="rotate(-8 800 290)" opacity=".15"/>
+        <ellipse cx="800" cy="290" rx="600" ry="190" transform="rotate(-8 800 290)" opacity=".25"/>
+        <ellipse cx="810" cy="288" rx="450" ry="140" transform="rotate(-8 810 288)" opacity=".35"/>
+        <ellipse cx="820" cy="286" rx="310" ry="94" transform="rotate(-8 820 286)" opacity=".5"/>
+        <ellipse cx="830" cy="284" rx="190" ry="56" transform="rotate(-8 830 284)" opacity=".7"/>
+        <ellipse cx="840" cy="282" rx="80" ry="22" transform="rotate(-8 840 282)"/>
+      </g>
+      <g font-family="JetBrains Mono" font-size="11" fill="#8794AD"><text x="96" y="520">2.0</text><text x="290" y="470">1.5</text><text x="440" y="420">1.0</text><text x="560" y="370">0.5</text><text x="690" y="340">0.25</text></g>
+      <rect x="196" y="430" width="10" height="10" fill="none" stroke="#DCE3F0"/>
+      <text x="170" y="462" font-family="JetBrains Mono" font-size="11" fill="#8794AD">TEE</text>
+      <polyline class="glow" style="color:#FFB23F" points="201,435 420,250 600,330" fill="none" stroke="#FFB23F" stroke-width="2"/>
+      <g fill="#FFB23F"><circle cx="420" cy="250" r="3"/></g>
+      <text x="380" y="236" font-family="JetBrains Mono" font-size="11" fill="#FFB23F">1打目 lr 0.30 行きすぎ</text>
+      <circle cx="600" cy="330" r="8" fill="#DCE3F0"/>
+      <path d="M600 330 L700 300 L760 296" fill="none" stroke="#DCE3F0" stroke-width="1.2" stroke-dasharray="3 5" opacity=".7"/>
+      <circle cx="840" cy="282" r="10" fill="none" stroke="#FF5A1F" stroke-width="2"/><circle cx="840" cy="282" r="3" fill="#FF5A1F"/>
+      <text x="860" y="276" font-family="JetBrains Mono" font-size="13" fill="#FF5A1F">CUP　loss 0.02</text>
+      <g stroke="#8794AD" stroke-width="1" fill="none"><line x1="1220" y1="80" x2="1300" y2="64"/><polyline points="1290,58 1300,64 1292,72"/></g>
+      <text x="1170" y="104" font-family="JetBrains Mono" font-size="11" fill="#8794AD">WIND（SGD のノイズ）0.4</text>
+      <text x="1080" y="510" font-family="JetBrains Mono" font-size="11" fill="#FF5A1F">外側の線より外は OB（発散）</text>
+    </svg>
+    <span class="tag" style="left:16px;top:14px">TOP VIEW ／ 上から見た等高線</span>
+    <span class="tag" style="right:16px;top:14px">V で立体に切り替え（打つ前だけ）</span>
+  </div>
+  <div class="note"><span class="d">LAB NOTE ／ 前の1打</span>lr 0.30 は谷を飛び越えた。半分以下にすると、坂に沿って下りていく</div>
+  <div class="drawer">
+    <div><h4>Optimizer<span class="jp">最適化手法</span></h4><div class="opt"><span><kbd>1</kbd>SGD</span><span class="on"><kbd>2</kbd>Momentum</span><span style="color:var(--dim)"><kbd>3</kbd>Adam · HOLE 6〜</span></div></div>
+    <div><h4>Learning rate<span class="jp">学習率</span>　<span class="mono" style="color:var(--golf);font-size:16px">0.030</span>　<kbd>←</kbd><kbd>→</kbd></h4>
+      <div class="slider"><div class="tr"></div><div class="fl" style="width:38%;background:var(--golf)"></div><div class="kn" style="left:38%"></div></div>
+      <div class="ticks"><span>0.001</span><span>0.01</span><span>0.1</span><span>1.0</span></div></div>
+    <div class="go"><span class="btn"><kbd>Space</kbd>Shoot ▸<small>打つ</small></span></div>
+  </div>
+</section>
+
+<!-- ============ 2. 境界防衛線 ============ -->
+<p class="cap"><b>案A ― 3 / Boundary Defense</b>　上にライフと正解率、全幅の盤に左から点が流れ込む。下にニューロンの棚</p>
+<section class="screen">
+  <div class="bar">
+    <div class="back">← MENU<span class="jp hide-s">Esc</span></div>
+    <div class="gm"><i style="background:var(--bd)"></i>Boundary Defense<span class="jp hide-s">境界防衛線</span></div>
+    <div class="r">STAGE<b>3</b>/ 10<span class="hide-s">　ふたつの三日月</span></div>
+  </div>
+  <div class="hud">
+    <div><div class="l">WAVE ／ 波</div><div class="v">4<small> / 6</small></div></div>
+    <div><div class="l">LIVES ／ 残り</div><div class="v" style="color:var(--bd)">3<small> / 5</small></div></div>
+    <div><div class="l">TRAIN ACC ／ 練習の正解率</div><div class="v" style="color:var(--bd)">0.94</div></div>
+    <div><div class="l">TEST ACC ／ 最後の波</div><div class="v" style="color:var(--dim)">—</div></div>
+  </div>
+  <div class="board">
+    <svg viewBox="0 0 1440 560" preserveAspectRatio="xMidYMid slice">
+      <path d="M0 470 C300 470 520 300 760 250 S1200 150 1440 110 L1440 560 L0 560Z" fill="#F2709C" opacity=".06"/>
+      <path d="M0 0 L1440 0 L1440 110 C1200 150 1000 200 760 250 S300 470 0 470Z" fill="#4FD6E8" opacity=".05"/>
+      <path class="glow" style="color:#4FD6E8" d="M0 470 C300 470 520 300 760 250 S1200 150 1440 110" fill="none" stroke="#4FD6E8" stroke-width="2"/>
+      <g fill="#4FD6E8"><rect x="80" y="90" width="8" height="8"/><rect x="190" y="220" width="8" height="8"/><rect x="380" y="140" width="8" height="8"/><rect x="460" y="70" width="8" height="8"/><rect x="620" y="160" width="8" height="8"/><rect x="700" y="80" width="8" height="8"/><rect x="900" y="70" width="8" height="8"/><rect x="140" y="340" width="8" height="8"/><rect x="1100" y="50" width="8" height="8"/><rect x="540" y="230" width="8" height="8"/></g>
+      <g fill="#F2709C"><circle cx="520" cy="440" r="5"/><circle cx="700" cy="380" r="5"/><circle cx="900" cy="300" r="5"/><circle cx="1080" cy="420" r="5"/><circle cx="1240" cy="240" r="5"/><circle cx="820" cy="500" r="5"/><circle cx="360" cy="510" r="5"/><circle cx="980" cy="230" r="5"/></g>
+      <g stroke="#8794AD" opacity=".6"><line x1="0" y1="200" x2="40" y2="200"/><line x1="0" y1="290" x2="40" y2="290"/><line x1="0" y1="380" x2="40" y2="380"/></g>
+      <circle cx="560" cy="370" r="11" fill="none" stroke="#FF5A1F" stroke-width="1.6"/><circle cx="560" cy="370" r="5" fill="#F2709C"/>
+      <text x="580" y="366" font-family="JetBrains Mono" font-size="12" fill="#FF5A1F">漏れ　−1 LIFE</text>
+      <g stroke="#DCE3F0" stroke-width="1.2" fill="#111A2A"><rect x="740" y="236" width="26" height="26"/><rect x="1080" y="168" width="26" height="26"/><rect x="330" y="408" width="26" height="26"/></g>
+      <g font-family="JetBrains Mono" font-size="11" fill="#DCE3F0"><text x="740" y="228">ReLU</text><text x="1080" y="160">ReLU</text><text x="330" y="400">tanh</text></g>
+    </svg>
+    <span class="tag" style="left:16px;bottom:14px">← 点は左から流れ込む</span>
+    <span class="tag" style="right:16px;top:14px">境界より上は ■、下は ● の陣地</span>
+  </div>
+  <div class="note"><span class="d">LAB NOTE ／ 前の波</span>tanh を1つ足したら、境界が曲がって ● の漏れが 3 → 1 に減った</div>
+  <div class="drawer">
+    <div><h4>Neurons<span class="jp">置けるニューロン　残り 6</span></h4>
+      <span class="chip" style="border-color:var(--bd);color:var(--bd)"><kbd>1</kbd>ReLU · 1</span><span class="chip"><kbd>2</kbd>tanh · 1</span><span class="chip"><kbd>3</kbd>sigmoid · 1</span><span class="chip"><kbd>4</kbd>+ Hidden layer · 3</span></div>
+    <div><h4>Train<span class="jp">波の前に学習する回数</span></h4><div class="opt"><span>10</span><span class="on" style="background:var(--bd)">50</span><span>200</span></div></div>
+    <div class="go"><span class="btn"><kbd>Space</kbd>Next wave ▸<small>次の波</small></span></div>
+  </div>
+</section>
+
+<!-- ============ 3. モデル・ローグ ============ -->
+<p class="cap"><b>案A ― 4 / Model Rogue</b>　上にボスと検証精度（HP）、全幅の盤に学習曲線と組んだ層、下に手札</p>
+<section class="screen">
+  <div class="bar">
+    <div class="back">← MENU<span class="jp hide-s">Esc</span></div>
+    <div class="gm"><i style="background:var(--rogue)"></i>Model Rogue<span class="jp hide-s">モデル・ローグ</span></div>
+    <div class="r">FLOOR<b>5</b>/ 10<span class="hide-s">　RUN #14</span></div>
+  </div>
+  <div class="hud">
+    <div class="w"><div class="l">BOSS ／ この階のデータセット</div><div class="t">CIFAR-mini<span class="jp">画像 5万枚・10種類</span></div></div>
+    <div><div class="l">VAL ACC ／ 検証精度 = HP</div><div class="v" style="color:var(--rogue)">0.872</div></div>
+    <div><div class="l">TO CLEAR ／ 突破ライン</div><div class="v">0.900</div></div>
+    <div class="hide-s"><div class="l">EPOCH</div><div class="v">12<small> / 30</small></div></div>
+  </div>
+  <div class="board">
+    <svg viewBox="0 0 1440 560" preserveAspectRatio="xMidYMid slice">
+      <g stroke="#24314A"><line x1="80" y1="60" x2="1060" y2="60"/><line x1="80" y1="190" x2="1060" y2="190"/><line x1="80" y1="320" x2="1060" y2="320"/><line x1="80" y1="450" x2="1060" y2="450"/><line x1="1100" y1="0" x2="1100" y2="560"/></g>
+      <line x1="80" y1="100" x2="1060" y2="100" stroke="#DCE3F0" stroke-dasharray="6 4" opacity=".6"/>
+      <text x="86" y="92" font-family="JetBrains Mono" font-size="11" fill="#DCE3F0">clear 0.900</text>
+      <path class="glow" style="color:#A7E36B" d="M80 440 C200 300 320 200 470 160 S700 124 800 116" fill="none" stroke="#A7E36B" stroke-width="2"/>
+      <path d="M80 446 C210 330 330 250 480 210 S700 196 800 204" fill="none" stroke="#A7E36B" stroke-width="1.2" stroke-dasharray="5 4" opacity=".7"/>
+      <g font-family="JetBrains Mono" font-size="11" fill="#8794AD"><text x="40" y="64">1.0</text><text x="40" y="194">0.8</text><text x="40" y="324">0.6</text><text x="40" y="454">0.4</text><text x="810" y="120" fill="#A7E36B">train 0.912</text><text x="810" y="208">val 0.872 ┄</text><text x="560" y="300" font-size="12" fill="#FF5A1F">差 0.04 ― 過学習の気配</text><text x="80" y="490">epoch 1</text><text x="780" y="490">12</text></g>
+      <g font-family="JetBrains Mono" font-size="12" fill="#DCE3F0">
+        <text x="1130" y="50" fill="#8794AD">MODEL ／ 組んだ層</text>
+        <rect x="1130" y="68" width="270" height="40" fill="none" stroke="#24314A"/><text x="1146" y="93">Input 32×32×3</text>
+        <rect x="1130" y="116" width="270" height="40" fill="none" stroke="#24314A"/><text x="1146" y="141">Conv 3×3 ×32</text>
+        <rect x="1130" y="164" width="270" height="40" fill="none" stroke="#24314A"/><text x="1146" y="189">Conv 3×3 ×64</text>
+        <rect x="1130" y="212" width="270" height="40" fill="none" stroke="#24314A"/><text x="1146" y="237">MaxPool</text>
+        <rect x="1130" y="260" width="270" height="40" fill="none" stroke="#A7E36B"/><text x="1146" y="285" fill="#A7E36B">Dropout 0.5</text>
+        <rect x="1130" y="308" width="270" height="40" fill="none" stroke="#24314A"/><text x="1146" y="333">Dense 10</text>
+        <rect x="1130" y="356" width="270" height="40" fill="none" stroke="#A7E36B" stroke-dasharray="4 4"/><text x="1146" y="381" fill="#A7E36B">＋ Data Aug: flip ?</text>
+        <text x="1130" y="440" fill="#FF5A1F" font-size="11">val acc 0.70 を切ると RUN 終了</text>
+        <text x="1130" y="460" fill="#8794AD" font-size="11">→ FLOOR 1 から。カードは増えたまま</text>
+      </g>
+    </svg>
+  </div>
+  <div class="note"><span class="d">LAB NOTE ／ 前の学習</span>Dropout 0.5 で val は上がったが、train との差がまだ 0.04 ある</div>
+  <div class="drawer">
+    <div><h4>Hand<span class="jp">手札　1枚選んで足す</span></h4>
+      <div class="hand">
+        <div class="card"><div class="c"><kbd>1</kbd>LAYER</div><div class="n">BatchNorm</div><div class="e">学習が安定する</div></div>
+        <div class="card up"><div class="c"><kbd>2</kbd>REGULARIZE</div><div class="n">Data Aug: flip</div><div class="e">左右反転で過学習を抑える</div></div>
+        <div class="card"><div class="c"><kbd>3</kbd>LAYER</div><div class="n">Conv ×128</div><div class="e">細かい形を拾う。遅い</div></div>
+        <div class="card"><div class="c"><kbd>4</kbd>RISK</div><div class="n">Sigmoid ×6</div><div class="e">勾配が消えやすい</div></div>
+      </div></div>
+    <div class="go"><span class="btn"><kbd>Space</kbd>Train 3 epochs ▸<small>学習</small></span></div>
+  </div>
+</section>
+
+<!-- ============ 4. 報酬設計室 ============ -->
+<p class="cap"><b>案A ― 5 / Reward Lab</b>　上に報酬とゴール回数（食い違うとズルが分かる）、全幅の箱庭、下に報酬のルール</p>
+<section class="screen">
+  <div class="bar">
+    <div class="back">← MENU<span class="jp hide-s">Esc</span></div>
+    <div class="gm"><i style="background:var(--rw)"></i>Reward Lab<span class="jp hide-s">報酬設計室</span></div>
+    <div class="r">STAGE<b>5</b>/ 10<span class="hide-s">　ゴールまで歩かせる</span></div>
+  </div>
+  <div class="hud">
+    <div><div class="l">REWARD ／ 得た報酬</div><div class="v" style="color:var(--rw)">+41</div></div>
+    <div><div class="l">GOAL ／ ゴールした回数</div><div class="v" style="color:var(--press)">0<small> / 10</small></div></div>
+    <div><div class="l">RULES ／ 使ったルール</div><div class="v">2<small> / 6</small></div></div>
+    <div><div class="l">TRIAL ／ 試した回数</div><div class="v">3</div></div>
+  </div>
+  <div class="board">
+    <svg viewBox="0 0 1440 560" preserveAspectRatio="xMidYMid slice">
+      <g stroke="#24314A"><line x1="180" y1="0" x2="180" y2="560"/><line x1="360" y1="0" x2="360" y2="560"/><line x1="540" y1="0" x2="540" y2="560"/><line x1="720" y1="0" x2="720" y2="560"/><line x1="900" y1="0" x2="900" y2="560"/><line x1="1080" y1="0" x2="1080" y2="560"/><line x1="1260" y1="0" x2="1260" y2="560"/><line x1="0" y1="140" x2="1440" y2="140"/><line x1="0" y1="280" x2="1440" y2="280"/><line x1="0" y1="420" x2="1440" y2="420"/></g>
+      <g fill="#24314A"><rect x="720" y="140" width="180" height="280"/><rect x="360" y="420" width="180" height="140" opacity=".6"/></g>
+      <text x="740" y="290" font-family="JetBrains Mono" font-size="11" fill="#8794AD">WALL</text>
+      <rect x="926" y="22" width="128" height="96" fill="none" stroke="#F2709C" stroke-width="2"/>
+      <text x="930" y="134" font-family="JetBrains Mono" font-size="12" fill="#F2709C">GOAL +50</text>
+      <path d="M90 500 L270 490 L420 380" fill="none" stroke="#F2709C" stroke-width="1.4" stroke-dasharray="5 4" opacity=".7"/>
+      <circle class="glow" style="color:#F2709C" cx="470" cy="340" r="62" fill="none" stroke="#F2709C" stroke-width="2"/>
+      <circle cx="470" cy="340" r="42" fill="none" stroke="#F2709C" stroke-width="1" opacity=".5"/>
+      <rect x="454" y="262" width="32" height="32" fill="#DCE3F0"/>
+      <text x="550" y="330" font-family="JetBrains Mono" font-size="13" fill="#FF5A1F">LOOP ×41</text>
+      <text x="550" y="350" font-family="JetBrains Mono" font-size="12" fill="#FF5A1F">その場で回るだけで +41</text>
+      <text x="60" y="540" font-family="JetBrains Mono" font-size="11" fill="#8794AD">START</text>
+    </svg>
+    <span class="tag" style="left:16px;top:14px">TRIAL 3 ／ 10歩ごとに軌跡を記録</span>
+  </div>
+  <div class="note"><span class="d">LAB NOTE ／ 前の試行</span>報酬は増えたのに、ゴールは 0 回。回るだけで点が入る抜け道がある</div>
+  <div class="drawer">
+    <div><h4>Reward rules<span class="jp">報酬のルール　あと 4 個まで</span></h4>
+      <span class="chip">前に進んだ <span style="color:var(--rw)">+1</span></span><span class="chip">GOAL に着いた <span style="color:var(--rw)">+50</span></span><span class="chip" style="border-style:dashed;color:var(--dim)"><kbd>1</kbd>＋ 同じ場所に戻ったら…</span><span class="chip" style="border-style:dashed;color:var(--dim)"><kbd>2</kbd>＋ 1歩ごとに…</span></div>
+    <div class="go"><span class="btn"><kbd>Space</kbd>Run trial ▸<small>試す</small></span></div>
+  </div>
+</section>
+<p class="cap">案A：メニューは表が主役。どのゲームも「数字の帯・全幅の盤・前の1手のメモ・操作の棚」が同じ高さで並ぶ。Esc でメニューに戻る</p>
+</body>
+</html>
