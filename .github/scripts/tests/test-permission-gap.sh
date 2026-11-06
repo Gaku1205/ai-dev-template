@@ -29,6 +29,10 @@ assert_contains "不足を言っている行が出る" "$hints" "許可されて
 assert_contains "コマンドの許可の書き方が出る" "$hints" "KEY: Bash(gh pr edit:*)"
 assert_not_contains "関係ない行は出ない" "$hints" "別の話"
 assert_eq "許可の話が無ければ何も出ない" "" "$(printf '%s' '直しました。' | run_lib "permission_hints_from_text")"
+# 「`gh` コマンドの実行が許可されておらず」のように、コマンドの名前だけで引数が無いときも止まらない（set -e と pipefail で、呼んだ側ごと落ちていた）
+out=$(printf '%s' '`gh` コマンドの実行が許可されておらず、PRの本文を編集できませんでした。' | run_lib "set -eo pipefail; permission_hints_from_text"; echo "rc=$?")
+assert_contains "名前だけのコマンドでも、報告の行は出る" "$out" "許可されておらず"
+assert_contains "名前だけのコマンドでも、失敗で終わらない" "$out" "rc=0"
 
 echo "== 企画AI・実装AIが許可の不足で止まる：やり直さず、足りない許可を書いて人間に回す"
 init_state '{"labels":{"7":["ai:implement"]}}'
