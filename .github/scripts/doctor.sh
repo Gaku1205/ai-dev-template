@@ -33,6 +33,7 @@ app_installed_here()  { GH_TOKEN="${PIPELINE_TOKEN:-}" gh api "installation/repo
 token_can_push()      { GH_TOKEN="${PIPELINE_TOKEN:-}" gh api "repos/$REPO" --jq '.permissions.push' 2>/dev/null; }
 
 check_secrets() {
+  echo "**必須（3つ）：Claude のトークン・パイプラインの鍵・公開先**"; echo
   if [ "${HAS_OAUTH:-}" = 1 ]; then ok "CLAUDE_CODE_OAUTH_TOKEN が登録されている"
   else ng "CLAUDE_CODE_OAUTH_TOKEN が無い" "Settings → Secrets → Actions に、claude setup-token で作ったトークンを登録"; fi
   if [ "${APP_TOKEN_FAILED:-0}" = 1 ]; then
@@ -47,8 +48,21 @@ check_secrets() {
     ok "PIPELINE_TOKEN でこのリポジトリに書き込める"; check_token_expiration
     warn "GitHub App ではなく PIPELINE_TOKEN を使っている" "回数制限をオーナーと共有し、期限もある。GitHub App に切り替えるとよい（docs/pipeline.md）"
   else ng "PIPELINE_TOKEN でこのリポジトリに書き込めない" "トークンの Repository access にこのリポジトリを足す"; fi
+  check_deploy_required
+  echo; echo "**任意（あとから足せる）**"; echo
   if [ "${HAS_NTFY:-}" = 1 ]; then ok "NTFY_TOPIC が登録されている（通知が届く）"
   else warn "NTFY_TOPIC が無い" "スマホ通知が鳴らない。ntfy のトピック名を Secret に登録"; fi
+}
+
+# 必須の3つ目：公開先。pipeline.json が無ければ既定の Next.js＋Vercel。pipeline.json の誤りは「ファイル」の節で ❌ にする
+check_deploy_required() {
+  if [ ! -f pipeline.json ]; then
+    echo "- ➖ 公開先：Vercel（Vercel の画面でこのリポジトリを読み込む。ここからは確かめられない）"
+  elif [ -n "$(bash -c "source '$(dirname "${BASH_SOURCE[0]}")/stack.sh'; stack_validate")" ]; then
+    echo "- ➖ 公開先：pipeline.json の誤りを直してから確かめる（下の「ファイル」の節）"
+  else
+    check_deploy
+  fi
 }
 
 # 期限が来るとパイプラインが全部止まるので、30日前から警告する
@@ -112,7 +126,6 @@ check_stack() {
     fi
     n=$(jq '.checks | length' pipeline.json)
     ok "pipeline.json がある（実行環境：$(jq -r '.tools // {} | to_entries | map("\(.key) \(.value)") | join("・") | if . == "" then "なし" else . end' pipeline.json)・確認コマンド ${n} 個）"
-    check_deploy
     return
   fi
   if [ -f package.json ]; then

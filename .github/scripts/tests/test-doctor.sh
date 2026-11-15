@@ -35,6 +35,14 @@ assert_contains "鍵が無い" "$out" "パイプラインの鍵が無い"
 assert_contains "ラベル" "$out" "ラベルが足りない"
 assert_contains "通知は警告" "$out" "⚠️ NTFY_TOPIC"
 
+echo "== 表示順：必須3つ（OAuth・鍵・公開先）のあとに任意"
+LABELS="$all_labels" DELBR=true CANPUSH=true HAS_OAUTH=1 HAS_PIPELINE_TOKEN=1 HAS_NTFY=1
+run_doctor
+order="$(grep -nE '必須（3つ）|CLAUDE_CODE_OAUTH_TOKEN が|書き込める|公開先：Vercel|^\*\*任意|NTFY_TOPIC が' <<< "$out" | cut -d: -f1 | tr '\n' ' ')"
+sorted="$(tr ' ' '\n' <<< "$order" | sed '/^$/d' | sort -n | tr '\n' ' ')"
+assert_eq "必須→OAuth→鍵→公開先→任意→NTFY の順に出る" "$sorted" "$order"
+assert_eq "6つの見出し・行がそろっている" "6" "$(wc -w <<< "$order" | tr -d ' ')"
+
 echo "== トークンはあるが書き込めない"
 LABELS="$all_labels" DELBR=true CANPUSH=false HAS_OAUTH=1 HAS_PIPELINE_TOKEN=1 HAS_NTFY=1
 run_doctor
