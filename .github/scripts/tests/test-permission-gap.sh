@@ -69,10 +69,11 @@ run_lib "report_permission_gap 7 'Bash(git merge:*)'" > /dev/null
 run_lib "report_permission_gap 7 'Bash(gh pr edit:*)'" > /dev/null
 assert_not_contains "別の不足なので、直すIssueは作らない" "$(python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print(' '.join(m['title'] for m in s['issues_meta'].values()))")" "AIの許可が足りない："
 
-echo "== 修正AIが「許可されていない」と報告して、変更が入らなかった：足りない許可の候補を書いて人間に回す"
+echo "== 修正AIが「許可されていない」と報告して、変更が入らなかった（自動のやり直しは済み）：足りない許可の候補を書いて人間に回す"
 pr='{"number":58,"body":"x","state":"open","head":{"sha":"abc","ref":"claude/issue-54-x"},"updated_at":"2026-01-01T00:00:00Z"}'
 init_state '{"labels":{"58":[]},"pulls":['"$pr"']}'
 state_py "
+s['comments'].append({'id':49,'issue':'58','body':'@claude x\\n<!-- auto-perm-retry -->','user':{'login':'x'},'created_at':'$(ago 20)','updated_at':'$(ago 20)'})
 s['comments'].append({'id':50,'issue':'58','body':'@claude x\\n<!-- auto-fix -->\\n<!-- auto-fix-sha: abc -->','user':{'login':'x'},'created_at':'$(ago 2)','updated_at':'$(ago 2)'})
 s['comments'].append({'id':51,'issue':'58','body':'説明を直そうとしました。\\n\`gh pr edit\` を許可されていないため、PRの説明を書き換えられません。','user':{'login':'claude[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})
 s['next_id']=51"
@@ -85,7 +86,7 @@ echo "== 修正AIが許可の話をせず、変更も入らなかった：今ま
 init_state '{"labels":{"58":[]},"pulls":['"$pr"']}'
 state_py "
 s['comments'].append({'id':50,'issue':'58','body':'@claude x\\n<!-- auto-fix -->\\n<!-- auto-fix-sha: abc -->','user':{'login':'x'},'created_at':'$(ago 2)','updated_at':'$(ago 2)'})
-s['comments'].append({'id':51,'issue':'58','body':'指摘は誤りだと思います。','user':{'login':'claude[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})
+s['comments'].append({'id':51,'issue':'58','body':'うまくいきませんでした。','user':{'login':'claude[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})
 s['next_id']=51"
 RUN_STARTED=$(ago 1) CONCLUSION=success run_script after-mention.sh > /dev/null
 assert_contains "変更が入りませんでした、の文言" "$(comments_of 58)" "変更が入りませんでした"
