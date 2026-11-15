@@ -269,6 +269,27 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 - `--model` には、そのワークフローが AI に渡している値をそのまま渡す。使わない工程は `null`
 - 記録に失敗しても（gh のエラー・権限など）終了コードは 0。警告を1行出すだけで、パイプラインは止まらない
 
+## 画面案が作れないとき・AIの拒否の見える化
+
+見た目の大きい Issue では、作る前に画面案（`ai:mocks`、`.github/scripts/mocks-publish.sh`）を作る。AIが画面案を1つも書かずに終わったとき（`mocks.json` が無い・形が不正）は、止まらずに次の順で進む。
+
+1. **1回目**：`ai:stuck` を付けず、`ai:mocks` も残したまま、`GITHUB_OUTPUT` に `retry=true` を出す。workflow が、もう一度AIの工程を動かす
+2. **やり直し**：workflow が `MOCKS_RETRY=1` を渡して publish を動かす。ここでも作れなければ、`ai:mocks` を外して `ai:plan`（画面案なし）を付け、「画面案は作れなかったので、案なしで進めます」とコメントする（拒否されたツール名も入る）
+3. 画面案が作れたときの動き（`ai:question` で選んでもらう）は変わらない
+
+### denials.sh（拒否の中身を取り出す）
+
+AIの実行記録 `claude-execution-output.json` から、許可されず拒否された操作（`permission_denials`）の `tool_name` と引数（1件あたり約200文字で切り詰め）を取り出す（`.github/scripts/denials.sh`）。
+
+```
+.github/scripts/denials.sh FILE            # 件数と一覧（テキスト）
+.github/scripts/denials.sh --summary FILE  # Summary 用の Markdown。GITHUB_STEP_SUMMARY に追記
+.github/scripts/denials.sh --comment FILE  # コメント用の短い文（拒否されたツール：Write、Bash）
+.github/scripts/denials.sh --check FILE    # 拒否が1以上なら終了コード 0、無ければ 1
+```
+
+`--check` 以外は、ファイルが無い・壊れている・拒否が無いときは何も出さず、終了コード 0。`--check` は、企画・実装・レビューの工程が成果を出さずに終わったとき、拒否が原因かを見て1回だけやり直すかを決めるのに使う。
+
 ## スクリプトのテスト
 
 `.github/scripts/tests/` に、進行役のスクリプトのテストがある。本物の GitHub には触らず、疑似の `gh`（`tests/fake-gh`）が状態をファイルに持つ。
