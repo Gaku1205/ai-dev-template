@@ -234,6 +234,41 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 - 無い物があっても、作れる所までは作り、元のIssueに「何が無くて何をしなかったか」を書く
 - あとから Vercel につなぐとき（作ったときに VERCEL_TOKEN が無かった物など）：Actions → **Factory Vercel** → Run workflow で、リポジトリの名前を入れる（つないだあと、今の main で本番の公開を1回始め、公開アドレスを Website 欄に入れる。もうつないであるリポジトリなら、公開とアドレスの調べ直しだけ）
 
+## 進捗ログ
+
+各工程が「使ったモデル・所要時間・結果」を、Issue の「進捗ログ」コメントに残す（`.github/scripts/step-log.sh`）。agent-desk の進捗図が、このコメントを機械で読んで表示する。記録するだけで、ラベル・自動修正・マージ・公開・モデルの切り替え方は変わらない。
+
+### コメントの形式
+
+- コメントは Issue ごとに1つだけ。先頭の行が目印 `<!-- ai-step-log -->`。これで探し、あれば編集、無ければ新しく作る（コメントは増えない）
+- 次に、人が読む表（工程・モデル・所要時間・結果・修正）
+- 最後に、機械が読む行を工程ごとに1行：`<!-- ai-step {JSON} -->`（工程の順に並ぶ）
+
+```
+<!-- ai-step {"step":"fix","model":"opus","started":"2026-11-15T07:32:00Z","finished":null,"result":"running","attempt":3,"max_attempts":3} -->
+```
+
+| 項目 | 値 |
+| --- | --- |
+| `step` | `plan` / `mocks` / `implement` / `ci` / `review` / `fix` / `deploy` |
+| `model` | 実行時に `--model` へ渡した値そのまま（`opus`・`sonnet`・`fable` など）。モデルを使わない工程（`ci`・`deploy`）は `null` |
+| `started` | 開始時刻（UTC の ISO 8601。例 `2026-11-15T07:28:00Z`） |
+| `finished` | 終了時刻（同じ形）。未完了なら `null` |
+| `result` | `running`（進行中） / `success` / `failure` |
+| `attempt`・`max_attempts` | 修正（`fix`）のときだけ。何回目 / 最大3回 |
+
+### 更新のしかた
+
+工程の開始前に `--result running`、終了後に `--result success` か `failure` で呼ぶ。同じ工程の行は上書きされる（`running` の行があれば `started` を引き継ぐ。修正は回数が進むので `--attempt` を更新する）。
+
+```
+.github/scripts/step-log.sh --pr 30 --step fix --model sonnet --result running --attempt 1 --max-attempts 3
+```
+
+- `--issue N` か `--pr N`（PR 本文の `Closes #番号` かブランチ名から Issue を引く）のどちらかを渡す
+- `--model` には、そのワークフローが AI に渡している値をそのまま渡す。使わない工程は `null`
+- 記録に失敗しても（gh のエラー・権限など）終了コードは 0。警告を1行出すだけで、パイプラインは止まらない
+
 ## スクリプトのテスト
 
 `.github/scripts/tests/` に、進行役のスクリプトのテストがある。本物の GitHub には触らず、疑似の `gh`（`tests/fake-gh`）が状態をファイルに持つ。
