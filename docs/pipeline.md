@@ -276,3 +276,46 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 6. ページ下の **Generate a private key** で .pem をダウンロードし、中身を Secret `PIPELINE_APP_PRIVATE_KEY` に入れる
 7. 左の **Install App** → このアカウントに Install → 使うリポジトリを選ぶ（ai-dev-template と、自動で配る先も全部）
 8. Doctor を実行して「GitHub App の鍵でこのリポジトリに書き込める」が出れば完了。`PIPELINE_TOKEN` は消してよい（残っていても App が優先）
+
+### 従来の方法：`PIPELINE_TOKEN`
+
+README の手順は GitHub App に一本化している。すでに Secret `PIPELINE_TOKEN` で動いている人は、そのまま動く（コードは変えていない。Doctor は ⚠️ で App への切り替えを勧めるだけ）。作るなら、GitHub の Settings → Developer settings → Fine-grained tokens で、このリポジトリだけを選び、Actions・Checks・Commit statuses を Read、Contents・Issues・Pull requests・Workflows を Read and write にする。回数制限をオーナーと共有し、期限がある。
+
+## 変えたい人向けの設定
+
+README には載せていない。どれも**入れなくても既定値で動く**。変えたいときだけ、Settings → Secrets and variables → Actions に入れる。
+
+| 名前 | 種類 | 既定値 | 意味 |
+| --- | --- | --- | --- |
+| `NOTIFY_EVENTS` | Variable | `stuck,question,hold,manual,deployed,deploy_failed,limit,intake,repeat_fail` | 鳴らす通知の種類（カンマ区切り）。ほかに `merged`・`ci_failed` がある。意味は `.github/scripts/notify.sh` |
+| `RETRY_TIMER` | Variable | 未設定＝on | `off` にすると、やり直しの目覚まし（`retry-timer.yml`）を使わず、定期の見張りだけでやり直す。公開していないリポジトリで Actions の時間を節約したいとき |
+| `VERCEL_DEPLOY_DELAY_MIN` | Variable | `3`（分） | main の CI が通ってから Vercel に公開するまで待つ分。待つ間にまたマージされれば新しい方だけ公開する（無料プランの「1日100回」対策） |
+| `SYNC_DELAY_MIN` | Variable | `15`（分） | テンプレート本体が、配り先への更新を配るまで待つ分（本体だけが使う） |
+| `AGENT_DESK_URL` | Variable | なし | 通知を押したときに開く画面（agent-desk）のアドレス。無ければ Issue・PR を開く |
+
+あとから足せる任意の設定：
+
+| 名前 | 種類 | 意味 |
+| --- | --- | --- |
+| `NTFY_TOPIC` | Secret | スマホ通知（ntfy アプリ）で購読するトピック名（好きな英数字）。無ければ通知しない（Doctor は ⚠️ を出すが、動く） |
+| `VERCEL_TEAM_ID` | Variable | Vercel をチームで使うときのチーム ID。個人のアカウントなら要らない |
+
+## 上級者向け
+
+README の3つ（Claude のトークン・GitHub App・Vercel）だけで動く。次の機能は消していない。要るときだけ読む。
+
+- 別の言語（Python・Go・Java・.NET など）と公開先の選び方：上の「言語と公開先（`pipeline.json`）」。Python（FastAPI）の見本は [examples/python/README.md](../examples/python/README.md)
+- AWS App Runner（Variable `AWS_ROLE_ARN` ほか）：「AWS App Runner」
+- Expo（スマホアプリ、Secret `EXPO_TOKEN`）：「Expo」
+- exe などの配布（`github-release`）とゲーム：「言語と公開先」の表と、「工場」の「ゲームのとき」（見本は [examples/game](../examples/game)・[examples/webgame](../examples/webgame)）
+- 会員と課金（Supabase・Stripe の saas）：「会員と課金（saas）」（見本は [examples/saas](../examples/saas)）
+- 1行から新しいサービスを作る工場（`FACTORY_TOKEN`・`VERCEL_TOKEN`）：「工場」と「最初の1回だけの準備」
+
+## main の保護を Bootstrap で自動化できるか（調べた結果。実装はしない）
+
+**結論：技術的には可能だが、いまは自動化せず、README の手順（手で1回）に残す。**
+
+- 保護の設定（`PUT /repos/{owner}/{repo}/branches/main/protection`）には、リポジトリの **Administration: Read and write** が要る。いまのパイプラインの鍵（GitHub App・`PIPELINE_TOKEN`）にはこの権限が無い（Administration は Doctor の読み取り用に任意で Read を足せるだけ）
+- 案A：パイプラインの App に Administration（Read and write）を足し、Bootstrap で保護を設定する。手間は最小だが、AI の作業に使う鍵が、保護の解除やリポジトリの設定変更までできるようになる。保護はまさに「AI を PR とレビューに通すための柵」なので、柵を外せる鍵を AI の近くに置くことになり、安全面で割に合わない
+- 案B：保護の設定だけ、別の強い鍵（工場の `FACTORY_TOKEN` のような Administration 付き）を Environment に入れ、main のワークフローからだけ使う。AI の作ったブランチからは読めないので案Aより安全。ただし、初めての人に「強い鍵をもう1つ作る」手順が増え、必須3つの方針に反する。工場（`factory.yml`）はこの形ですでにやっている
+- 判断：初めての人に増やす手間（強い鍵を作る）が、手で保護を1回設定する手間（Settings → Branches で1分）より大きい。Doctor が保護の有無を ⚠️ で教えるので、付け忘れも気づける。工場で作るリポジトリだけ案Bで自動化済み

@@ -34,26 +34,22 @@
 
 ## 使い方
 
-1. このリポジトリの **Use this template** から新しいリポジトリを作る
-2. **言語を決める**：Next.js ならこのまま。**Python（FastAPI）なら [examples/python/README.md](examples/python/README.md) の手順で切り替える**（ほかの言語も `pipeline.json` に書けば動く。[docs/pipeline.md「言語と公開先」](docs/pipeline.md#言語と公開先pipelinejson)）
-3. GitHubの Claude アプリを、そのリポジトリに入れる
-4. Settings → Secrets and variables → Actions に登録する（詳細は [docs/pipeline.md](docs/pipeline.md#必要な設定リポジトリの-settings--secrets-and-variables--actions)）
+Next.js＋Vercel なら、必須は次の3つだけ。ほかの設定は既定値で動く。
+
+1. **Claude のトークンを登録する**：このリポジトリの **Use this template** から新しいリポジトリを作り、GitHub の Claude アプリを入れる。Settings → Secrets and variables → Actions に登録する。最初の push で「Bootstrap」が自動で動き、ラベルを作って診断（Doctor）の結果を実行画面の Summary に出す（手で実行する物はない）
 
    | 名前 | 種類 | 作り方 |
    | --- | --- | --- |
    | `CLAUDE_CODE_OAUTH_TOKEN` | Secret | パソコンに Claude Code を入れ（入れ方は [Claude Code の説明](https://docs.claude.com/en/docs/claude-code/overview)）、ターミナル（Windows なら PowerShell）で `claude setup-token` を実行し、出てきたトークンを貼る。Claude のサブスクで AI を動かす |
-   | パイプラインの鍵 | Secret と Variable | **おすすめは GitHub App**（10分・1回だけ。期限切れなし）：[作り方](docs/pipeline.md#パイプライン用の-github-app-の作り方1回だけ)。手軽に試すなら代わりに Secret `PIPELINE_TOKEN`：GitHub の Settings → Developer settings → Fine-grained tokens で、このリポジトリだけを選び、Actions・Checks・Commit statuses を Read、Contents・Issues・Pull requests・Workflows を Read and write にして作る |
-   | `NTFY_TOPIC` | Secret | スマホ通知（ntfyアプリ）で購読するトピック名（好きな英数字）。無ければ通知しない |
 
-5. **最初の push** で「Bootstrap」が自動で動く。`ai:` などのラベルを作り、`CLAUDE.md` の「ai-dev-template 自身の作業」の節を消し、診断（Doctor）の結果を実行画面の Summary に出す。手で何かを実行する必要はない
-   - Bootstrap は `ai:plan` ラベルが無いときだけ動く。2回目以降の push では何もしない
-6. **main を守る**：Settings → Branches → **Add classic branch protection rule** で、Branch name pattern に `main`、「Require a pull request before merging」（承認の人数は 0 のまま）と「Require status checks to pass」（検索欄で `check` を選ぶ。CI のジョブの名前）を付けて Create。無いと、AI が PR とレビューを通さずに main へ入れられてしまう
-7. `CLAUDE.md` の1行目と `docs/spec.md`・`docs/design.md` にアプリのことを書く
-8. 公開先をつなぐ：Next.js なら Vercel でリポジトリを読み込む（main にマージされるたびに公開される）。ほかの公開先（AWS App Runner・exe・スマホ）は [docs/pipeline.md「言語と公開先」](docs/pipeline.md#言語と公開先pipelinejson)。まず試すだけなら、公開はつながなくてよい
-9. Actions の **Doctor** を手で実行して、Summary の ✅／⚠️／❌ を確かめる
-   - ❌ は Summary の「→」のとおりに直して、もう一度 Doctor を実行する
-   - ⚠️ は動くが直したほうがよい物（例：通知の Secret が無い、ブランチの自動削除がオフ）
-10. Issueの「メモ（AIにおまかせ）」から、やりたいことを書く
+2. **パイプラインの鍵（GitHub App）を登録する**：[作り方](docs/pipeline.md#パイプライン用の-github-app-の作り方1回だけ)（10分・1回だけ。期限切れなし）。App ID を Variable `PIPELINE_APP_ID` に、秘密鍵を Secret `PIPELINE_APP_PRIVATE_KEY` に入れる
+3. **公開先をつなぎ、main を守る**
+   - 公開先：Vercel でこのリポジトリを読み込む（main にマージされるたびに公開される）。まず試すだけなら、公開はつながなくてよい
+   - main を守る：Settings → Branches → **Add classic branch protection rule** で、Branch name pattern に `main`、「Require a pull request before merging」（承認の人数は 0 のまま）と「Require status checks to pass」（検索欄で `check` を選ぶ。CI のジョブの名前）を付けて Create。無いと、AI が PR とレビューを通さずに main へ入れられてしまう
+
+あとは、`CLAUDE.md` の1行目と `docs/spec.md`・`docs/design.md` にアプリのことを書き、Actions の **Doctor** を手で実行して Summary の ✅／⚠️／❌ を確かめる（❌ は「→」のとおり直してもう一度実行）。そして Issue の「メモ（AIにおまかせ）」にやりたいことを書けば動く。
+
+通知や見張り役の設定、Python・AWS・スマホアプリ・ゲームなど、ほかの設定と上級者向けの使い方は [docs/pipeline.md「変えたい人向けの設定」](docs/pipeline.md#変えたい人向けの設定)と[「上級者向け」](docs/pipeline.md#上級者向け)にまとめてある。
 
 ### 言葉
 
