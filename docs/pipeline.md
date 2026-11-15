@@ -240,12 +240,12 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 
 ### コメントの形式
 
-- コメントは Issue ごとに1つだけ。先頭の行が目印 `<!-- pipeline-step-log -->`。これで探し、あれば編集、無ければ新しく作る（コメントは増えない）
+- コメントは Issue ごとに1つだけ。先頭の行が目印 `<!-- ai-step-log -->`。これで探し、あれば編集、無ければ新しく作る（コメントは増えない）
 - 次に、人が読む表（工程・モデル・所要時間・結果・修正）
-- 最後に、機械が読む行を工程ごとに1行：`<!-- step-log: {JSON} -->`（工程の順に並ぶ）
+- 最後に、機械が読む行を工程ごとに1行：`<!-- ai-step {JSON} -->`（工程の順に並ぶ）
 
 ```
-<!-- step-log: {"step":"fix","model":"opus","started":"2026-11-15T07:32:00Z","finished":null,"result":"running","attempt":3,"max_attempts":3} -->
+<!-- ai-step {"step":"fix","model":"opus","started":"2026-11-15T07:32:00Z","finished":null,"result":"running","attempt":3,"max_attempts":3} -->
 ```
 
 | 項目 | 値 |

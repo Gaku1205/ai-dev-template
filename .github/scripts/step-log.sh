@@ -11,7 +11,7 @@
 #
 # 記録に失敗しても、終了コードは 0（警告を1行出すだけ）。パイプラインを止めない。
 
-STEP_LOG_MARK="<!-- pipeline-step-log -->"
+STEP_LOG_MARK="<!-- ai-step-log -->"
 STEP_ORDER='["plan","mocks","implement","ci","review","fix","deploy"]'
 
 warn() { echo "::warning::進捗ログを残せませんでした：$*"; }
@@ -85,7 +85,7 @@ main() {
   id="" rows="[]"
   if [ -n "$existing" ]; then
     id=$(jq -r .id <<< "$existing")
-    rows=$(jq -r .body <<< "$existing" | sed -nE 's/^<!-- step-log: (.*) -->$/\1/p' | jq -sc '.' 2> /dev/null) || rows="[]"
+    rows=$(jq -r .body <<< "$existing" | sed -nE 's/^<!-- ai-step (.*) -->$/\1/p' | jq -sc '.' 2> /dev/null) || rows="[]"
     [ -n "$rows" ] || rows="[]"
   fi
 
@@ -113,7 +113,7 @@ main() {
 
 $(render_table "$rows")
 
-$(jq -c '.[]' <<< "$rows" | sed 's/^/<!-- step-log: /; s/$/ -->/')"
+$(jq -c '.[]' <<< "$rows" | sed 's/^/<!-- ai-step /; s/$/ -->/')"
 
   if [ -n "$id" ]; then
     gh api -X PATCH "repos/$REPO/issues/comments/$id" -f body="$body_new" > /dev/null || return 1
