@@ -394,6 +394,16 @@ denied_tools() {
     done | sort -u
 }
 
+# AIの実行記録から、拒否された操作を、そのままの形（ツール名と、コマンドの1行目かファイル名）で1行ずつ出す（最大5件）。
+# 許可の書き方（denied_tools）では「npm run typecheck 2>&1」が「npm run typecheck」になり、何が悪かったか分からないので、やり直しの依頼にはこちらを書く
+denied_raw() {
+  local f="${1:-}"
+  { [ -n "$f" ] && [ -s "$f" ]; } || return 0
+  jq -r 'if type == "array" then . else [.] end | map(select(.type == "result")) | last // {} | .permission_denials // []
+    | .[] | ((.tool_input.command // .tool_input.file_path // "") | tostring | (split("\n")[0] // "") | gsub("[\t\r]"; " ") | .[0:120]) as $a
+    | (.tool_name // "?" | tostring) + (if $a == "" then "" else "(" + $a + ")" end)' "$f" 2> /dev/null | awk 'NF && !seen[$0]++' | head -n 5 || true
+}
+
 # 許可の一覧を、コメント・通知に書く短い形にする（最初の3件。残りは「ほかN件」）
 permission_list_short() {
   local all n
@@ -571,15 +581,54 @@ retry_due_at() {
   fi
 }
 
-# そのコミットの CI（PRの物）で、いちばん新しい失敗が「見た目のテスト」だけで落ちているか（READ_TOKEN で読む）
-ci_only_visual_failed() {
+# そのコミットの、いちばん新しい CI（PRの物）で失敗したステップの名前を JSON の配列で出す。
+# 通っている・まだ動いていない・見つからないときは []。失敗したのにステップが読めないときは ["（読めない）"]（通ったと間違えないように）
+ci_failed_steps() {
   local sha="$1" run steps
   run=$(GH_TOKEN="${READ_TOKEN:-$GH_TOKEN}" gh api "repos/$REPO/actions/runs?head_sha=$sha&event=pull_request&per_page=20" \
-    -q '[.workflow_runs[] | select(.name == "CI" and .conclusion == "failure")] | sort_by(.created_at) | last | .id // empty' 2> /dev/null)
-  [ -z "$run" ] && return 1
+    -q '[.workflow_runs[] | select(.name == "CI")] | sort_by(.created_at) | last | select(. != null and .conclusion == "failure") | .id' 2> /dev/null) || run=""
+  if [ -z "$run" ]; then
+    echo '[]'
+    return 0
+  fi
   steps=$(GH_TOKEN="${READ_TOKEN:-$GH_TOKEN}" gh api "repos/$REPO/actions/runs/$run/jobs?per_page=50" \
-    -q '[.jobs[].steps[] | select(.conclusion == "failure") | .name]' 2> /dev/null) || return 1
-  [ "$(printf '%s' "$steps" | jq 'length > 0 and all(.[]; . == "見た目のテスト")')" = "true" ]
+    -q '[.jobs[].steps[] | select(.conclusion == "failure") | .name]' 2> /dev/null) || steps=""
+  if [ -z "$steps" ] || [ "$steps" = "[]" ]; then
+    echo '["（読めない）"]'
+  else
+    echo "$steps"
+  fi
+}
+
+# ---- 修正AIが変更なしで終わったときの理由の分類（after-mention.sh） ----
+# 基準の画像の撮り直しを頼んでいる言い方（AIの返事・レビューの指摘・PRの説明のどれかにあれば、撮り直しが要る）
+VISUAL_HINT_RE='visual:update|基準の?画像.{0,60}(古|撮り直|更新|差し替)|(撮り直|更新|差し替).{0,60}基準の?画像|スナップショット.{0,60}(古|撮り直|更新)|update-snapshots'
+# 「指摘が間違い・直す必要が無い」と返している言い方
+DISAGREE_HINT_RE='指摘は.{0,40}(誤り|間違|当たら|該当しな|不要)|(直す|修正の?|変更の?)必要(は|が|も)(ない|無い|ありません)|(修正|変更|対応)(は)?不要|直さず|直しません|直さない|false positive|not (a )?(real )?(bug|issue|problem)'
+# 許可の拒否で、1回だけ自動でやり直した印（2回目は人間に回す）
+# shellcheck disable=SC2034  # after-mention.sh で使う
+PERM_RETRY_MARK="<!-- auto-perm-retry -->"
+
+# 修正AIが変更なしで終わった理由を、1語で出す。標準入力：AIの返事（この依頼のあとの claude[bot] のコメント）
+#   引数1：撮り直しの依頼を探すほかの文（この先頭コミットへのレビューの指摘と、PRの説明）
+#   引数2：実行記録で拒否された操作（denied_tools の出力。無ければ空）
+# 出力（上から順に見る。撮り直しは、それだけで先へ進めるので先に見る）：
+#   visual      人間のラベル作業が要る（基準の画像の撮り直し）
+#   permission  ツールの許可が拒否された
+#   disagree    指摘が間違いと返して直さなかった
+#   unknown     分類できない
+classify_no_change() {
+  local ai other="${1:-}" denied="${2:-}"
+  ai=$(cat)
+  if printf '%s\n%s\n' "$ai" "$other" | grep -qiE "$VISUAL_HINT_RE"; then
+    echo visual
+  elif [ -n "$(printf '%s\n' "$denied" | awk 'NF')" ] || [ -n "$(printf '%s' "$ai" | permission_hints_from_text)" ]; then
+    echo permission
+  elif printf '%s\n' "$ai" | grep -qiE "$DISAGREE_HINT_RE"; then
+    echo disagree
+  else
+    echo unknown
+  fi
 }
 
 # 待ち時間が過ぎたか
