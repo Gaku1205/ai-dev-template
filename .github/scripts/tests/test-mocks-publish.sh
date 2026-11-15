@@ -30,10 +30,19 @@ echo "== 作れなかった1回目：止めずに、やり直しを頼む"
 init_state '{"labels":{"5":["ai:mocks"]}}'
 rm -f "$w/out/"*
 out_file="$MOCK_DIR/gh-output"; : > "$out_file"
-(cd "$w" && ISSUE=5 GITHUB_OUTPUT="$out_file" ASSETS_REMOTE="$MOCK_DIR/assets.git" RUNNER_TEMP="$MOCK_DIR/tmp" bash "$SCRIPTS_DIR/mocks-publish.sh" > /dev/null 2>&1)
+(cd "$w" && ISSUE=5 MOCKS_RETRY=0 GITHUB_OUTPUT="$out_file" ASSETS_REMOTE="$MOCK_DIR/assets.git" RUNNER_TEMP="$MOCK_DIR/tmp" bash "$SCRIPTS_DIR/mocks-publish.sh" > /dev/null 2>&1)
 assert_eq "ai:mocks を残し、ai:stuck は付けない" "ai:mocks" "$(labels_of 5)"
 assert_contains "retry=true を出す" "$(cat "$out_file")" "retry=true"
 assert_eq "コメントはまだ出さない" "" "$(comments_of 5)"
+
+echo "== やり直しに対応しない古い workflow（MOCKS_RETRY なし）：以前どおり止めて知らせる"
+init_state '{"labels":{"5":["ai:mocks"]}}'
+: > "$out_file"
+(cd "$w" && ISSUE=5 GITHUB_OUTPUT="$out_file" ASSETS_REMOTE="$MOCK_DIR/assets.git" RUNNER_TEMP="$MOCK_DIR/tmp" bash "$SCRIPTS_DIR/mocks-publish.sh" > /dev/null 2>&1)
+assert_eq "ai:stuck が付き、ai:mocks は無い" "ai:stuck" "$(labels_of 5)"
+assert_contains "作れなかったコメント" "$(comments_of 5)" "画面案を作れませんでした"
+assert_eq "retry は出さない" "" "$(cat "$out_file")"
+init_state '{"labels":{"5":["ai:mocks"]}}'
 
 echo "== やり直しでも作れなかった：案なしで企画へ"
 : > "$out_file"

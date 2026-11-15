@@ -273,7 +273,8 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 
 見た目の大きい Issue では、作る前に画面案（`ai:mocks`、`.github/scripts/mocks-publish.sh`）を作る。AIが画面案を1つも書かずに終わったとき（`mocks.json` が無い・形が不正）は、止まらずに次の順で進む。
 
-1. **1回目**：`ai:stuck` を付けず、`ai:mocks` も残したまま、`GITHUB_OUTPUT` に `retry=true` を出す。workflow が、もう一度AIの工程を動かす
+0. **`MOCKS_RETRY` が無いとき**（やり直しに対応していない古い workflow）：以前どおり、コメントと `ai:stuck` と通知を残して止まる
+1. **1回目**（`MOCKS_RETRY=0`）：`ai:stuck` を付けず、`ai:mocks` も残したまま、`GITHUB_OUTPUT` に `retry=true` を出す。workflow が、もう一度AIの工程を動かす
 2. **やり直し**：workflow が `MOCKS_RETRY=1` を渡して publish を動かす。ここでも作れなければ、`ai:mocks` を外して `ai:plan`（画面案なし）を付け、「画面案は作れなかったので、案なしで進めます」とコメントする（拒否されたツール名も入る）
 3. 画面案が作れたときの動き（`ai:question` で選んでもらう）は変わらない
 

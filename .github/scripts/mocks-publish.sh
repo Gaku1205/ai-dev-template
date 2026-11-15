@@ -11,8 +11,17 @@ out="${OUT_DIR:-out}"
 title=$(issue_title "$ISSUE" 2> /dev/null || echo "")
 
 if ! [ -f "$out/mocks.json" ] || [ -L "$out/mocks.json" ] || ! python3 "$here/factory-talk.py" check mocks "$out" > "$out/checked.json" 2> "$out/check.err"; then
-  # 1回目：ai:mocks を残し、ai:stuck を付けず、やり直しが要ると workflow に伝える
-  if [ "${MOCKS_RETRY:-}" != "1" ]; then
+  # MOCKS_RETRY が無い（やり直しに対応していない古い workflow）：以前どおり、コメントと通知を残して止まる
+  if [ -z "${MOCKS_RETRY+x}" ]; then
+    reason=$(head -c 300 "$out/check.err" 2> /dev/null || echo 'AIが画面を書きませんでした')
+    remove_label "$ISSUE" "ai:mocks" || true
+    gh api "repos/$repo/issues/$ISSUE/comments" -f body="⚠️ 画面案を作れませんでした（${reason}）。案なしで進めるなら、このIssueに ai:plan を付け直してください。" > /dev/null
+    add_label "$ISSUE" "ai:stuck" || true
+    notify stuck "画面案を作れませんでした" "#${ISSUE} ${title}" 4
+    exit 0
+  fi
+  # 1回目（MOCKS_RETRY=0）：ai:mocks を残し、ai:stuck を付けず、やり直しが要ると workflow に伝える
+  if [ "$MOCKS_RETRY" != "1" ]; then
     echo "retry=true" >> "${GITHUB_OUTPUT:-/dev/null}"
     exit 0
   fi
