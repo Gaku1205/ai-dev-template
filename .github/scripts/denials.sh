@@ -11,7 +11,8 @@
 
 : "${GITHUB_REPOSITORY:=local/local}"
 # shellcheck source=pipeline-lib.sh
-source "$(dirname "${BASH_SOURCE[0]}")/pipeline-lib.sh" || exit 0
+# 読めなくても静かに終わる。ただし --check は「拒否あり（0）」と間違えないよう 1 で終わる
+source "$(dirname "${BASH_SOURCE[0]}")/pipeline-lib.sh" || { [ "${1:-}" = --check ] && exit 1; exit 0; }
 # 共通関数の ERR の罠は、失敗を画面に error として出す。ここでは静かに終わりたいので外す
 trap - ERR
 set +e

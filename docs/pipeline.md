@@ -291,6 +291,22 @@ AIの実行記録 `claude-execution-output.json` から、許可されず拒否�
 
 `--check` 以外は、ファイルが無い・壊れている・拒否が無いときは何も出さず、終了コード 0。`--check` は、企画・実装・レビューの工程が成果を出さずに終わったとき、拒否が原因かを見て1回だけやり直すかを決めるのに使う。
 
+### 企画・実装・レビューの1回だけのやり直し
+
+`claude-plan.yml`・`claude-implement.yml`・`claude-review.yml` は、AIの工程のあとに `denials.sh --summary` で拒否を Summary に残す。そのうえで、**成果が無く、かつ `denials.sh --check` が拒否ありと言ったときだけ**、同じAIの工程を1回だけもう一度動かす（2回目も同じく Summary に残す。3回目は無い）。成果は次のとおり見る。
+
+| workflow | 成果があるとみなすとき |
+| --- | --- |
+| `claude-plan.yml` | `plan-result.txt` がある |
+| `claude-implement.yml` | 作業ブランチに main より先のコミットがあるか、まだコミットしていない変更がある |
+| `claude-review.yml` | この実行が始まったあとに、`## Code review` で始まるコメントがPRに付いている |
+
+成果が無くても拒否が無ければ（回数の上限・ネットワークなど）、やり直さず今までどおり次の工程に任せる。ジョブの結果（`outcome`）と次のジョブに渡す実行記録は、やり直したときはやり直しの方を使う。
+
+AIが書き換えたかもしれない `denials.sh` は動かさない。企画・実装では AI の工程の前に `denials.sh` と `pipeline-lib.sh` を `$RUNNER_TEMP` に写しておき、それを動かす。レビューでは作業フォルダがPRのコードなので、PRの元（`base.sha`）の版を API で取ってきて動かす（取れなければ、Summary は出さず、やり直さない）。
+
+画面案の publish の鍵は、ほかの workflow と同じく GitHub App の鍵 → `PIPELINE_TOKEN` → `github.token` の順に使う（`github.token` で付けた `ai:plan` では企画が動かないので、そのときは見張り役が拾うまで待つ）。
+
 ## スクリプトのテスト
 
 `.github/scripts/tests/` に、進行役のスクリプトのテストがある。本物の GitHub には触らず、疑似の `gh`（`tests/fake-gh`）が状態をファイルに持つ。
