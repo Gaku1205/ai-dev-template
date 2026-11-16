@@ -5,6 +5,8 @@
 # 使い方：deploy-release.sh 集めたフォルダ
 # 環境変数：REPO か GITHUB_REPOSITORY、SHA、RELEASE_OS（作った OS の JSON の並び。OS が1つのとき使う）、GH_TOKEN（contents: write）、GITHUB_OUTPUT（url を書く）、NOW（テスト用。YYYYmmdd-HHMM）
 set -euo pipefail
+# shellcheck source=deploy-lib.sh
+source "$(dirname "$0")/deploy-lib.sh"
 src="${1:?集めたフォルダを指定}"
 REPO="${REPO:-${GITHUB_REPOSITORY:?}}"
 SHA="${SHA:?SHA が要ります}"
@@ -43,8 +45,7 @@ if [ "$count" -eq 0 ]; then
 fi
 
 tag="build-${NOW:-$(date -u +%Y%m%d-%H%M)}-${SHA:0:7}"
-title=$(gh api "repos/$REPO/commits/$SHA" -q '.commit.message' 2> /dev/null | sed -n '3p' || true)
-[ -z "$title" ] && title=$(gh api "repos/$REPO/commits/$SHA" -q '.commit.message' 2> /dev/null | head -n 1 || true)
+title=$(commit_title "$(gh api "repos/$REPO/commits/$SHA" -q '.commit.message' 2> /dev/null || true)")
 notes="自動で作った配布物です（コミット ${SHA:0:7}）。${title}"
 gh release create "$tag" "$stage"/* --repo "$REPO" --target "$SHA" --title "${tag}${title:+ $title}" --notes "$notes" --latest > /dev/null
 url="https://github.com/${REPO}/releases/tag/${tag}"
