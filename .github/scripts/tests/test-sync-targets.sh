@@ -22,6 +22,7 @@ case "$url" in
     [ "${APP:-yes}" = no ] && { echo "HTTP 403" >&2; exit 1; }
     json='{"repositories":[{"full_name":"o/tpl","archived":false},{"full_name":"o/app1","archived":false},{"full_name":"o/old","archived":true},{"full_name":"o/other","archived":false},{"full_name":"o/Skipme","archived":false},{"full_name":"o/broken","archived":false}]}' ;;
   users/o/repos*)
+    [ "${USER_LIST:-yes}" = no ] && { echo "HTTP 401" >&2; exit 1; }
     json='[{"full_name":"o/app1","archived":false},{"full_name":"o/app2","archived":false}]' ;;
   repos/o/app1 | repos/o/app2 | repos/o/skipme | repos/o/Skipme)
     json='{"template_repository":{"full_name":"O/TPL"}}' ;;
@@ -47,12 +48,19 @@ assert_not_contains "アーカイブ済みは配らない" "$out" "o/old"
 assert_not_contains "別のテンプレート・テンプレート無しは配らない" "$out" "o/other"
 assert_not_contains "! で外した物は（大文字小文字が違っても）配らない" "$out" "Skipme"
 assert_not_contains "読めないリポジトリは飛ばす" "$out" "o/broken"
+assert_contains "読めなかった物を知らせる" "$(cat "$MOCK_DIR/err")" "::warning::o/broken を読めなかった"
 assert_contains "自動で見つけた物を知らせる" "$(cat "$MOCK_DIR/err")" "自動で見つけた配り先：o/app1"
 assert_contains "外した物を知らせる" "$(cat "$MOCK_DIR/err")" "配らない：o/Skipme"
 
 echo "== 個人の鍵（App の一覧が読めない）：オーナーのリポジトリから探す"
 out=$(APP=no bash "$SCRIPTS_DIR/sync-targets.sh" "$targets" 2> /dev/null)
 assert_eq "配り先" "Gaku1205/agent-desk,o/app1,o/app2" "$(printf '%s' "$out" | paste -sd, -)"
+
+echo "== 候補の一覧をどちらも読めない（鍵が無い・期限切れ）：書いた物だけに黙って配らず、失敗で終わる"
+out=$(APP=no USER_LIST=no bash "$SCRIPTS_DIR/sync-targets.sh" "$targets" 2> "$MOCK_DIR/err"); rc=$?
+assert_eq "失敗で終わる" "1" "$rc"
+assert_eq "配り先は出さない" "" "$out"
+assert_contains "理由を出す" "$(cat "$MOCK_DIR/err")" "配り先の候補（リポジトリの一覧）を読めません"
 
 echo "== sync-targets が無くても、自動の分は配る"
 out=$(bash "$SCRIPTS_DIR/sync-targets.sh" "$MOCK_DIR/none" 2> /dev/null)
