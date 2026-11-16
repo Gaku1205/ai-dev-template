@@ -1,2 +1,5 @@
 node_modules/
 dist/
+
+# 日本語の書体（npm run fonts が assets/fonts/ から作る）
+public/fonts/
