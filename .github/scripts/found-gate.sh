@@ -36,6 +36,36 @@ case "$kind" in
         emit false "$url" "直近24時間に公開（main の変更）が無いので、今日は使ってみる役を動かしません"; exit 0
       fi
     fi
+    # 本番が main の最新に追いついているか：公開は、マージが落ち着いてから最新の main を1回だけ行うので、
+    # main が先に進んでいる間に試すと、main ではもう直っている不具合を Issue にしてしまう（tochi-rirekisho #9・#11）。
+    # 公開のステータス（context が Vercel・deploy/ で始まる物）が main の先頭に無く、それより前のコミットにはある
+    # ＝本番が追いついていない。先頭にあっても、成功していなければ（公開中・失敗）待つ。どこにも無ければ（公開の仕組みが違う）見ない
+    if [ "$force" != 1 ]; then
+      shas=$(gh api "repos/$REPO/commits?sha=main&per_page=15" --jq '.[].sha' 2> /dev/null || true)
+      first=1 behind=""
+      for sha in $shas; do
+        states=$(gh api "repos/$REPO/commits/$sha/status" --jq '[.statuses[] | select(.context | test("^(Vercel|deploy/)")) | .state] | join(" ")' 2> /dev/null || true)
+        if [ -n "$states" ]; then
+          if [ "$first" = 1 ]; then
+            case " $states " in
+              *" pending "* | *" failure "* | *" error "*) behind="本番の公開がまだ終わっていない（公開中か失敗）" ;;
+            esac
+          else
+            behind="本番が main の最新にまだ追いついていない"
+          fi
+          break
+        fi
+        # パイプラインの物（.github/・docs/pipeline.md）しか変わっていないコミットは公開されず、ステータスが付かない。飛ばす
+        files=$(gh api "repos/$REPO/commits/$sha" --jq '[.files[].filename] | join("\n")' 2> /dev/null || true)
+        if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -vqE '^(\.github/|docs/pipeline\.md$)'; then
+          continue
+        fi
+        first=0
+      done
+      if [ -n "$behind" ]; then
+        emit false "$url" "${behind}ので、今日は使ってみる役を動かしません（main で直った物を Issue にしないため。次の回にもう一度見ます）"; exit 0
+      fi
+    fi
     emit true "$url" "公開があったので、使ってみる役を動かします：$url"
     ;;
   audit)
