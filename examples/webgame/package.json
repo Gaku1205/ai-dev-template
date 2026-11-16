@@ -5,14 +5,17 @@
   "type": "module",
   "description": "ブラウザの技術で作り、Web で公開して遊ぶゲーム",
   "scripts": {
+    "fonts": "node scripts/subset-fonts.mjs",
+    "predev": "npm run fonts",
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run fonts && tsc --noEmit && vite build",
     "start": "node scripts/serve.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "^22",
+    "subset-font": "^2.9.0",
     "typescript": "^5",
     "vite": "^8",
     "vitest": "^5"

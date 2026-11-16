@@ -6,8 +6,10 @@
   "description": "ブラウザの技術で作り、Electron で Windows の exe にするゲーム",
   "main": "electron/main.cjs",
   "scripts": {
+    "fonts": "node scripts/subset-fonts.mjs",
+    "predev": "npm run fonts",
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run fonts && tsc --noEmit && vite build",
     "start": "node scripts/serve.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -17,6 +19,7 @@
     "@types/node": "^22",
     "electron": "^45",
     "electron-builder": "^26",
+    "subset-font": "^2.9.0",
     "typescript": "^5",
     "vite": "^8",
     "vitest": "^5"
@@ -24,9 +27,18 @@
   "build": {
     "appId": "com.example.game",
     "productName": "Game",
-    "files": ["dist/**", "electron/**"],
-    "directories": { "output": "release" },
-    "win": { "target": "portable" },
-    "portable": { "artifactName": "${productName}.exe" }
+    "files": [
+      "dist/**",
+      "electron/**"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "portable"
+    },
+    "portable": {
+      "artifactName": "${productName}.exe"
+    }
   }
 }
