@@ -282,7 +282,7 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 | --- | --- | --- |
 | `plan` | `claude-plan.yml`（AIの前に開始、`after-plan` で終了） | 残す |
 | `mocks` | `claude-mocks.yml` の `publish`（終了だけ。開始時刻は `work` から渡す） | 残さない |
-| `implement` | `claude-implement.yml`（AIの前に開始、`open-pr` で終了） | 残す |
+| `implement` | `claude-implement.yml`（AIの前に開始、`open-pr` で終了。結果は、PRができたかで決める。AIが作業回数の上限を超えて「失敗」で終わっても、PRができていれば成功） | 残す |
 | `ci` | `pipeline.yml` の `after-ci`（終了だけ。開始時刻はCIの実行の開始時刻） | 残さない |
 | `review` | `pipeline.yml` の `after-review`（終了だけ。モデルと開始時刻は、`claude-review.yml` が成果物 `ai-result` の `meta.json` で渡す） | 残さない |
 | `fix` | `claude-mention.yml`（自動の修正依頼 `auto-fix` のときだけ。何回目かは依頼の「自動の依頼 n/3」から読む） | 残す |
