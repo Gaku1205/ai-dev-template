@@ -36,19 +36,54 @@ COPY_SECRETS="CLAUDE_CODE_OAUTH_TOKEN PIPELINE_APP_PRIVATE_KEY PIPELINE_TOKEN NT
 COPY_VARS="PIPELINE_APP_ID NOTIFY_EVENTS AGENT_DESK_URL VERCEL_TEAM_ID"
 report=()
 gallery=""
+NEW=""        # 作ったリポジトリ（owner/repo）。作る前は空
+pushed=no     # 最初の準備を main に push できたら yes（ここまで来ていれば、リポジトリは使える）
+said=no       # 結果のコメントを書いたら yes
+work=""
 note() { report+=("$1"); echo "$1"; }
+# 途中で止まったときに、何が残っているか・次にどうするかを書く（黙って半端なリポジトリを残さない）
+leftover() {
+  [ -n "$NEW" ] || return 0
+  if [ "$pushed" = yes ]; then
+    note "🧹 リポジトリ https://github.com/$NEW は、中身まで入っています。作り直さなくて大丈夫です。上の ❌ の所だけ、手で続きをしてください（最初のIssueが無ければ、そのリポジトリにIssueを1つ書くと、そこから進みます）"
+  else
+    note "🧹 作りかけのリポジトリが残っています：https://github.com/$NEW（中身はテンプレートのまま。秘密と変数は写してある）。要らなければ消してください（そのリポジトリの Settings → 一番下の Delete this repository。Vercel や Supabase のプロジェクトを作っていれば、それも）。消さずにもう一度作ると、名前の後ろに -2 が付いた別のリポジトリになります"
+  fi
+}
 fail() {
   note "❌ $1"
+  leftover
   say_result "⚠️ 新しいサービスを作る途中で止まりました"
+  phone "工場：作る途中で止まりました" "$1"
   exit 1
 }
 say_result() {
   local body
+  said=yes
   body="$1
 
 $(printf -- '- %s\n' "${report[@]}")${gallery}"
   GH_TOKEN="${COMMENT_TOKEN:-$GH_TOKEN}" gh api "repos/$TEMPLATE/issues/$ISSUE/comments" -f body="$body" > /dev/null 2>&1 || true
 }
+# スマホに知らせる（テンプレートの NTFY_TOPIC。無ければ何もしない）
+phone() {
+  [ -n "${S_NTFY_TOPIC:-}" ] || return 0
+  NTFY_TOPIC="$S_NTFY_TOPIC" NOTIFY_EVENTS="${V_NOTIFY_EVENTS:-}" AGENT_DESK_URL="${V_AGENT_DESK_URL:-}" GITHUB_REPOSITORY="$TEMPLATE" \
+    "$HERE/notify.sh" stuck "$1" "${MEMO:-}：$2" 5 > /dev/null 2>&1 || true
+}
+# 終わるとき：作業用のフォルダを消す。結果を書かないまま失敗で終わる（時間切れ・取り消し・スクリプトのエラー）なら、ここで書く
+on_exit() {
+  local rc=$?
+  [ -n "$work" ] && rm -rf "$work"
+  if [ "$rc" -ne 0 ] && [ "$said" = no ]; then
+    note "❌ 途中で止まりました（時間切れ・取り消し・スクリプトのエラー。Actions の Factory の実行を見てください）"
+    leftover
+    say_result "⚠️ 新しいサービスを作る途中で止まりました"
+    phone "工場：作る途中で止まりました" "時間切れ・取り消し・スクリプトのエラー"
+  fi
+}
+trap on_exit EXIT
+trap 'exit 143' TERM INT
 
 # ---- 0. AIが決めた物の形を確かめる（ここで使う値は、この形の物だけ） ----
 valid_plan() {
@@ -66,10 +101,10 @@ for i in 2 3 4 5 6 7 8 9; do
   name="${APP_NAME}-$i"
 done
 gh api "repos/$OWNER/$name" > /dev/null 2>&1 && fail "同じ名前のリポジトリがもうあります（$OWNER/$APP_NAME から -9 まで）"
-NEW="$OWNER/$name"
 if ! out=$(gh api -X POST "repos/$TEMPLATE/generate" -f owner="$OWNER" -f name="$name" -f description="$APP_DESC" -F private=false 2>&1); then
   fail "リポジトリを作れませんでした（$(printf '%s' "$out" | tail -1 | cut -c1-160)）。FACTORY_TOKEN に、全部のリポジトリへの Administration（Read and write）が要ります"
 fi
+NEW="$OWNER/$name"
 note "✅ リポジトリを作った：https://github.com/$NEW（${APP_STACK}）"
 ready=no
 for _ in $(seq 1 30); do
@@ -122,7 +157,6 @@ fi
 
 # ---- 4. 中身を整えて push ----
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
 # shellcheck disable=SC2059
 if ! git clone -q "$(printf "$GIT_URL" "$NEW")" "$work/app" 2> /dev/null; then fail "作ったリポジトリを clone できません"; fi
 (
@@ -263,6 +297,7 @@ PY3
   git -c user.name="pipeline-factory" -c user.email="noreply@github.com" commit -q -m "工場：${name} の最初の準備（${APP_STACK}）"
   git push -q origin HEAD:main
 ) || fail "最初の準備を push できませんでした"
+pushed=yes
 note "✅ CLAUDE.md・仕様書・README に説明を書いて push した（Bootstrap が動く）"
 # 公開先に github-pages があるときは、Pages を有効にする（Source を GitHub Actions に）。
 # ワークフローのトークンでは有効にできない（管理の権限が要る）ので、リポジトリを作った鍵（FACTORY_TOKEN）でここで行う

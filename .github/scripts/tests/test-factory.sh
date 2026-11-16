@@ -47,6 +47,7 @@ if m and method == "GET":
     name = f"{m.group(1)}/{m.group(2)}"
     sys.exit(0 if name in st["repos"] or name in os.environ.get("EXISTING", "").split() else 1)
 if base.endswith("/generate"):
+    if os.environ.get("GENERATE_FAIL"): sys.stderr.write("gh: Resource not accessible (HTTP 403)\n"); sys.exit(1)
     f = fields(); new = f"{f['owner']}/{f['name']}"
     st["repos"].append(new); save()
     dst = f"{T}/remotes/{new}.git"; os.makedirs(os.path.dirname(dst), exist_ok=True)
@@ -61,9 +62,10 @@ if base.endswith("/pages") and method == "POST":
 if base.endswith("/rulesets"):
     open(f"{T}/ruleset.json", "w").write(sys.stdin.read()); print("{}"); sys.exit(0)
 if base.endswith("/labels"):
-    out([{"name": "ai:plan"}]); sys.exit(0)
+    out([] if os.environ.get("NO_LABELS") else [{"name": "ai:plan"}]); sys.exit(0)
 m = re.match(r"repos/([^/]+/[^/]+)/issues$", base)
 if m and method == "POST":
+    if os.environ.get("ISSUE_FAIL"): sys.stderr.write("gh: Validation Failed (HTTP 422)\n"); sys.exit(1)
     st["issues"] += 1; save(); out({"number": st["issues"]}); sys.exit(0)
 if re.search(r"/issues/\d+/comments$", base):
     open(f"{T}/comment.txt", "a").write(fields().get("body", "") + "\n----\n"); print("{}"); sys.exit(0)
@@ -75,6 +77,7 @@ cat > "$T/bin/curl" <<'SH'
 #!/usr/bin/env bash
 echo "curl $*" >> "$FT/calls.log"
 case "$*" in
+  *ntfy.sh*) cat >> "$FT/ntfy.log"; exit 0 ;;
   */domains*) echo '{"domains":[{"name":"made-git-x.vercel.app","gitBranch":"x"},{"name":"made-abc.vercel.app","gitBranch":null}]}'; exit 0 ;;
 esac
 cat > "$FT/vercel-body.json"
@@ -90,7 +93,7 @@ SH
 chmod +x "$T/bin/gh" "$T/bin/curl" "$T/bin/npm"
 
 run_factory() { # 名前 言語 説明 [追加の環境変数...]
-  rm -f "$T/calls.log" "$T/state.json" "$T/comment.txt" "$T/ruleset.json" "$T/vercel-body.json"; rm -rf "$T/remotes"; mkdir -p "$T/remotes"
+  rm -f "$T/calls.log" "$T/state.json" "$T/comment.txt" "$T/ruleset.json" "$T/vercel-body.json" "$T/ntfy.log"; rm -rf "$T/remotes"; mkdir -p "$T/remotes"
   env PATH="$T/bin:$PATH" FT="$T" GH_TOKEN=x TEMPLATE=o/ai-dev-template ISSUE=7 MEMO="毎朝の天気と予定を1枚で見たい" \
     APP_NAME="$1" APP_STACK="$2" APP_DESC="$3" FACTORY_GIT_URL="$T/remotes/%s.git" FACTORY_WAIT_SEC=0 \
     S_CLAUDE_CODE_OAUTH_TOKEN=secret1 S_PIPELINE_APP_PRIVATE_KEY=pem V_PIPELINE_APP_ID=123 "${@:4}" \
@@ -418,5 +421,37 @@ out=$(run_factory pages-ng nextjs "説明" PAGES_RESULT=403)
 assert_contains "失敗は ⚠️ と直し方（URL 付き）" "$out" "⚠️ GitHub Pages を有効にできませんでした（https://github.com/o/pages-ng/settings/pages を開いて、Source を GitHub Actions にする）"
 assert_contains "失敗しても先へ進む" "$(cat "$T/calls.log")" "POST repos/o/pages-ng/issues"
 assert_contains "結果のコメントにも出る" "$(cat "$T/comment.txt")" "⚠️ GitHub Pages を有効にできませんでした"
+
+echo "== 途中で止まったとき：何が残っているか・次にどうするかを書き、スマホに知らせる（黙って半端なリポジトリを残さない）"
+out=$(run_factory half-made nextjs "説明" FACTORY_GIT_URL="$T/nowhere/%s.git" S_NTFY_TOPIC=topic); rc=$?
+assert_eq "clone できない：失敗で終わる" "1" "$rc"
+c=$(cat "$T/comment.txt")
+assert_contains "止まったと書く" "$c" "⚠️ 新しいサービスを作る途中で止まりました"
+assert_contains "理由" "$c" "❌ 作ったリポジトリを clone できません"
+assert_contains "作りかけのリポジトリを知らせる" "$c" "🧹 作りかけのリポジトリが残っています：https://github.com/o/half-made"
+assert_contains "もう一度作ると -2 になると書く" "$c" "名前の後ろに -2 が付いた別のリポジトリになります"
+assert_contains "スマホに知らせる" "$(cat "$T/ntfy.log" 2> /dev/null)" "工場：作る途中で止まりました"
+assert_eq "コメントは1回だけ" "1" "$(grep -c '^----$' "$T/comment.txt")"
+run_factory no-repo nextjs "説明" GENERATE_FAIL=1 > /dev/null
+assert_not_contains "リポジトリを作れなかったときは、残っているとは書かない" "$(cat "$T/comment.txt")" "🧹"
+assert_eq "トピックが無ければ知らせない" "no" "$([ -f "$T/ntfy.log" ] && echo yes || echo no)"
+run_factory issue-ng nextjs "説明" ISSUE_FAIL=1 > /dev/null; rc=$?
+assert_eq "最初のIssueを作れない：失敗で終わる" "1" "$rc"
+c=$(cat "$T/comment.txt")
+assert_contains "中身まで入っているので、作り直さなくてよいと書く" "$c" "🧹 リポジトリ https://github.com/o/issue-ng は、中身まで入っています。作り直さなくて大丈夫です"
+assert_not_contains "消してとは書かない" "$c" "Delete this repository"
+
+echo "== 時間切れ・取り消しで止められたとき：結果を書かないまま終わらない"
+# ラベルができるのを待っている間（中身は push 済み）に、止められる
+run_factory cut-off nextjs "説明" NO_LABELS=1 FACTORY_WAIT_SEC=1 S_NTFY_TOPIC=topic timeout -s TERM 10 > /dev/null; rc=$?
+assert_eq "失敗で終わる" "yes" "$([ "$rc" -ne 0 ] && echo yes || echo no)"
+c=$(cat "$T/comment.txt" 2> /dev/null)
+assert_contains "止まったと書く" "$c" "❌ 途中で止まりました（時間切れ・取り消し・スクリプトのエラー"
+assert_contains "できた所までを書く" "$c" "✅ リポジトリを作った：https://github.com/o/cut-off"
+assert_contains "残っている物を書く" "$c" "https://github.com/o/cut-off は、中身まで入っています"
+assert_contains "スマホに知らせる" "$(cat "$T/ntfy.log" 2> /dev/null)" "工場：作る途中で止まりました"
+out=$(run_factory fine nextjs "説明"); rc=$?
+assert_eq "うまくいったとき：成功で終わる" "0" "$rc"
+assert_not_contains "うまくいったときは、止まったと書かない" "$(cat "$T/comment.txt")" "止まりました"
 
 finish
