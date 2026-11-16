@@ -76,6 +76,29 @@ bash "$SCRIPTS_DIR/found-report.sh" audit "$F" > "$MOCK_DIR/rep2.txt"
 assert_not_contains "題名に壊れた文字が無い" "$(python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print([m['title'] for m in s['issues_meta'].values()])")" "�"
 assert_contains "2回目は重複で見送る" "$(cat "$MOCK_DIR/rep2.txt")" "作った Issue：0件（重複で見送り：1件）"
 
+echo "== kind:shorten は ai:found＋ai:skip（ai:plan なし）。食い違いと合わせて3件の枠"
+init_state '{}'
+cat > "$F" <<'JSON'
+{"findings":[
+ {"title":"食い違いA","body":"本文A"},
+ {"title":"仕様書の保存の節を短くまとめる提案","body":"元の節：docs/spec.md ## 保存","kind":"shorten"},
+ {"title":"食い違いB","body":"本文B","kind":"other"},
+ {"title":"デザインの節を短くまとめる提案","body":"元の節：docs/design.md ## 色","kind":"shorten"}]}
+JSON
+bash "$SCRIPTS_DIR/found-report.sh" audit "$F" > /dev/null
+all=$(python3 -c "
+import json,os
+s=json.load(open(os.environ['MOCK_STATE']))
+for n,m in sorted(s['issues_meta'].items()):
+    print(m['title']+'|'+','.join(sorted(s['labels'][n]))+'|'+m['body'].replace(chr(10),' '))")
+assert_eq "合計3件だけ作る" "3" "$(grep -c . <<< "$all")"
+assert_contains "食い違いは ai:found,ai:plan" "$(grep '^食い違いA|' <<< "$all")" "|ai:found,ai:plan|"
+assert_contains "短くする案は ai:found,ai:skip" "$(grep '^仕様書の保存' <<< "$all")" "|ai:found,ai:skip|"
+assert_not_contains "短くする案に ai:plan は付かない" "$(grep '^仕様書の保存' <<< "$all")" "ai:plan"
+assert_contains "短くする案の印" "$(grep '^仕様書の保存' <<< "$all")" "<!-- ai-found-kind: shorten -->"
+assert_not_contains "食い違いに短くする印は付かない" "$(grep '^食い違いA|' <<< "$all")" "ai-found-kind"
+assert_not_contains "枠を超えた分は作らない" "$all" "デザインの節"
+
 echo "== 結果のファイルが無い・壊れている → 何もしない（失敗にしない）"
 init_state '{}'
 bash "$SCRIPTS_DIR/found-report.sh" audit "$MOCK_DIR/none.json" > /dev/null
