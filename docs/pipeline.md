@@ -131,6 +131,7 @@ Issueを作る（メモ）。ラベルが無ければ自動で ai:plan が付く
 | 画面案（`claude-mocks.yml`） | `Read`、`Write`、`Edit`、`Glob`、`Grep`、`Bash(node .github/scripts/shot.mjs:*)` | git・gh・npm・ネット（今の画面とデザイン仕様を見て、`mocks/` にざっくり画面の HTML を書いて撮るだけ。Issue は前のステップが `mocks/issue.txt` に書いておく。鍵は持たない） |
 | 使ってみる役（`claude-try.yml`） | `Read`、`Write`、`Glob`、`Grep`、`Bash(node .github/scripts/shot.mjs:*)` | git・gh・npm（本番のサイトを撮って試し、見つけた問題を `.try/result.json` に書くだけ。Issue は鍵を持つ別のジョブが作る） |
 | 監査役（`claude-audit.yml`） | `Read`、`Write`、`Glob`、`Grep` | コマンドは全部（仕様書とコードを読んで、食い違いを `.audit/result.json` に書くだけ。Issue は鍵を持つ別のジョブが作る） |
+| 監査AI（`audit.yml`。人間側が足す。上の「仕様書の監査（週1回）」） | `Read`、`Grep`、`Glob`、`Bash(gh issue list:*)`、`Bash(gh issue create:*)`、`Bash(gh issue view:*)` | コードを変えるgit操作・npm・Issueの編集やコメント（食い違いの Issue を作るだけ） |
 | 実装AI（`claude-implement.yml`） | pipeline.json の checks のコマンド（無ければ npm run typecheck・lint・test・build。下の「言語と公開先」）、`Bash(.github/scripts/tests/run-all.sh)`、`Bash(git status:*)`、`Bash(git diff:*)`、`Bash(git add:*)`、`Bash(git commit:*)`、`Bash(git fetch:*)`、`Bash(git merge:*)`、`Bash(git checkout --ours:*)`、`Bash(git checkout --theirs:*)`、`Bash(git push:*)`、`Bash(bash .github/scripts/tests/run-all.sh)`、`Bash(shellcheck:*)`、見た目のテストがあるアプリでは `Bash(npm run test:visual)`・`Bash(npm run test:visual -- -g:*)`・`Bash(npx playwright test:*)`（手元で動かして、位置や数値を確かめるため。基準の画像の撮り直し（--update-snapshots・-u）は許さない）、画面のあるアプリでは `Bash(npm run build)`・`Bash(node .github/scripts/shot.mjs:*)`・`Bash(.github/scripts/fetch-photos.sh:*)`（作った画面を本物のブラウザで 390・1440・1920 の幅で撮り、画像を見て直すため。下の「撮って見て直す」）、`Skill`（.claude/skills/ のスキル。画面を作るときの frontend-design・taste-skill・web-design-guidelines、GSAP・Lenis が入っているアプリでの motion-gsap-lenis。taste-skill のスクリプトは、測る inspect.mjs だけ動かしてよい） | `gh`（PRやコメントは進行役が作る）、`npm run readme:shots` などの重い物（README の撮影はCIのワークフローでやる）。ファイルの編集は、このツールの標準で許可される。gitは、標準に任せると拒否されて止まったことがあるので、明示して許可している。`git push --force`・`git rebase` は許可しない |
 | レビューAI（`claude-review.yml`） | `Bash(gh pr view:*)`、`Bash(gh pr diff:*)`、`Bash(gh issue view:*)`、`Bash(gh pr comment:*)`、`Read`、`Glob`、`Grep`、`Write`、`mcp__github_inline_comment__create_inline_comment` | コードの変更・git操作・npm（レビューは読むだけ。コードは直さない） |
 | 修正AI（`claude-mention.yml`） | `Bash(gh pr view:*)`、`Bash(gh pr edit:*)`、`Bash(gh issue view:*)`、`Bash(gh pr comment:*)`、`Bash(git fetch:*)`、`Bash(git merge:*)`、`Bash(git checkout --ours:*)`、`Bash(git checkout --theirs:*)`、`Bash(git status:*)`、`Bash(git diff:*)`、`Bash(git add:*)`、`Bash(git commit:*)`、`Bash(git push:*)`、pipeline.json の checks のコマンド（無ければ npm run typecheck・lint・test・build）、`Bash(.github/scripts/tests/run-all.sh)`、`Bash(bash .github/scripts/tests/run-all.sh)`、`Bash(shellcheck:*)`、見た目のテストがあるアプリでは `Bash(npm run test:visual)`・`Bash(npm run test:visual -- -g:*)`・`Bash(npx playwright test:*)`（基準の画像の撮り直しは許さない）、`Skill` | `git rebase`・`git push --force`（履歴を書き換えない）、`gh pr merge`（マージは進行役だけ）。`gh pr edit` はPRの説明の直し（本文はファイルに書いて `--body-file` で渡す）、`gh issue view` はIssueを読むため、`git merge` はコンフリクトの解消のために許可している |
@@ -396,6 +397,20 @@ AIの実行記録から、許可されず拒否された操作（`permission_den
 - 撮った画像は、その実行の artifact（`try-out`・14日）に残り、Issue の本文にログの場所を書く
 - モデルは sonnet（使う量を抑えるため）。手数の上限は 使ってみる役 60・監査役 80
 - 仕様書の長くなりすぎた節をまとめる提案は、まだ入れていない（まとめるのは人間が確認してからにしたいため。必要になったら別に足す）
+
+## 仕様書の監査（週1回）
+
+仕様書どうし・仕様書とコードの食い違いを、週1回AIが探し、直すための Issue を作る。上の `claude-audit.yml`（結果ファイルを別のジョブが Issue にする方式）とは別に、`gh issue create` で直接作る版の部品として次を用意した。
+
+- `.github/scripts/audit-guard.sh`：「いま動かしてよいか」を調べる。`ai:implement` の open の Issue、`ai:plan` の open の Issue、open のPR、前回の監査の Issue（本文の最後に印 `<!-- spec-audit -->` があるもの）のどれかがあれば `run=false`（理由を標準出力に出す）、全部無ければ `run=true`。結果は `GITHUB_OUTPUT` があればそこに、無ければ標準出力に出す（数え方は `queue-next.sh` と同じ `count_open_issues_with_label`・`count_open_prs`）。`ai:stuck` や人間の返事待ちは数えない
+- `.github/scripts/prompts/audit.md`：監査AIへの指示（`--append-system-prompt` で渡す）。1回に最大3件、ラベルなし、本文の最後に印、open の同じ Issue があれば作らない、コードも仕様書も変えない
+- テスト：`tests/test-audit-guard.sh`
+
+### ワークフローの設計（人間側が `.github/workflows/audit.yml` として足す）
+
+- きっかけ：`schedule`（毎週日曜 18:00 UTC ＝ 月曜 03:00 JST）と `workflow_dispatch`（手動）
+- 手順：チェックアウト → `audit-guard.sh`（`id: guard`）→ `steps.guard.outputs.run == 'true'` のときだけ claude-code-action を `prompts/audit.md` を `--append-system-prompt` に渡して動かす
+- AIの許可（`--allowedTools`）：`Read,Grep,Glob,Bash(gh issue list:*),Bash(gh issue create:*),Bash(gh issue view:*)` だけ。書き込み系のコマンドは許さない
 
 ## 他の Issue・PR の完了待ち（`ai:blocked`）
 
