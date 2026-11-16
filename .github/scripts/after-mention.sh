@@ -7,6 +7,7 @@
 #   基準の画像の撮り直しが要る → visual:update を付ける（1つのPRで2回まで）
 #   ツールの許可が拒否された   → 拒否された操作を書いて、1回だけ同じ依頼を出し直す（2回目は人間に回す）
 #   指摘は誤りと返した         → もう一度レビューに回す（直す回数の上限に数える）
+#   撮り直しを頼まれたが、main とのコンフリクトが残っている → 撮り直しは動かないので付けない。拒否された操作があれば出し直し、無ければ人間に回す
 #   分類できない               → 人間に回す（ai:stuck）
 #
 # 環境変数：RUN_STARTED（対応が始まった時刻）、CONCLUSION（対応のワークフローの結果）、READ_TOKEN（ワークフローのトークン、actions: read）、
@@ -65,6 +66,14 @@ for pr in $(gh api "repos/$REPO/pulls?state=open&per_page=100" -q '.[].number');
       [ -n "$denied" ] && denied_note="（この実行で拒否された操作：$(permission_list_short "$(denied_raw "${EXECUTION_FILE:-}")")）"
       failed=$(ci_failed_steps "$head")
       kind=$(printf '%s' "$ai_text" | classify_no_change "$(printf '%s\n%s\n%s' "$review_text" "$inline_text" "$pr_body")" "$denied")
+      # main とのコンフリクトが残っているPRでは、撮り直し（visual-update.yml は pull_request で動く）もCIも、GitHub が動かさない。
+      # visual:update を付けても何も起きず、誰も動かなくなる。撮り直しにはせず、コンフリクトの解消を先にさせる：
+      # 拒否された操作があれば、それを手がかりに1回だけ出し直す（permission）。無ければ、理由を書いて人間に回す（conflict）
+      conflict_note=""
+      if [ "$kind" = visual ] && [ "$(pr_merge_state "$pr")" = dirty ]; then
+        conflict_note="main とのコンフリクトが残っています。画像など、中身を混ぜられないファイルは、git checkout --theirs -- パス で main の側を取って git add してください（見た目のテストの基準の画像は main の側を取り、PR に「visual:update で撮り直してください」と書く）。"
+        if [ -n "$keys" ]; then kind=permission; else kind=conflict; fi
+      fi
       echo "PR #$pr：変更なしで終わった理由：${kind}"
       case "$kind" in
         visual)
@@ -106,7 +115,7 @@ ${VISUAL_MARK}"
             fi
             comment "$pr" "${request}
 
-（前回は、許可されていない操作が拒否されて、変更が入りませんでした。拒否された操作：${tried}。コマンドは1つずつ動かし、; && | でつながず、cd や 2>&1 も付けないでください。確認コマンドは pipeline.json の checks（無ければ npm run typecheck・npm run lint・npm run test・npm run build）を、書かれたとおりの形で動かせば許可されています。許可の拒否による自動のやり直し 1/1）
+（前回は、許可されていない操作が拒否されて、変更が入りませんでした。拒否された操作：${tried}。${conflict_note}コマンドは1つずつ動かし、; && | でつながず、cd や 2>&1 も付けないでください。確認コマンドは pipeline.json の checks（無ければ npm run typecheck・npm run lint・npm run test・npm run build）を、書かれたとおりの形で動かせば許可されています。許可の拒否による自動のやり直し 1/1）
 
 ${PERM_RETRY_MARK}
 <!-- auto-fix-retry -->
@@ -118,6 +127,9 @@ ${PERM_RETRY_MARK}
             stop_for_human "$pr" "AIが許可されていない操作で止まったようです（1回自動でやり直しても同じでした）。AIの報告：${report:-（なし）}／足りない許可の候補：${what}（docs/pipeline.md の「AIの許可」の表を見てください）"
             report_permission_gap "$pr" "$keys"
           fi
+          ;;
+        conflict)
+          stop_for_human "$pr" "AIに直すよう頼みましたが、main とのコンフリクトを解消できず、変更が入りませんでした。コンフリクトが残っている間は、CIも基準の画像の撮り直しも動きません（AIのコメントを確認してください）${denied_note}"
           ;;
         disagree)
           # 指摘が間違いと返した：理由はAIのコメントに残っているので、もう一度レビューに回して先へ進める。

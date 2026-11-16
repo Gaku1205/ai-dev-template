@@ -3,6 +3,7 @@
 #   1. ai:retry が付いた物（使用量の上限・AIのエラーで止まった物）を、待ち時間が過ぎていたらやり直す
 #   2. 失敗の知らせも無いまま止まっている物（時間切れなど）を見つけて、ai:retry を付ける
 #   3. CIが「承認待ち」で止まっている物を動かし直す
+#   3.3 visual:update が付いたまま撮り直しが動いていない物を動かす（コンフリクトならAIに解消させる）
 #   4. ラベルが無いまま放置されたIssueを企画（ai:plan）に回す
 #   4.5 他の Issue・PR の完了待ち（ai:blocked）で、待ち先が全部閉じた物を企画（ai:plan）に戻す
 #   5. 使い終わった claude/* ブランチを掃除する
@@ -172,6 +173,30 @@ for pr in $(printf '%s' "$open_prs" | jq -r '.[].number'); do
       asked=$(all_comments "$pr" | jq --arg mark "auto-fix-sha: $head" '[.[] | select(.body | contains($mark))] | length')
       if [ "$asked" -eq 0 ]; then
         request_fix_or_stop "$pr" "$head" "main とコンフリクトしていて、このPRのCIが動いていません（コンフリクトがあるとCIは動きません）。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し（docs/spec.md・docs/design.md も両方の決まりを残す）、どちらかを捨てるときはPRにコメントで理由を書いてください。"
+      fi
+      continue
+    fi
+  fi
+
+  # ---- 3.3 visual:update が付いたまま、撮り直しが動いていない ----
+  # コンフリクトしたPRでは GitHub が撮り直し（pull_request で動く）を動かさない。ラベルだけが残り、終わるとラベルを外す仕組みも動かないので、
+  # 誰も動かなくなる。ラベルを外し、コンフリクトならAIに解消させる。コンフリクトが無いのに動いていなければ、1回だけ付け直す
+  if has_label "$pr" "visual:update" && [ "$m" -ge "${IDLE_VISUAL_MIN:-10}" ]; then
+    vruns=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/workflows/visual-update.yml/runs?per_page=30" \
+      -q "[.workflow_runs[] | select(.status != \"completed\" and .head_branch == \"$ref\")] | length" 2> /dev/null) || vruns=0
+    if [ "${vruns:-0}" -eq 0 ]; then
+      remove_label "$pr" "visual:update"
+      relabel_mark="<!-- auto-visual-relabel: ${head} -->"
+      if [ "$(pr_merge_state "$pr")" = dirty ]; then
+        request_fix_or_stop "$pr" "$head" "基準の画像の撮り直し（visual:update）が、${m}分たっても動いていません。main とコンフリクトしているためです（コンフリクトがあると、撮り直しもCIも動きません）。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。画像など、中身を混ぜられないファイルは \`git checkout --theirs -- パス\` で main の側を取って \`git add\` し、PR に「見た目を変えたので visual:update ラベルで基準の画像を撮り直してください」とコメントしてください。"
+      elif all_comments "$pr" | jq -e --arg mk "$relabel_mark" 'any(.[]; .body | contains($mk))' > /dev/null; then
+        stop_for_human "$pr" "基準の画像の撮り直し（visual:update）を付け直しても、撮り直しが動きませんでした（Actions の Visual Update を確認してください）"
+      else
+        comment "$pr" "🔧 visual:update が付いたまま${m}分たっても、撮り直しが動いていなかったので、付け直します（見張り役）。
+
+${relabel_mark}"
+        add_label "$pr" "visual:update"
+        echo "PR #$pr：撮り直しが動いていなかったので、visual:update を付け直しました"
       fi
       continue
     fi
