@@ -71,8 +71,9 @@ $(talk mark "$state")"
       talk merge "$state" "$NEXT" talk/out.json "$dir" > talk/state2.json
       files=()
       case "$NEXT" in
-        looks) for f in "$out"/look-[1-3]-1440.png; do [ -f "$f" ] && [ ! -L "$f" ] && files+=("$f"); done ;;
-        mocks) for f in "$out"/mock-[ab].html "$out"/mock-[ab]-1440.png "$out"/mock-[ab]-390.png; do [ -f "$f" ] && [ ! -L "$f" ] && files+=("$f"); done ;;
+        # 設計メモ（concept.md）と使った絵の出どころ（credits.json）も置く：次の段階と、作り始めたときのデザイン担当が引き継ぐ
+        looks) for f in "$out"/look-[1-3]-1440.png "$out"/concept.md "$out"/img/credits.json; do [ -f "$f" ] && [ ! -L "$f" ] && files+=("$f"); done ;;
+        mocks) for f in "$out"/mock-[ab].html "$out"/mock-[ab]-1440.png "$out"/mock-[ab]-390.png "$out"/mock-[ab]-1440-s2.png "$out"/concept.md "$out"/img/credits.json; do [ -f "$f" ] && [ ! -L "$f" ] && files+=("$f"); done ;;
       esac
       if [ "${#files[@]}" -gt 0 ] && ! push_assets "$dir" "${files[@]}"; then
         echo "::warning::画像を factory-talk ブランチに置けませんでした（コメントの画像が出ません）"

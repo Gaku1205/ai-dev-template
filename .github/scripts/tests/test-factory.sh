@@ -220,6 +220,12 @@ assert_contains "畳んで載せる" "$(cat "$T/comment.txt")" "<details><summar
 assert_contains "中身" "$(cat "$T/comment.txt")" "選んだ：影踏み"
 assert_not_contains "@ で人を呼ばない" "$(cat "$T/comment.txt")" "@someone"
 
+echo "== 審査役の点の行を、結果のコメントに載せる（@ は効かなくする）"
+printf '審査役：1回目 ⚠️ site 6.5 点 → 直した後 ✅ site 7.8 点 @someone\n' > "$T/judge.md"
+run_factory judged-site nextjs "説明" JUDGE_FILE="$T/judge.md" > /dev/null
+assert_contains "点の行" "$(cat "$T/comment.txt")" "🧐 審査役：1回目 ⚠️ site 6.5 点 → 直した後 ✅ site 7.8 点"
+assert_not_contains "@ で人を呼ばない（審査）" "$(cat "$T/comment.txt")" "@someone"
+
 echo "== ゲーム：デザイン担当が作ったゲーム（入口は src/main.ts、index.html も）を入れる"
 { echo "# デザイン仕様"; for i in $(seq 1 60); do echo "- 色や文字の決まり その$i：夜の地に光る数字"; done; } > "$T/design-ok.md"
 G="$T/game-site"; rm -rf "$G"; mkdir -p "$G/src/lib" "$G/public"

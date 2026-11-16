@@ -106,8 +106,14 @@ assert_eq "方向を選ぶとざっくり画面へ" "mocks" "$(jq -r .stage "$T/
 echo "== ざっくり画面 → 最終確認 → 作る"
 echo '{"mocks":[{"title":"曲線","note":"n"},{"title":"表","note":"m"}]}' > "$T/out/mocks.json"
 for k in a b; do png "$T/out/mock-$k-1440.png"; png "$T/out/mock-$k-390.png"; done
+png "$T/out/mock-a-1440-s2.png"; echo "審査役：✅ mock-a 7.8 点 ／ ⚠️ mock-b 6.5 点 <b>" > "$T/out/judge.md"
 talk check mocks "$T/out" > "$T/o.json"
 talk merge "$T/s4.json" mocks "$T/o.json" "issue-7/r3-mocks" > "$T/s5.json"
+mbody=$(talk render "$T/s5.json" https://raw.example/x)
+assert_contains "下の欄の絵（あれば畳んで見せる）" "$mbody" "issue-7/r3-mocks/mock-a-1440-s2.png"
+assert_not_contains "下の欄の絵が無い案には出さない" "$mbody" "mock-b-1440-s2.png"
+assert_contains "審査役の点の行（HTML の印は効かなくする）" "$mbody" "<sub>審査役：✅ mock-a 7.8 点 ／ ⚠️ mock-b 6.5 点 ＜b＞</sub>"
+rm -f "$T/out/judge.md" "$T/out/mock-a-1440-s2.png"
 echo '{"action":"pick","choice":"B","note":"A の色で"}' > "$T/r.json"
 talk apply "$T/s5.json" "$T/r.json" | jq '.state' > "$T/s6.json"
 assert_eq "画面を選ぶと最終確認へ" "confirm b" "$(jq -r '"\(.stage) \(.mock)"' "$T/s6.json")"
@@ -128,6 +134,7 @@ talk brief "$T/s8.json" > "$T/b.json"
 assert_eq "工場へ渡す名前" "tide-almanac saas" "$(jq -r '"\(.name) \(.stack)"' "$T/b.json")"
 assert_contains "選んだ画面の HTML と画像" "$(jq -r '.files | join(" ")' "$T/b.json")" "issue-7/r3-mocks/mock-b.html issue-7/r3-mocks/mock-b-1440.png"
 assert_contains "選んだ方向の板" "$(jq -r '.files | join(" ")' "$T/b.json")" "issue-7/r2-looks/look-3-1440.png"
+assert_contains "設計メモと絵の出どころも渡す" "$(jq -r '.files | join(" ")' "$T/b.json")" "issue-7/r3-mocks/concept.md issue-7/r3-mocks/credits.json"
 assert_contains "答えと注文を詳しいメモに" "$(jq -r .detail "$T/b.json")" "オーナーの注文（mocks）：A の色で"
 assert_contains "値段を書く指示" "$(jq -r .detail "$T/b.json")" "factory-price.txt にこの数字を書く"
 

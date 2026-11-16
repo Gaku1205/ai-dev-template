@@ -3,8 +3,8 @@
 オーナーが「新サービス：〜」と1行書きました。いきなり作らず、**オーナーに選んでもらいながら**、作る物と見た目を最初に大まかに決めます（あとの作り直しを減らすため）。流れ：
 
 1. **案**（ideas）：作る物の案を5つと、最初の質問
-2. **見た目の方向**（looks）：選んだ案の見た目の方向を3つ（実在の良いサイトの寄せ集めと、色・文字の見本）
-3. **ざっくり画面**（mocks）：選んだ方向で、トップの画面を2案（PC とスマホ）
+2. **見た目の方向**（looks）：選んだ案の見た目の方向を3つ（題材の持ち物から作った考えが3つ。それぞれ、本物の素材で組んだ最初の1画面）
+3. **ざっくり画面**（mocks）：選んだ方向で、トップの画面を下の欄まで全部、2案（PC とスマホ）
 4. **最終確認**（confirm）：名前・中身・無料と有料・値段・画面を1枚にまとめる。オーナーが「作る」と言ったら、工場が本物を作り始める
 
 あなたは、そのうち1つの段階だけを受け持ちます（どの段階かは指示に書いてある）。今までに決まったこと（選んだ案・答え・注文）は `talk/state.json` にあります。最初に読んでください。
@@ -17,6 +17,7 @@
 - 文はカジュアルで短い日本語。説明は1〜2文
 - 実在のブランドの名前・ロゴ・文言を写さない
 - 書いてよい場所は `talk/` の中だけ（taste-skill の作業の置き場 `.taste-skill/` もよい）
+- 見た目を作る段階（looks・mocks）で作った物は、別のAI（審査役）が画像だけを見て審査する。合格はスクリプトが決める（`.github/factory/judge.md`）
 
 ## 1. 案（ideas）
 
@@ -54,54 +55,66 @@
 
 選んだ案（`state.json` の `ideas[idea]`）の見た目の方向を3つ作り、それぞれ1枚の「見本の板」の画像にします。`ideas[idea]` に `parts` があれば、オーナーがその番号の案をまとめて1つのサービスにすると選んだ（例：遊ぶゲームを選べる1つのサイト）。まとめた全体に合う方向にする。
 
-1. `.github/factory/design-department.md` の「1. 実例を集める」「AIっぽさの型（使わない）」「taste-skill を使う」を読む。実例の集め方（ギャラリー・`shot.mjs`）はそのとおりにする。`.claude/skills/taste-skill/references/tells.md` も読む（クリーム色の地＋朱・テラコッタ、罫線だらけ、等幅の数字、インディゴ・紫は使わない）
-   - 方向の土台を配ってもらう：ページなら `node .claude/skills/taste-skill/scripts/draw.mjs --sector <業種> --brief "<選んだ案の1行>" --options 3 --out talk/draw`、道具の画面が主役なら `node .claude/skills/taste-skill/scripts/draw.mjs --app --kind <種類> --brief "<1行>" --screens <画面> --options 3 --out talk/draw`。配られた3つを、3つの方向の土台にする（色・文字・構図の考え方は配られた物から。実例は、それをこの題材でどう組むかを学ぶため）。3つ目が題材に合わないときだけ引き直し、理由を `looks.json` の `idea` に1文で書く
-2. 実例を撮る：`node .github/scripts/shot.mjs --out talk/refs --widths 1440 <URL> ...`（1画面だけでよい）。撮った画像は全部 Read で見る
-3. 方向を3つ決める。3つは**はっきり違う**物にする（色の明るさ・文字の性格・構図の考え方が違う）。どれも「AIっぽさの型」を使わない
-4. 方向ごとに `talk/look-1.html`・`look-2.html`・`look-3.html` を書く（幅 1440px の1枚の板。外のファイルは読み込まない。ただし Google Fonts の `<link>` と、`talk/refs/`・`talk/img/` の画像は使ってよい）。板に載せる物：
-   - 方向の名前と、1文の考え（「この画面は〇〇に見える」）
-   - 参考にした実例の画像を3〜4枚（`refs/…png`。小さめに並べ、下にサイト名）と、それぞれ何を学ぶかを1行
-   - 色：5〜6色の見本（hex と用途）
-   - 文字：見出し・本文・数字の書体で、このサービスの本物の文言を組んだ見本
-   - このサービスの部品を1つだけ、その方向で描いた物（ボタン・数字の欄・一覧の1行など）
-5. 撮る：`node .github/scripts/shot.mjs --out talk --widths 1440 --full talk/look-1.html talk/look-2.html talk/look-3.html`（`talk/look-1-1440.png` などができる）。Read で見て、崩れていたら直して撮り直す
-   - 測る：`node .claude/skills/taste-skill/scripts/lint.mjs talk/look-1.html talk/look-2.html talk/look-3.html`。AIが作った感の型（禁止の物）が出たら直す。板そのものの表（色の見本の枠など）は板の都合なのでよいが、「このサービスの部品」の欄は禁止の型を使わない
-6. `talk/looks.json` を書く：
+3つの方向は、**色違いではなく、考えが違う**物にします（題材のどの持ち物を主役にするかが違う）。オーナーは、色見本ではなく「その方向で組んだ最初の1画面」を見て選びます。作った板は、別のAI（審査役。`.github/factory/judge.md`）が画像だけを見て審査し、届かなければ指摘の紙（`.judge/fix.md`）が来ます。
+
+1. 読む：`.github/factory/concept.md`（全部）、`.github/factory/design-department.md` の「AIっぽさの型（使わない）」「taste-skill を使う」「2. 実例を集める」、`.claude/skills/taste-skill/references/tells.md`
+2. **設計メモを書き始める**（`talk/concept.md`。形は `concept.md`）：1行目の `種類:`、`## 持ち物`（8〜12個。`state.json` の `answers`・`notes` に「本物の〇〇」があればいちばん上）、そして `## 考えの候補` に「（持ち物）が（仕掛け）になる」の文を3つ（3つは別々の持ち物から。1つずつ、入れ替えの試しをする）。`## 考え`・`## 通し表` は、方向が選ばれた後に書くので、まだ書かない
+3. **本物の素材を取る**：候補ごとに、主役にする持ち物の本物の絵を `node .claude/skills/taste-skill/scripts/assets.mjs "<英語の検索語>"` で探し、`--get <ref> --to talk/img` で取る（取ったら Read で見る）。道具の画面が主役のサービスは、絵の代わりに本物らしいデータを用意する
+4. **組み方を配ってもらう**：ページなら `node .claude/skills/taste-skill/scripts/draw.mjs --sector <業種> --brief "<選んだ案の1行>" --options 3 --out talk/draw`、道具の画面が主役なら `node .claude/skills/taste-skill/scripts/draw.mjs --app --kind <種類> --brief "<1行>" --screens <画面> --options 3 --out talk/draw`。配られた組み方（色・文字・構図）を、3つの考えに1つずつ割り当てる（その考えを運べる物を選ぶ。慣れた形に戻すための引き直しはしない。どうしても運べないときだけ1回引き直し、理由を `looks.json` の `idea` に書く）
+5. 実例を撮る：`node .github/scripts/shot.mjs --out talk/refs --widths 1440 <URL> ...`（1画面だけでよい。3か所以上の出どころから、合わせて6〜9個）。撮った画像は全部 Read で見る
+6. 方向ごとに `talk/look-1.html`・`look-2.html`・`look-3.html` を書く（幅 1440px の1枚の板。外のファイルは読み込まない。ただし Google Fonts の `<link>` と、`talk/refs/`・`talk/img/` の画像は使ってよい）。板に載せる物（上から）：
+   - **この方向で組んだ最初の1画面**（幅 1440・高さ 900 くらい。板の主役。本物の素材・本物の文言と数字で、本番のつもりで組む。枠や影で囲んで小さく見せない）
+   - 方向の名前と、考えの1文（「この画面では、〇〇が〇〇になる」）
+   - 色：5〜6色の見本（hex と用途）。文字：見出し・本文・数字の書体の見本（小さくてよい）
+   - 参考にした実例の画像を3〜4枚（`refs/…png`。小さめに並べ、下にサイト名と、何を学ぶかを1行）
+7. 撮る：`node .github/scripts/shot.mjs --out talk --widths 1440 --full talk/look-1.html talk/look-2.html talk/look-3.html`（`talk/look-1-1440.png` などができる）。Read で見て、崩れていたら直して撮り直す。3枚を並べて、最初の1画面の構図・主役・色の明るさが3つとも違うことを確かめる
+   - 測る：`node .claude/skills/taste-skill/scripts/lint.mjs talk/look-1.html talk/look-2.html talk/look-3.html`。「最初の1画面」の所に FAIL が出たら直す（消すだけにせず、`concept.md`「3. 何で埋めるか」で埋める）。板の下の見本の枠は、板の都合なのでよい
+8. `talk/looks.json` を書く：
 
 ```json
 {
   "looks": [
-    { "title": "（方向の名前）", "idea": "（この画面は〇〇に見える、を1文。配られた方向の id も書く）", "colors": ["#……", "#……", "#……"], "fonts": "（見出し・本文の書体）", "refs": ["https://..."] }
+    { "title": "（方向の名前）", "idea": "（この画面では、〇〇が〇〇になる、を1文。配られた方向の id も書く）", "colors": ["#……", "#……", "#……"], "fonts": "（見出し・本文の書体）", "refs": ["https://..."] }
   ],
   "questions": []
 }
 ```
 
 - `looks` はちょうど3つで、順番は `look-1`〜`look-3` と同じ
-- `questions`：見た目について、方向を選ぶだけでは決まらない事（明るい画面か暗い画面か、写真を使うか、など）
+- `questions`：見た目について、方向を選ぶだけでは決まらない事（載せる本物の素材をどれにするか、明るい画面か暗い画面か、など）
 
 ## 3. ざっくり画面（mocks）
 
-選んだ方向（`state.json` の `looks[look]`。板は `talk/chosen-look.png`）で、トップの画面を2案作ります。本物のアプリではなく、見た目を決めるための1枚の HTML です。
+選んだ方向（`state.json` の `looks[look]`。板は `talk/chosen-look.png`）で、トップの画面を2案作ります。本物のアプリではなく、見た目を決めるための1枚の HTML ですが、**最初の1画面だけでなく、いちばん下の欄まで全部**作ります（最初だけ凝って、下が型どおりの箱の並びになるのを、ここで止める）。作った画面は、審査役（`.github/factory/judge.md`）が下までスクロールした絵で審査します。
 
-- `.github/factory/design-department.md` の「AIっぽさの型（使わない）」「taste-skill を使う」を守る。道具のサービスなら、開いた最初の画面に道具そのものを出す
-- 選んだ方向が配られた紙（`talk/draw/`）から来ていれば、その紙の構図・色・文字をそのまま使う（同じ紙をもう一度出すなら `node .claude/skills/taste-skill/scripts/draw.mjs --show --out talk/draw`）
-- **本物の絵を使う**：題材の世界の本物の写真・古い地図・図版を `node .claude/skills/taste-skill/scripts/assets.mjs "<英語の検索語>"` で探し、`--get <ref> --to talk/img` で取って、`img/…` で載せる（`state.json` の答えで「本物の〇〇」と決まっていれば必ず。描いた絵で代用しない。取れなかったら `mocks.json` の `note` にそう書く）
-- 2案は、同じ方向の中で**構図が違う**物にする（例：A は曲線が主役、B は表が主役）
-- `talk/mock-a.html`・`talk/mock-b.html` を書く。1枚の HTML（CSS は中に書く。Google Fonts の `<link>` は使ってよい。JavaScript は使わない）。中身はこのサービスの本物らしい文言と数字（「テキスト」「Lorem」は使わない）。幅 1440px と 390px のどちらでも崩れないように書く（`@media`）
-- 撮る：`node .github/scripts/shot.mjs --out talk --widths 1440,390 talk/mock-a.html talk/mock-b.html`。全部 Read で見て、崩れ・重なり・はみ出しを直してから撮り直す
-- 測る：`node .claude/skills/taste-skill/scripts/lint.mjs talk/mock-a.html talk/mock-b.html` と `node .claude/skills/taste-skill/scripts/inspect.mjs talk/mock-a.html`（道具の画面が主役なら `--app`。`mock-b` も）。FAIL は全部直してから `mocks.json` を書く
-- `talk/mocks.json` を書く：
+1. 読む：`.github/factory/concept.md`（全部）、`.github/factory/design-department.md` の「AIっぽさの型（使わない）」「taste-skill を使う」。道具のサービスなら、開いた最初の画面に道具そのものを出す
+2. **設計メモを仕上げる**（`talk/concept.md`。前の段階の物があれば、それに足す。無ければ持ち物から書く）：`## 考え`（選ばれた方向の文。入れ替えの試し・触れる物）、`## 埋める物`、`## 通し表`（トップの全部の欄と、最初に作るほかの画面を1行ずつ）。`state.json` の `answers`・`notes` の注文は、持ち物と通し表に入れる
+3. 選んだ方向の組み方をそのまま使う：配られた方向の id が `state.json` の `looks[look].idea` に書いてあれば、前と同じ引数に `--direction <id> --out talk/draw` を付けて、同じ紙を配り直す（道具の画面は `--style <id>`）。色・文字は、板（`talk/chosen-look.png`）と `looks[look]` の `colors`・`fonts` に合わせる。前の段階で使った絵の出どころは `talk/chosen-credits.json`（あれば。同じ絵を `assets.mjs --get <ref> --to talk/img` で取り直せる）
+4. **本物の素材を使う**：通し表の「本物の素材」を `node .claude/skills/taste-skill/scripts/assets.mjs "<英語の検索語>"` で探し、`--get <ref> --to talk/img` で取って、`img/…` で載せる。ページは、1案につき本物の絵を3枚以上、主役の位置に大きく使う（関門が数える。出どころの記録 `talk/img/credits.json` に無い画像は数えない）。`state.json` の答えで「本物の〇〇」と決まっていれば必ず。描いた絵（SVG・CSS の図形）で代用しない。取れなかったら、試した検索語を `concept.md` と `mocks.json` の `note` に書き、絵に頼らない構図にする
+5. 2案は、同じ考え・同じ方向の中で**構図が違う**物にする（主役にする物が違う。色違いにしない）
+6. `talk/mock-a.html`・`talk/mock-b.html` を書く。1枚の HTML（CSS は中に書く。Google Fonts の `<link>` は使ってよい。JavaScript は使わない）。通し表のトップの欄を、上から下まで全部。中身はこのサービスの本物らしい文言と数字（「テキスト」「Lorem」は使わない）。幅 1440px と 390px のどちらでも崩れないように書く（`@media`）
+7. 撮る：`node .github/scripts/shot.mjs --out talk --widths 1440,390 talk/mock-a.html talk/mock-b.html`（オーナーに見せる最初の1画面）と、`node .github/scripts/shot.mjs --out talk/scroll --widths 1440,390 --scrolls 4 talk/mock-a.html talk/mock-b.html`（下まで）。全部 Read で見て、崩れ・重なり・はみ出しを直してから撮り直す。下の欄を、審査役の問い（`judge.md` の表）で自分でも見る：考えが下まで通っているか・同じ構図が続いていないか・空の帯や小さい灰色の文字で地味になっていないか
+8. 測る：`node .claude/skills/taste-skill/scripts/lint.mjs talk/mock-a.html talk/mock-b.html` と `node .claude/skills/taste-skill/scripts/inspect.mjs talk/mock-a.html`（道具の画面が主役なら `--app`。`mock-b` も）。FAIL は全部直してから `mocks.json` を書く（消すだけにせず、埋める）
+9. `talk/mocks.json` を書く：
 
 ```json
 {
   "mocks": [
-    { "title": "曲線が主役", "note": "開くと今日の潮の曲線が画面の半分。時合いは曲線の上の帯" },
-    { "title": "表が主役", "note": "地点ごとの表が主役。曲線は小さく行の中に" }
+    { "title": "（主役にした物）", "note": "（開くと何が見えるか・下の欄で考えがどう続くかを1〜2文）" },
+    { "title": "（主役にした物）", "note": "…" }
   ],
   "questions": []
 }
 ```
+
+## 審査の後の直し（fix）
+
+指示に「審査の結果を直す」とあるときは、新しく作り直さず、今ある物を直します。
+
+- `.judge/fix.md`（関門と審査役の結果）と、`.judge/made/`（審査に使った画像）を Read で見る
+- 関門の指摘は全部直す。審査役の「必ず通す」の「いいえ」を先に、次に「直し」を上から
+- **消すだけにしない**。消した所は、大きい文字・色の面・本物の絵・中身で埋める（`concept.md`「3. 何で埋めるか」）。指摘の無い所は変えない。合格している案（`fix.md` で「合格」）は触らない
+- 直したら、その段階の「撮る」「測る」をもう一度やり、画像を全部 Read で見る。`looks.json`・`mocks.json` は、中身が変わった所だけ直す
 
 ## 4. 最終確認（confirm）
 

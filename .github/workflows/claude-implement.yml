@@ -75,10 +75,9 @@ jobs:
           echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
           if [ "$enabled" = true ]; then
             echo "allowed=Bash(npm run build),Bash(node .github/scripts/shot.mjs:*),Bash(.github/scripts/fetch-photos.sh:*)" >> "$GITHUB_OUTPUT"
-            echo "prompt=画面に触る作業では、確認コマンドが通ったあと、npm run build をしてから node .github/scripts/shot.mjs --serve / で画面を撮る（ほかのページはパスを並べる。押したり入力したりした後の場面は --steps で書く。使い方はそのファイルの先頭）。390・1440・1920 の幅の画像が .shots/ にできるので、全部 Read で見る。docs/design-ref/ に目標の絵（工場のデザイン担当が撮った画像）があれば見比べる。行をまたいで揃うはずの列や数字のずれ・重なり・何も無い大きな帯・左右の片寄り・はみ出し・入力済みに見える例の文字・目立たない主役を探し、目立つ問題の上位3つを直して撮り直す（最大3回）。.shots/ はコミットしない。Issue への報告に、撮って見た場面と直した所を短く書く。写真が要るときは .github/scripts/fetch-photos.sh \"<英語の検索語>\" <枚数> で、自由に使える写真（CC0・パブリックドメイン）が public/photos/ に入る（出どころは public/photos/CREDITS.md。使う物だけコミットする）。" >> "$GITHUB_OUTPUT"
+            echo "prompt=画面に触る作業では、確認コマンドが通ったあと、npm run build をしてから node .github/scripts/shot.mjs --serve / で画面を撮る（ほかのページはパスを並べる。押したり入力したりした後の場面は --steps で書く。使い方はそのファイルの先頭）。390・1440・1920 の幅の画像が .shots/ にできるので、全部 Read で見る。docs/design-ref/ に目標の絵（工場のデザイン担当が撮った画像）があれば見比べる。docs/design.md に「このサービスらしさ」の節があれば、新しい画面・部品はその考え・しるし・通し方で作り（部品を足すだけにしない）、画面を足したら通し表に行を足す。型を消すだけにせず、大きい文字・色の面・本物の素材・中身で埋める（.github/factory/concept.md の 3）。行をまたいで揃うはずの列や数字のずれ・重なり・何も無い大きな帯・左右の片寄り・はみ出し・入力済みに見える例の文字・目立たない主役を探し、目立つ問題の上位3つを直して撮り直す（最大3回）。.shots/ はコミットしない。Issue への報告に、撮って見た場面と直した所を短く書く。写真が要るときは .github/scripts/fetch-photos.sh \"<英語の検索語>\" <枚数> で、自由に使える写真（CC0・パブリックドメイン）が public/photos/ に入る（出どころは public/photos/CREDITS.md。使う物だけコミットする）。" >> "$GITHUB_OUTPUT"
             # 撮った画像をコミットしないように（.gitignore は変えない）
-            echo "/.shots/" >> .git/info/exclude
-            echo "/.review/" >> .git/info/exclude
+            printf '%s\n' "/.shots/" "/.review/" "/.judge/" "/.judge-results/" >> .git/info/exclude
             # Ubuntu 24.04 は、Chrome の安全な囲い（sandbox）に要る仕組みを止めていることがあるので、使えるようにする
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 > /dev/null 2>&1 || true
             # 日本語のフォントが無いと、canvas のゲームなど Web フォントを読まない画面の日本語が □ で撮れる
@@ -96,10 +95,12 @@ jobs:
           path=$(printf '%s' "$BODY" | grep -oE '<!-- ai-mock: issue-[0-9]+/r[0-9]+/mock-[ab] -->' | tail -1 | sed -E 's/<!-- ai-mock: (.*) -->/\1/' || true)
           if [ -n "$path" ] && git fetch -q --depth 1 origin ai-mocks 2> /dev/null; then
             mkdir -p .shots/target
-            for ext in .html -1440.png -390.png; do git show "FETCH_HEAD:$path$ext" > ".shots/target/mock$ext" 2> /dev/null || rm -f ".shots/target/mock$ext"; done
+            for ext in .html -1440.png -390.png -1440-s2.png; do git show "FETCH_HEAD:$path$ext" > ".shots/target/mock$ext" 2> /dev/null || rm -f ".shots/target/mock$ext"; done
+            # 画面案のAIが書いた設計メモ（題材の持ち物・考え・通し表）。作り直しのとき、docs/design.md の「このサービスらしさ」の元にする
+            git show "FETCH_HEAD:$(dirname "$path")/concept.md" > .shots/target/concept.md 2> /dev/null || rm -f .shots/target/concept.md
             grep -qxF "/.shots/" .git/info/exclude || echo "/.shots/" >> .git/info/exclude
             if [ -f .shots/target/mock.html ]; then
-              echo "prompt=オーナーが選んだ目標の画面（ざっくり画面）が .shots/target/ にある（mock.html と、PC の mock-1440.png・スマホの mock-390.png）。Issue の「目標の画面」の注文と合わせて、構図・色・文字・大きさの差をこれに合わせて作り、撮って見比べる（目標の画面の文言と数字は見本なので、本物のデータに置き換える）。" >> "$GITHUB_OUTPUT"
+              echo "prompt=オーナーが選んだ目標の画面（ざっくり画面）が .shots/target/ にある（mock.html と、PC の mock-1440.png・スマホの mock-390.png）。Issue の「目標の画面」の注文と合わせて、構図・色・文字・大きさの差をこれに合わせて作り、撮って見比べる（目標の画面の文言と数字は見本なので、本物のデータに置き換える）。mock-1440-s2.png があれば下の欄の続き。.shots/target/concept.md があれば、画面案の設計メモ（題材の持ち物・考え・通し表）：最初の行が「場合: 作り直し」なら、docs/design.md の最初の節「## このサービスらしさ」をこの設計メモから書き直し（形は .github/factory/concept.md の 6）、目標の画面に無い画面も通し表のとおりに同じ考えで作り直す（色を変えただけにしない）。" >> "$GITHUB_OUTPUT"
               exit 0
             fi
           fi
@@ -140,11 +141,13 @@ jobs:
           label_trigger: "ai:implement"
           claude_args: "--model ${{ env.MODEL }} --max-turns ${{ env.MAX_TURNS }} --allowedTools \"${{ steps.stack.outputs.allowed }},${{ steps.visual.outputs.allowed }},${{ steps.shots.outputs.allowed }},Bash(.github/scripts/tests/run-all.sh),Bash(git status:*),Bash(git diff:*),Bash(git add:*),Bash(git commit:*),Bash(git fetch:*),Bash(git merge:*),Bash(git checkout --ours:*),Bash(git checkout --theirs:*),Bash(git push:*),Bash(bash .github/scripts/tests/run-all.sh),Bash(shellcheck:*),Skill\" --disallowedTools \"Bash(npm run test:visual -- --update-snapshots:*),Bash(npm run test:visual -- -u:*),Bash(npx playwright test --update-snapshots:*),Bash(npx playwright test -u:*),Bash(git push --force:*),Bash(git push -f:*),Bash(git push --force-with-lease:*),Bash(git rebase:*)\" --append-system-prompt \"${{ steps.prompt.outputs.text }}${{ steps.shots.outputs.prompt }}${{ steps.target.outputs.prompt }}\""
       # 審査役：実装AIとは別のAIが、ワークフローが撮った画面の画像だけを見て、目標の絵（docs/design-ref/）と比べて採点する。
-      # 作った本人の「試作とほぼ同じ」をうのみにしない。8点に届かなければ、指摘をつけて実装AIにもう1回だけ直させる
+      # 作った本人の「試作とほぼ同じ」をうのみにしない。合格（.github/scripts/design-judge.py が決める）に届かなければ、指摘をつけて実装AIにもう1回だけ直させる
       - name: 審査用に画面を撮る
         id: review_shots
         if: steps.shots.outputs.enabled == 'true' && steps.claude.outcome == 'success'
         continue-on-error: true
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
         run: |
           # 実装AIがブランチを作って画面に関わる物を変えたときだけ
           git fetch -q origin "${{ github.event.repository.default_branch }}"
@@ -155,7 +158,24 @@ jobs:
           steps=(); [ -f .shots/steps.json ] && steps=(--steps .shots/steps.json)
           node .github/scripts/shot.mjs --serve --out .review/shots "${steps[@]}" / || true
           cp docs/design-ref/*.png .review/ref/ 2> /dev/null || true
-          if ls .review/shots/*.png > /dev/null 2>&1; then echo "ok=true" >> "$GITHUB_OUTPUT"; else echo "ok=false" >> "$GITHUB_OUTPUT"; fi
+          if ! ls .review/shots/*.png > /dev/null 2>&1; then echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          # 審査役に渡す形にそろえる（.github/factory/judge.md）：審査する画像・比べる絵・このサービスらしさ
+          rm -rf .judge && mkdir -p .judge/made .judge/refs
+          cp .review/shots/*.png .judge/made/
+          # 下の欄も見る（最初の1画面だけ凝って、下が型どおりになるのを見逃さない）
+          node .github/scripts/shot.mjs --serve --out .judge/made --widths 1440 --scrolls 3 / > /dev/null 2>&1 || true
+          n=0; for f in .review/ref/*-1440*.png .shots/target/mock-1440.png; do if [ -f "$f" ] && [ ! -L "$f" ] && [ "$n" -lt 6 ]; then cp "$f" .judge/refs/; n=$((n + 1)); fi; done
+          {
+            echo "# 審査役に渡す紙"
+            echo
+            printf '今回の Issue：%s\n\n' "$(printf '%s' "$ISSUE_TITLE" | head -c 200)"
+            echo "今あるアプリへの変更（Issue の実装）です。\`.judge/refs/\` は、目標の絵（工場のデザイン担当が最初に作った画面か、オーナーが選んだ画面案）です。実在のほかのサイトではありません。"
+            echo
+            echo "## このサービスらしさ（docs/design.md から。fits は、新しく足した所がこれに沿っているかで答える。この節が無ければ、目標の絵と同じ作りかで答える）"
+            echo
+            if [ -f docs/design.md ] && [ ! -L docs/design.md ]; then awk '/^## このサービスらしさ/{on=1; print; next} on && /^## /{exit} on{print}' docs/design.md | head -c 5000; fi
+          } > .judge/brief.md
+          echo "ok=true" >> "$GITHUB_OUTPUT"
       - uses: anthropics/claude-code-action@v1
         id: critic
         if: steps.review_shots.outputs.ok == 'true'
@@ -163,22 +183,21 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
-            あなたは、厳しいことで知られるアートディレクターです。実装された画面を、**画像だけ**で審査してください。コード・仕様・Issue は見ないでください。
-            開いてよいのは `.review/shots/`（いまの画面。名前の末尾が幅：390 はスマホ、1440・1920 は PC）と `.review/ref/`（工場のデザイン担当が最初に作った画面を撮った物＝目標の絵。無いこともある）の画像だけです。
-            1. 両方の画像を全部 Read で見る
-            2. 10点満点で採点する。目安：9＝賞を取る／8＝プロの仕事で記憶に残る／7＝きれいだが既視感／6＝テンプレートっぽい／5以下＝AIが作った感・崩れ。
-               見る所：目標の絵と比べて弱くなった所（質感・主役・余白・文字の大きさや太さ・色）／崩れ（重なり・はみ出し・揃っていない列・何も無い帯・片寄り）／スマホでも成立するか。
-               目標の絵が無ければ、画面そのものの質で採点する。甘くしない。迷ったら低い方
-            3. `.review/critique.md` に書く（このファイルだけを書く）。1行目 `点数: 7.5`（数字だけ）、2行目 `判定: 通す`（8.0 以上）か `判定: 直す`（8.0 未満）。
-               そのあと `## 直すこと` に、効く順に最大5個。どの画像の・どこが・なぜだめで・どう直すとよいかを具体的に
-          claude_args: '--model opus --max-turns 20 --allowedTools "Read,Glob,Write"'
+            あなたは審査役です（作ったAIとは別のAI）。`.github/factory/judge.md` を全部読み、そのとおりに、**画像だけ**で審査してください。コード・仕様・Issue は見ないでください。
+            - 種類：change（今あるアプリへの変更。この種類の問いに全部答える）
+            - 審査する物（`items` の `name`）：change（`.judge/made/` の画像。名前の末尾が幅：390 はスマホ、1440・1920 は PC。`-s2`・`-s3` は下へスクロールした続き）
+            - 目標の絵は `.judge/refs/`（無いこともある）、このサービスらしさは `.judge/brief.md`。目標の絵と比べて弱くなった所（主役・余白・文字の大きさや太さ・色）も `fixes` に書く
+            - 書くのは `.judge/verdict.json` だけ
+          claude_args: '--model opus --max-turns 30 --allowedTools "Read,Glob,Write"'
+      # 合格かどうかは、審査役の答えからスクリプトが決める（必ず通す問いが全部「はい」で、7.5 点以上）。結果は .review/critique.md（PRの本文に入る）と .judge/fix.md（直すAIが読む）
       - name: 審査の点数を読む
         id: review_judge
         if: steps.critic.outcome == 'success'
         run: |
-          score=$(grep -m1 -E '^点数' .review/critique.md 2> /dev/null | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
-          echo "審査役の点数：${score:-なし}"
-          if [ -n "$score" ] && awk -v s="$score" 'BEGIN { exit !(s < 8.0) }'; then echo "redo=true" >> "$GITHUB_OUTPUT"; else echo "redo=false" >> "$GITHUB_OUTPUT"; fi
+          mkdir -p .judge-results .review
+          python3 .github/scripts/design-judge.py verdict --mode change .judge/verdict.json --out .judge-results/r1.json --fix .judge/fix.md --critique .review/critique.md > .judge-results/out.txt || true
+          cat .judge-results/out.txt
+          if grep -qx 'pass=false' .judge-results/out.txt; then echo "redo=true" >> "$GITHUB_OUTPUT"; else echo "redo=false" >> "$GITHUB_OUTPUT"; fi
       - uses: anthropics/claude-code-action@v1
         id: fix
         if: steps.review_judge.outputs.redo == 'true'
@@ -186,9 +205,9 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
-            あなたは、Issue #${{ github.event.issue.number }}「${{ github.event.issue.title }}」を実装したAIです。作った画面を、別のAI（審査役）が画像だけで審査し、8点に届きませんでした。
-            1. `.review/critique.md`（審査の結果）と、`.review/shots/`（審査に使った画像）・`.review/ref/`（目標の絵）を見る
-            2. 指摘を効く順に直す。直したら確認コマンドを全部通し、`npm run build` → `node .github/scripts/shot.mjs --serve /` で撮り直して、画像を全部 Read で見る
+            あなたは、Issue #${{ github.event.issue.number }}「${{ github.event.issue.title }}」を実装したAIです。作った画面を、別のAI（審査役）が画像だけで審査し、合格に届きませんでした。
+            1. `.judge/fix.md`（直すこと）と、`.judge/made/`（審査に使った画像）・`.judge/refs/`（目標の絵）を見る
+            2. 「必ず通す」の「いいえ」を先に、次に「直し」を上から直す。消すだけにしない（消した所は、大きい文字・色の面・本物の素材・中身で埋める。`.github/factory/concept.md` の 3）。直したら確認コマンドを全部通し、`npm run build` → `node .github/scripts/shot.mjs --serve /` で撮り直して、画像を全部 Read で見る
             3. いまのブランチにコミットして `git push origin HEAD` する（push の前に git fetch origin main と git merge origin/main）
             4. Issue へは何も書かなくてよい（審査の結果はPRの本文に自動で入る）
           claude_args: "--model ${{ env.MODEL }} --max-turns 50 --allowedTools \"${{ steps.stack.outputs.allowed }},${{ steps.visual.outputs.allowed }},${{ steps.shots.outputs.allowed }},Bash(.github/scripts/tests/run-all.sh),Bash(git status:*),Bash(git diff:*),Bash(git add:*),Bash(git commit:*),Bash(git fetch:*),Bash(git merge:*),Bash(git checkout --ours:*),Bash(git checkout --theirs:*),Bash(git push:*),Bash(bash .github/scripts/tests/run-all.sh),Bash(shellcheck:*),Skill\" --disallowedTools \"Bash(npm run test:visual -- --update-snapshots:*),Bash(npm run test:visual -- -u:*),Bash(npx playwright test --update-snapshots:*),Bash(npx playwright test -u:*),Bash(git push --force:*),Bash(git push -f:*),Bash(git push --force-with-lease:*),Bash(git rebase:*)\" --append-system-prompt \"${{ steps.prompt.outputs.text }}${{ steps.shots.outputs.prompt }}${{ steps.target.outputs.prompt }}\""

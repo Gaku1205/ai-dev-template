@@ -119,7 +119,11 @@ def check(stage, d):
         for key, m in zip("ab", (data.get("mocks") or [])[:2]):
             if not isinstance(m, dict) or not png(f"{d}/mock-{key}-1440.png") or not png(f"{d}/mock-{key}-390.png"):
                 continue
-            mocks.append({"key": key, "title": text(m.get("title"), 30) or key.upper(), "note": text(m.get("note"), 160)})
+            mock = {"key": key, "title": text(m.get("title"), 30) or key.upper(), "note": text(m.get("note"), 160)}
+            # 下の欄（2画面目）の絵があれば、それも見せる（最初の1画面だけで選ばせない）
+            if png(f"{d}/mock-{key}-1440-s2.png"):
+                mock["more"] = True
+            mocks.append(mock)
         if not mocks:
             die("画像のある画面の案が無い")
         out["mocks"] = mocks
@@ -141,6 +145,15 @@ def check(stage, d):
                     "paid": lst("paid") if saas else [], "price": price if saas else None, "pages": lst("pages")})
     else:
         die(f"知らない段階：{stage}")
+    # 審査役の点の行（design-judge.py summary が作った1行。あれば、選択肢の下に小さく見せる）
+    if stage in ("looks", "mocks"):
+        try:
+            with open(f"{d}/judge.md", encoding="utf-8") as f:
+                j = text(f.read(1500), 600)
+            if j:
+                out["judge"] = j
+        except OSError:
+            pass
     return out
 
 
@@ -246,6 +259,8 @@ def merge(state, stage, out, path):
     state.setdefault("assets", {})[stage] = path
     state["round"] = int(state.get("round", 0)) + 1
     state["ask"] = {"questions": out.get("questions", [])}
+    if out.get("judge"):
+        state["ask"]["judge"] = out["judge"]
     if stage == "confirm":
         state["confirm"] = {k: v for k, v in out.items() if k != "questions"}
     else:
@@ -292,6 +307,9 @@ def render(state, root):
             L.append(m["note"] + "\n")
             L.append(f"<img src=\"{imgbase}/mock-{m['key']}-1440.png\" width=\"560\" alt=\"{m['key'].upper()} PC\"> "
                      f"<img src=\"{imgbase}/mock-{m['key']}-390.png\" width=\"150\" alt=\"{m['key'].upper()} スマホ\">\n")
+            if m.get("more"):
+                L.append(f"<details><summary>{m['key'].upper()} の下の欄（スクロールした続き）</summary>\n\n"
+                         f"<img src=\"{imgbase}/mock-{m['key']}-1440-s2.png\" width=\"560\" alt=\"{m['key'].upper()} 続き\">\n\n</details>\n")
         how = "A か B で選んでください（例：`A`・`A の配置で B の色`）。どちらも違えば「両方ちがう。もっと〇〇」。"
     elif stage == "confirm":
         c = state.get("confirm", {})
@@ -321,6 +339,8 @@ def render(state, root):
                 L.append(f"- {chr(65 + on)}. {o}{'（おすすめ）' if on == q['recommend'] else ''}")
             L.append("")
         how += " 質問は `Q1はA、Q2はB` のように（選択肢に無い答えもOK）。"
+    if state.get("ask", {}).get("judge") and stage in ("looks", "mocks"):
+        L.append(f"<sub>{state['ask']['judge']}</sub>\n")
     L.append("---\n" + how + f"\n\n<sub>工場の相談・{r} 回目。返事を書くと続きを始めます（答えるまで待ちます）</sub>\n")
     L.append(encode(state))
     return "\n".join(L)
@@ -354,6 +374,8 @@ def brief(state):
     if state.get("mock") and assets.get("mocks"):
         k = state["mock"]
         files += [f"{assets['mocks']}/mock-{k}.html", f"{assets['mocks']}/mock-{k}-1440.png", f"{assets['mocks']}/mock-{k}-390.png"]
+        # 設計メモ（持ち物・考え・通し表）と、ざっくり画面で使った絵の出どころ（あれば。無ければ工場の側で飛ばす）
+        files += [f"{assets['mocks']}/concept.md", f"{assets['mocks']}/credits.json"]
     if state.get("look") and assets.get("looks"):
         files.append(f"{assets['looks']}/look-{state['look']}-1440.png")
     return {"name": c.get("name") or idea.get("name", ""), "stack": c.get("stack") or idea.get("stack", ""),

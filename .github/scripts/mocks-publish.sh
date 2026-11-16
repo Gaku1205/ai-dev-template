@@ -53,7 +53,8 @@ n=1
 while [ -d "$a/issue-$ISSUE/r$n" ]; do n=$((n + 1)); done
 dir="issue-$ISSUE/r$n"
 mkdir -p "$a/$dir"
-for f in "$out"/mock-[ab].html "$out"/mock-[ab]-1440.png "$out"/mock-[ab]-390.png; do
+# 下の欄の絵（-s2）と設計メモ（concept.md。作り直しのとき、実装AIが docs/design.md の「このサービスらしさ」に書く）も置く
+for f in "$out"/mock-[ab].html "$out"/mock-[ab]-1440.png "$out"/mock-[ab]-390.png "$out"/mock-[ab]-1440-s2.png "$out"/concept.md; do
   [ -f "$f" ] && [ ! -L "$f" ] && cp "$f" "$a/$dir/"
 done
 git -C "$a" add -A
@@ -74,6 +75,10 @@ for m in c["mocks"]:
     k = m["key"]
     L += [f"### {k.upper()}. {m['title']}", m["note"], "",
           f"<img src=\"{raw}/mock-{k}-1440.png\" width=\"560\" alt=\"{k.upper()} PC\"> <img src=\"{raw}/mock-{k}-390.png\" width=\"150\" alt=\"{k.upper()} スマホ\">", ""]
+    if m.get("more"):
+        L += [f"<details><summary>{k.upper()} の下の欄（スクロールした続き）</summary>", "", f"<img src=\"{raw}/mock-{k}-1440-s2.png\" width=\"560\" alt=\"{k.upper()} 続き\">", "", "</details>", ""]
+if c.get("judge"):
+    L += [f"<sub>{c['judge']}</sub>", ""]
 if c.get("questions"):
     L += ["## ❓ 質問", ""]
     for n, q in enumerate(c["questions"], 1):
