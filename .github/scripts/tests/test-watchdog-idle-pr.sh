@@ -84,4 +84,15 @@ init_state '{"labels":{"58":["ai:hold"]},"pulls":['"$(pr_of 58 claude/issue-5-x 
 run_script watchdog.sh > /dev/null
 assert_contains "レビューがまだなら、レビューへ" "$(labels_of 58)" "ai:review"
 
+
+echo "== レビューAIが動けないPR（レビューのワークフローを変えるPR）で、人間のマージ待ちにしてある：動かさない"
+init_state '{"labels":{"58":["ai:hold","ai:review"]},"pulls":['"$(pr_of 58 fix/review 600)"'],"runs":['"$(ci success)"'],
+  "comments":[{"id":903,"issue":"58","user":{"login":"pipeline[bot]"},"created_at":"'"$(ago 600)"'","updated_at":"'"$(ago 600)"'","body":"ℹ️ レビューAIは動けません\n\n<!-- review-unavailable: abc123 -->"}]}'
+run_script watchdog.sh > /dev/null
+assert_not_contains "動かさない" "$(comments_of 58)" "auto-nudge"
+assert_eq "ラベルは変わらない（レビューのやり直しにも回さない）" "ai:hold,ai:review" "$(labels_of 58)"
+state_py "s['pulls'][0]['head']['sha']='def456'"
+run_script watchdog.sh > /dev/null
+assert_contains "新しいコミットが入っていれば、印は効かない（レビューの結果を待つ・やり直す）" "$(labels_of 58)" "ai:retry"
+
 finish

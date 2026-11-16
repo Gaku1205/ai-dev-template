@@ -24,11 +24,17 @@ VISUAL_MARK="<!-- auto-visual-update -->"
 # 他の Issue・PR の完了待ち（ai:blocked）で、待ち先を書くコメントの印（待ち先ごとに1つ：<!-- blocked-by: owner/repo#N -->）
 # shellcheck disable=SC2034  # after-plan.sh・watchdog.sh で使う
 BLOCKED_MARK_RE='<!-- blocked-by: ([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#([0-9]+) -->'
+# レビューAIが動けないPR（レビューのワークフロー自体を変えるPR）を、人間のマージ待ちにした印（after-review.sh が書き、watchdog.sh が「待っている」と読む）
+# 先頭コミットごとに書く：<!-- review-unavailable: 先頭コミット -->（新しいコミットが入れば、もう一度確かめる）
+# shellcheck disable=SC2034  # after-review.sh・watchdog.sh で使う
+REVIEW_UNAVAILABLE_MARK="review-unavailable:"
 # shellcheck disable=SC2034  # after-ci.sh で使う
 PIPELINE_TEST_MARK="<!-- auto-pipeline-test-rerun -->"
 # 自動でやり直す回数の上限と、失敗してからやり直すまでの待ち時間（分）。
 # 使用量の上限で止まったときは、リセットされるまで何度かやり直しながら待つ
 RETRY_MARK="<!-- auto-retry -->"
+# 人間が再開したとき（resume.sh）に、やり直しの記録に書く理由。write_retry_record が、この文のときだけ「回数を0に戻しました」と書く
+RESUMED_REASON="人間が再開しました"
 MAX_RETRY="${MAX_RETRY:-10}"
 RETRY_COOLDOWN_MIN="${RETRY_COOLDOWN_MIN:-30}"
 # 使用量の上限で止まったときは、回数を減らさずに待つ。リセット時刻が分からないときの待ち時間（分）と、待つのをあきらめる上限（時間）
@@ -419,7 +425,8 @@ write_retry_record() {
 <!-- limit-until=${until_at} -->"
   [ -n "$first" ] && marks="${marks}
 <!-- limit-first=${first} -->"
-  if [ "$count" -eq 0 ]; then
+  # 最初の失敗も回数は 0 なので、回数だけでは見分けない（見分けないと、最初の失敗が「回数を0に戻しました」と出て、理由の行も残らない）
+  if [ "$count" -eq 0 ] && [ "$reason" = "$RESUMED_REASON" ]; then
     # 人間が再開したとき（resume.sh）：回数を0に戻しただけ。「AIが止まった」とは書かない
     body=$(printf '▶ %s。自動のやり直しの回数を0に戻しました。\n\n%s\n<!-- count=0 kind=%s -->%s' "$reason" "$RETRY_MARK" "$kind" "$marks")
   else

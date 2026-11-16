@@ -20,7 +20,7 @@ fi
 record=$(retry_comment "$NUMBER")
 if [ -n "$record" ]; then
   kind=$(printf '%s' "$record" | jq -r .body | sed -nE 's/.*kind=([a-z]+).*/\1/p' | tail -1)
-  write_retry_record "$NUMBER" 0 "${kind:-implement}" "人間が再開しました"
+  write_retry_record "$NUMBER" 0 "${kind:-implement}" "$RESUMED_REASON"
 fi
 remove_label "$NUMBER" "ai:retry"
 

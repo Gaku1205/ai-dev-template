@@ -75,4 +75,24 @@ CONCLUSION=failure HEAD_SHA=abc HEAD_BRANCH=claude/issue-5-x run_script after-re
 assert_contains "実行記録が無ければ、今までどおりやり直し待ち" "$(comments_of 58)" "kind=review"
 assert_not_contains "上限の印は無い" "$(comments_of 58)" "limit-until"
 
+
+echo "== 最初の失敗の記録：「AIが止まった」と理由を書く（人間が再開したときの「回数を0に戻しました」にしない）"
+init_state '{"labels":{"7":["ai:implement"]}}'
+run_lib "mark_for_retry 7 implement '実装AIが途中で止まりました'" > /dev/null
+assert_contains "止まったと書く" "$(comments_of 7)" "AIが止まったので、時間をおいて自動でやり直します"
+assert_contains "理由の行が残る（やり直しのとき引き継ぐ）" "$(comments_of 7)" "理由：実装AIが途中で止まりました"
+assert_not_contains "再開の文にしない" "$(comments_of 7)" "回数を0に戻しました"
+
+echo "== レビューのワークフロー自体を変えるPR：レビューAIは動けないので、やり直さず、人間のマージ待ちにする"
+init_state '{"labels":{"58":["ai:review"],"5":[]},"files":[".github/workflows/claude-review.yml","docs/pipeline.md"],"pulls":['"$pr58"']}'
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-5-x run_script after-review.sh > /dev/null
+assert_contains "ai:hold にする" "$(labels_of 58)" "ai:hold"
+assert_not_contains "やり直し待ちにしない" "$(labels_of 58)" "ai:retry"
+assert_not_contains "止まった扱いにもしない" "$(labels_of 58)" "ai:stuck"
+assert_contains "理由を書く" "$(comments_of 58)" "レビューAIは動けません"
+assert_contains "見張り役が読む印を残す" "$(comments_of 58)" "<!-- review-unavailable: abc -->"
+init_state '{"labels":{"58":["ai:review"],"5":[]},"files":["src/a.ts"],"pulls":['"$pr58"']}'
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-5-x run_script after-review.sh > /dev/null
+assert_contains "ふつうのPRで結果が無ければ、今までどおりやり直し待ち" "$(labels_of 58)" "ai:retry"
+
 finish

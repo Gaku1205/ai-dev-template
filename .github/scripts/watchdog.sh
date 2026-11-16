@@ -228,7 +228,8 @@ ${relabel_mark}"
     head_date=$(gh api "repos/$REPO/commits/$head" -q .commit.committer.date)
     reviewed=$(all_comments "$pr" | jq --arg since "$head_date" \
       '[.[] | select((.user.login == "claude[bot]" or .user.login == "github-actions[bot]") and (.body | startswith("## Code review")) and .created_at >= $since)] | length')
-    if [ "$reviewed" -eq 0 ]; then
+    # レビューAIが動けないPR（レビューのワークフローを変えるPR）だと知らせてある先頭コミットは、結果が無いのが正しい（人間のマージ待ち）
+    if [ "$reviewed" -eq 0 ] && ! all_comments "$pr" | jq -e --arg mk "$REVIEW_UNAVAILABLE_MARK $head" 'any(.[]; .body | contains($mk))' > /dev/null; then
       mark_for_retry "$pr" review "レビューAIの結果が出ないまま${m}分たちました"
       continue
     fi
@@ -252,8 +253,9 @@ ${relabel_mark}"
       head_date=$(gh api "repos/$REPO/commits/$head" -q .commit.committer.date)
       reviewed=$(printf '%s' "$comments" | jq --arg since "$head_date" \
         '[.[] | select((.user.login == "claude[bot]" or .user.login == "github-actions[bot]") and (.body | startswith("## Code review")) and .created_at >= $since)] | length')
-      # マージ待ち（ai:hold で、レビューまで済んでいる）は、人間が押すのを待っている
-      if has_label "$pr" "ai:hold" && [ "$reviewed" -gt 0 ]; then continue; fi
+      # マージ待ち（ai:hold で、レビューまで済んでいる。または、レビューAIが動けないPRだと知らせてある）は、人間が押すのを待っている
+      if has_label "$pr" "ai:hold" && { [ "$reviewed" -gt 0 ] ||
+        printf '%s' "$comments" | jq -e --arg mk "$REVIEW_UNAVAILABLE_MARK $head" 'any(.[]; .body | contains($mk))' > /dev/null; }; then continue; fi
       nudge_mark="<!-- auto-nudge: ${head} -->"
       if printf '%s' "$comments" | jq -e --arg mk "$nudge_mark" 'any(.[]; .body | contains($mk))' > /dev/null; then
         stop_for_human "$pr" "CIは終わっています（結果：${ci_conclusion:-不明}）が、${m}分のあいだ何も進んでいません。見張り役が1回続きを動かしても進みませんでした（Actions の Pipeline・Claude Review・Claude Mention の実行と、CI以外のチェックを確かめてください）"

@@ -71,6 +71,19 @@ if [ -z "$review" ]; then
     echo "PR #$pr：文字で読めない変更だけなので、指摘なしとして進めます"
   fi
 fi
+# レビューのワークフロー自体（claude-review.yml）を変えるPRでは、レビューAIは動けない（AIのアクションは、ワークフローのファイルが
+# main と同じ内容でないと、何もせず成功で終わる）。やり直しても同じなので、やり直さず、すぐ人間のマージ待ち（ai:hold）にする
+# （今までは、30分おきに2回やり直してから「結果のコメントが見つかりません」で人間に回していた）
+if [ -z "$review" ] && gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null | grep -qx '.github/workflows/claude-review.yml'; then
+  has_label "$pr" "ai:hold" || add_label "$pr" "ai:hold" || true
+  remove_label "$pr" "ai:retry"
+  comment "$pr" "ℹ️ このPRはレビューのワークフロー（\`.github/workflows/claude-review.yml\`）を変えるので、レビューAIは動けません（ワークフローが main と同じ内容でないと、AIのアクションは何もしません）。CIは通っています。人間が中身を確かめて、マージしてください。
+
+<!-- ${REVIEW_UNAVAILABLE_MARK} ${HEAD_SHA} -->" || true
+  notify hold "あなたが確かめてマージしてください" "PR #${pr} $(issue_title "$pr")：レビューのワークフローを変えるPRなので、レビューAIは動けません" 4
+  echo "PR #$pr：レビューのワークフローを変えるPRなので、人間のマージ待ちにしました"
+  exit 0
+fi
 if [ -z "$review" ]; then
   # レビューAIが、エラーにならずに何も書かずに終わることがある（一時的な不調）。2回までは自動でやり直し、続くなら人間に回す
   if [ "$(retry_count "$pr")" -lt 2 ]; then
