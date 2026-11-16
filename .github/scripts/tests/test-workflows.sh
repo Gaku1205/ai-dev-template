@@ -207,6 +207,19 @@ echo "== 見張り役は、何もしなかった実行（skipped）の後には�
 wf="$(cat "$WORKFLOWS/watchdog.yml")"
 assert_contains "watchdog.yml：skipped の後は動かない" "$wf" "github.event.workflow_run.conclusion != 'skipped'"
 
+echo "== CI 以外のチェック（Vercel など）を読める：レビューのあとの処理と、マージをやり直す見張り役に、checks・statuses の読み取りがある"
+result=$(python3 - "$WORKFLOWS" <<'PYX'
+import sys, yaml
+w = sys.argv[1]
+out = []
+for f, job in (("pipeline.yml", "after-review"), ("watchdog.yml", "watch")):
+    perms = yaml.safe_load(open(f"{w}/{f}"))["jobs"][job].get("permissions") or {}
+    out.append(f"{f}:" + ("ok" if perms.get("checks") == "read" and perms.get("statuses") == "read" else "ng"))
+print(",".join(out))
+PYX
+)
+assert_eq "読み取りの権限" "pipeline.yml:ok,watchdog.yml:ok" "$result"
+
 echo "== 配る（sync.yml）は、待ってから。新しい方が来たら古い待ちは止まり、配る本体は途中で止めない"
 result=$(python3 - "$WORKFLOWS/sync.yml" <<'PY2'
 import sys, yaml

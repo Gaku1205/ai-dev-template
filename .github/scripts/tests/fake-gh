@@ -140,7 +140,16 @@ if m:
     for pr in st['pulls']:
         if pr['number']==int(m.group(1)): out(pr); sys.exit(0)
 m=re.match(r'commits/([^/]+)/check-runs$',base)
-if m: out({'check_runs':st.get('checks',[])}); sys.exit(0)
+# checks_later・checks_flip_after：この回数だけ読まれたあとは、checks_later を返す（待っている間にチェックが終わった、を表す）
+if m:
+    st['checks_calls']=st.get('checks_calls',0)+1; save()
+    if 'checks_later' in st and st['checks_calls']>st.get('checks_flip_after',0): out({'check_runs':st['checks_later']}); sys.exit(0)
+    out({'check_runs':st.get('checks',[])}); sys.exit(0)
+# コミットステータス（まとめ）：st['statuses'] = [{'context':'Vercel','state':'failure','description':'…','target_url':'…'}]
+m=re.match(r'commits/([^/]+)/status$',base)
+if m:
+    ss=st.get('statuses',[])
+    out({'state':'pending' if not ss or any(x['state']=='pending' for x in ss) else ('failure' if any(x['state']!='success' for x in ss) else 'success'),'statuses':ss}); sys.exit(0)
 if re.match(r'actions/runs/\d+/jobs$',base): out({'jobs':st.get('jobs',[])}); sys.exit(0)
 m=re.match(r'actions/runs/(\d+)/rerun-failed-jobs$',base)
 if m and method=='POST':

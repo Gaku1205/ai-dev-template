@@ -97,6 +97,8 @@ jobs:
     permissions:
       contents: read
       checks: read
+      # CI 以外のチェック（Vercel など）のコミットステータスを読む
+      statuses: read
       # レビューAIの結果（ai-result）を読む・進捗ログ（Issue のコメント）を書く・PRから Issue を引く
       actions: read
       issues: write

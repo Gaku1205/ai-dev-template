@@ -252,7 +252,7 @@ merge_pr() {
 }
 
 # 自動でマージする。できなかったら黙って終わらず、main との衝突なら AI に解消させ、それ以外はやり直し待ちに回す。
-#   使い方：merge_or_handle PR番号 先頭コミット 種類（mark_for_retry に渡す）。マージできたら 0、できなければ 1
+#   使い方：merge_or_handle PR番号 先頭コミット 種類（mark_for_retry に渡す。merge なら、見張り役はAIを動かさずにマージだけをやり直す）。マージできたら 0、できなければ 1
 merge_or_handle() {
   local pr="$1" sha="$2" kind="$3" out state
   if out=$(merge_pr "$pr" "$sha"); then
@@ -264,10 +264,105 @@ merge_or_handle() {
     request_fix_or_stop "$pr" "$sha" "レビューのあとに main が進み、コンフリクトでマージできませんでした。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し（docs/spec.md・docs/design.md も両方の決まりを残す）、どちらかを捨てるときはPRにコメントで理由を書いてください。解消したら確認コマンド（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）を全部通して push してください。"
     echo "PR #$pr：main と衝突してマージできないので、AIに解消を依頼しました"
   else
-    mark_for_retry "$pr" "$kind" "自動でマージできませんでした（状態：${state}。$(printf '%s' "$out" | tail -n 1 | cut -c1-160)）"
-    echo "PR #$pr：マージできなかったので、やり直し待ちにしました（状態：${state}）"
+    # CI 以外のチェック（Vercel など）が落ちていて、GitHub がマージを断ったのかもしれない。落ちているチェックがあれば、名前と理由を書く
+    local ext err
+    err="$(printf '%s' "$out" | tail -n 1 | cut -c1-160)"
+    ext=$(external_checks_not_ok "$sha")
+    if [ -n "$ext" ]; then
+      handle_external_checks "$pr" "$sha" "$ext" "自動でマージできませんでした（状態：${state}。${err}）"
+    else
+      mark_for_retry "$pr" "$kind" "自動でマージできませんでした（状態：${state}。${err}）"
+      echo "PR #$pr：マージできなかったので、やり直し待ちにしました（状態：${state}）"
+    fi
   fi
   return 1
+}
+
+# ---- CI 以外のチェック（Vercel などの外部のサービスが、PRの先頭コミットに付ける物） ----
+# CI（GitHub Actions）もレビューも通ったのに、外部のチェックが落ちている・終わっていないと、マージできない。
+# 黙って止まらないように、落ちているチェックの名前と理由をPRに書き、時間をおいてもう一度確かめる（AIは動かさない。
+# やり直しの種類 merge。見張り役が after-review.sh のマージの判断だけをやり直す）。続くなら人間に回す
+EXTERNAL_CHECK_MARK="external-checks:"
+# 同じ先頭コミットで、確かめ直す回数（これだけ確かめても通らなければ人間に回す）
+EXTERNAL_CHECK_RETRIES="${EXTERNAL_CHECK_RETRIES:-2}"
+
+# 読むだけの API：ワークフローのトークン（READ_TOKEN。checks: read・statuses: read）で読み、読めなければパイプラインの鍵で読む
+read_api() {
+  if [ -n "${READ_TOKEN:-}" ] && GH_TOKEN="$READ_TOKEN" gh api "$@" 2> /dev/null; then return 0; fi
+  gh api "$@" 2> /dev/null
+}
+
+# check run の一覧（JSON の配列）から、CI 以外（GitHub Actions 以外の App が付けた物）で通っていない物を出す。形は下と同じ
+external_check_runs_not_ok() {
+  jq -r '.[] | select((.app.slug // "") != "github-actions")
+    | select(.status != "completed" or (.conclusion | IN("success", "neutral", "skipped") | not))
+    | (.status != "completed") as $pending
+    | ["check", (.name // "?"), (if $pending then "pending" else "failed" end),
+       ((if $pending then (.status // "") else (.conclusion // "") end)
+        + (if (.output.title // "") != "" then "：" + .output.title else "" end) | gsub("[\t\r\n]"; " ") | .[0:140]),
+       (.details_url // .html_url // "")] | @tsv' 2> /dev/null || true
+}
+
+# 先頭コミットの「CI 以外のチェック」のうち、通っていない物を1行に1つ出す（無ければ何も出さない。読めなければ、無いとみなす）。
+#   タブ区切り：種類（check＝check run／status＝コミットステータス） 名前 状態（failed／pending） 理由 URL
+#   第2引数に check run の一覧（JSON の配列）を渡すと、check run は読み直さない
+external_checks_not_ok() {
+  local sha="$1" runs="${2:-}"
+  if [ -z "$runs" ]; then
+    runs=$(read_api "repos/$REPO/commits/$sha/check-runs?per_page=100" -q '[.check_runs[] | select(.name != "review")]') || runs="[]"
+  fi
+  printf '%s' "$runs" | external_check_runs_not_ok
+  read_api "repos/$REPO/commits/$sha/status?per_page=100" -q '.statuses // [] | .[] | select(.state != "success")
+    | ["status", (.context // "?"), (if .state == "pending" then "pending" else "failed" end),
+       ((.state // "") + (if (.description // "") != "" then "：" + .description else "" end) | gsub("[\t\r\n]"; " ") | .[0:140]),
+       (.target_url // "")] | @tsv' || true
+}
+
+# 通っていないチェックの一覧（上の形）を、コメントに書く箇条書きにする
+external_checks_text() {
+  local kind name state why url line
+  while IFS=$'\t' read -r kind name state why url; do
+    [ -z "$name" ] && continue
+    line="- \`${name}\`（$([ "$kind" = status ] && echo "コミットステータス" || echo "check run")）：$([ "$state" = pending ] && echo "まだ終わっていません" || echo "落ちています")"
+    [ -n "$why" ] && line="${line}（${why}）"
+    [ -n "$url" ] && line="${line} ${url}"
+    printf '%s\n' "$line"
+  done <<< "$1"
+}
+
+# 通っていないチェックの名前を「、」でつなぐ（理由の1行用）
+external_checks_names() {
+  printf '%s\n' "$1" | cut -f2 | grep -v '^$' | awk '!seen[$0]++' | paste -sd, - | sed 's/,/、/g'
+}
+
+# CI 以外のチェックが通っていないとき：名前と理由をPRに書いて、やり直し待ち（種類 merge）にする。
+# 同じ先頭コミットで EXTERNAL_CHECK_RETRIES 回確かめ直しても通らなければ、人間に回す（人間が再開したら、数え直す）
+#   使い方：handle_external_checks PR番号 先頭コミット 一覧（external_checks_not_ok の出力） [マージの失敗の文]
+handle_external_checks() {
+  local pr="$1" sha="$2" list="$3" merge_err="${4:-}" names text n lead
+  names=$(external_checks_names "$list")
+  text=$(external_checks_text "$list")
+  n=$(all_comments "$pr" | jq --arg mk "<!-- ${EXTERNAL_CHECK_MARK} ${sha} -->" --arg resume "$RESUME_MARK" '
+    (map(select(.body | contains($resume)) | .created_at) | max // "") as $since
+    | [.[] | select((.body | contains($mk)) and .created_at > $since)] | length')
+  lead="CI（GitHub Actions）とレビューは通りましたが、CI 以外のチェックが通っていません"
+  [ -n "$merge_err" ] && lead="${merge_err}。CI 以外のチェックが通っていません"
+  if [ "${n:-0}" -ge "$EXTERNAL_CHECK_RETRIES" ]; then
+    stop_for_human "$pr" "${lead}（${names}）。時間をおいて${n}回確かめ直しても、変わりませんでした。チェックを付けたサービスの側（Vercel などの画面）を確かめてください。直ったら \`ai:stuck\` を外すと、続きから進みます
+
+${text}"
+    echo "PR #$pr：CI 以外のチェック（${names}）が通らないままなので、人間に回しました"
+    return 0
+  fi
+  comment "$pr" "⏳ ${lead}。まだマージしません。
+
+${text}
+
+一時的な失敗・まだ途中かもしれないので、時間をおいてもう一度確かめます（$((n + 1))/${EXTERNAL_CHECK_RETRIES}回目。AIは動かしません）。それでも通らなければ、人間に回します。
+
+<!-- ${EXTERNAL_CHECK_MARK} ${sha} -->" || true
+  mark_for_retry "$pr" merge "CI 以外のチェックが通っていません（${names}）"
+  echo "PR #$pr：CI 以外のチェック（${names}）が通っていないので、時間をおいて確かめ直します"
 }
 
 # ---- 順番待ち（ai:queue）を進める ----
