@@ -141,6 +141,19 @@ HAS_AWS_REGION=1 HAS_EXPO=1
 run_doctor
 assert_eq "そろった：終了コード 0" "0" "$rc"
 assert_contains "AWS" "$out" "✅ 公開先：AWS App Runner"
+echo '{"checks":[{"run":"pytest"}],"deploy":[{"kind":"github-pages"}]}' > pipeline.json
+fetch_pages() { echo "$PAGES"; }
+PAGES=workflow; run_doctor
+assert_eq "Pages が有効：終了コード 0" "0" "$rc"
+assert_contains "Source が GitHub Actions なら ✅" "$out" "✅ 公開先：GitHub Pages"
+PAGES=none; run_doctor
+assert_eq "Pages が無効：終了コード 1" "1" "$rc"
+assert_contains "無効なら ❌ と直し方" "$out" "❌ 公開先 GitHub Pages が有効になっていない（公開が 404 で失敗する） → https://github.com/o/r/settings/pages"
+PAGES=legacy; run_doctor
+assert_contains "Source が別なら ❌" "$out" "❌ 公開先 GitHub Pages の Source が GitHub Actions ではない"
+PAGES=""; run_doctor
+assert_eq "読めないときは終了コード 0" "0" "$rc"
+assert_contains "読めないときは ⚠️" "$out" "⚠️ 公開先 GitHub Pages の状態を読めなかった"
 echo '{"checks":[]}' > pipeline.json
 run_doctor
 assert_contains "設定の誤りは ❌" "$out" "❌ pipeline.json：checks が空"

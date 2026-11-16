@@ -9,7 +9,13 @@ kind="$1" state="$2" desc="$3" url="${4:-}"
 REPO="${REPO:-${GITHUB_REPOSITORY:?}}"
 SHA="${SHA:?SHA が要ります}"
 # 説明は GitHub の上限（140文字）に収める
-desc=$(printf '%s' "$desc" | tr '\n' ' ' | cut -c1-140)
+desc=$(printf '%s' "$desc" | tr '\n' ' ')
+# pages の失敗には、設定のページの URL を付ける（上限に収める。切れるのは前半の文のほう）
+if [ "$kind" = pages ] && [ "$state" = failure ]; then
+  suffix=" 設定：https://github.com/${REPO}/settings/pages"
+  desc="$(printf '%s' "$desc" | cut -c1-$((140 - ${#suffix})))${suffix}"
+fi
+desc=$(printf '%s' "$desc" | cut -c1-140)
 args=(-f state="$state" -f context="deploy/${kind}" -f description="$desc")
 [ -n "$url" ] && args+=(-f target_url="$url")
 gh api -X POST "repos/$REPO/statuses/$SHA" "${args[@]}" > /dev/null || echo "::warning::公開の状態を書けませんでした（${kind} ${state}）"

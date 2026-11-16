@@ -102,6 +102,18 @@ assert_contains "失敗の通知" "$(cat "$MOCK_DIR/curl.log")" "公開に失敗
 desc=$(grep "context=deploy/github-release" "$LOG" | tail -1 | sed -E 's/.*description=([x]*).*/\1/')
 assert_eq "説明は140文字まで" "140" "${#desc}"
 
+echo "== 状態：pages の失敗には設定のページの URL を付ける（140文字に収め、切れるのは前半）"
+: > "$LOG"
+bash "$SCRIPTS_DIR/deploy-status.sh" pages failure "公開に失敗" > /dev/null 2>&1
+assert_contains "URL が付く" "$(grep context=deploy/pages "$LOG")" "https://github.com/o/app/settings/pages"
+bash "$SCRIPTS_DIR/deploy-status.sh" pages failure "$(printf 'x%.0s' $(seq 1 200))" > /dev/null 2>&1
+desc=$(grep context=deploy/pages "$LOG" | tail -1 | sed -E 's/.*description=//')
+assert_contains "長くても URL は残る" "$desc" "https://github.com/o/app/settings/pages"
+assert_eq "長くても説明は140文字まで" "140" "$(printf '%s' "$desc" | wc -m | tr -d ' ')"
+: > "$LOG"
+bash "$SCRIPTS_DIR/deploy-status.sh" pages success "公開しました" > /dev/null 2>&1
+assert_not_contains "成功には付けない" "$(cat "$LOG")" "settings/pages"
+
 echo "== App Runner：最初の公開はサービスを作る"
 echo 'FROM scratch' > Dockerfile
 export CONFIG='{"kind":"aws-apprunner","service":"hello-api","port":8000,"health":"/health"}' ACCESS_ROLE_ARN=arn:access

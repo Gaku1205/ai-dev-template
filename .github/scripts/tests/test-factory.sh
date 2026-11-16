@@ -53,6 +53,11 @@ if base.endswith("/generate"):
     subprocess.run(["git", "clone", "-q", "--bare", f"{T}/seed", dst], check=True); print("{}"); sys.exit(0)
 m = re.match(r"repos/([^/]+/[^/]+)/branches/main$", base)
 if m: sys.exit(0 if m.group(1) in st["repos"] else 1)
+if base.endswith("/pages") and method == "POST":
+    r = os.environ.get("PAGES_RESULT", "ok")
+    if r == "409": sys.stderr.write("gh: Pages is already enabled. (HTTP 409)\n"); sys.exit(1)
+    if r == "403": sys.stderr.write("gh: Resource not accessible (HTTP 403)\n"); sys.exit(1)
+    print("{}"); sys.exit(0)
 if base.endswith("/rulesets"):
     open(f"{T}/ruleset.json", "w").write(sys.stdin.read()); print("{}"); sys.exit(0)
 if base.endswith("/labels"):
@@ -391,5 +396,21 @@ assert_contains ". で始まる名前は入れない" "$(cat "$T/comment.txt")" 
 mk_site "$S"
 run_factory site-nodesign nextjs "説明" DESIGN_FILE="$T/design-bad.md" SITE_DIR="$S" > /dev/null
 assert_contains "デザイン仕様が雛形のままなら入れない" "$(file_in o/site-nodesign src/app/page.tsx)" "greeting"
+
+echo "== GitHub Pages：公開先に github-pages があれば FACTORY_TOKEN で有効にする（無ければ呼ばない）"
+run_factory no-pages nextjs "説明" > /dev/null
+assert_not_contains "github-pages が無ければ Pages を呼ばない" "$(cat "$T/calls.log")" "/pages"
+echo '{"checks":[{"run":"npm run lint"}],"deploy":[{"kind":"github-pages"}]}' > "$T/seed/pipeline.json"
+git -C "$T/seed" add pipeline.json && git -C "$T/seed" -c user.name=t -c user.email=t@t commit -qm pages
+out=$(run_factory pages-ok nextjs "説明")
+assert_contains "Pages を有効にする（build_type=workflow）" "$(cat "$T/calls.log")" 'POST repos/o/pages-ok/pages {"build_type": "workflow"}'
+assert_contains "成功の ✅" "$out" "✅ GitHub Pages を有効にした"
+out=$(run_factory pages-409 nextjs "説明" PAGES_RESULT=409)
+assert_contains "もう有効（409）なら成功として扱う" "$out" "✅ GitHub Pages はもう有効になっている"
+assert_not_contains "409 は ⚠️ にしない" "$out" "⚠️ GitHub Pages"
+out=$(run_factory pages-ng nextjs "説明" PAGES_RESULT=403)
+assert_contains "失敗は ⚠️ と直し方（URL 付き）" "$out" "⚠️ GitHub Pages を有効にできませんでした（https://github.com/o/pages-ng/settings/pages を開いて、Source を GitHub Actions にする）"
+assert_contains "失敗しても先へ進む" "$(cat "$T/calls.log")" "POST repos/o/pages-ng/issues"
+assert_contains "結果のコメントにも出る" "$(cat "$T/comment.txt")" "⚠️ GitHub Pages を有効にできませんでした"
 
 finish
