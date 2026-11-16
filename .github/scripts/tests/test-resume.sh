@@ -72,7 +72,7 @@ assert_eq "ai:plan が付く" "ai:plan" "$(labels_of 54)"
 assert_contains "ログに出す" "$out" "企画からやり直しました"
 
 echo "== Issue・待っている物（質問・順番待ち・ほかの作業待ち）や ai:skip は、そのまま"
-for l in ai:question ai:queue ai:blocked ai:mocks ai:skip; do
+for l in ai:question ai:queue ai:blocked ai:skip; do
   init_state '{"labels":{"54":["'"$l"'"]}}'
   run_resume 54 false > /dev/null
   assert_eq "$l はそのまま" "$l" "$(labels_of 54)"

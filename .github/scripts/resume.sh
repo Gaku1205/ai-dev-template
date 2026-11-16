@@ -2,7 +2,7 @@
 # 人間が ai:stuck を外したとき：止まった所から自動で続ける（resume.yml から呼ぶ）。
 #   PR    → AIに直させる回数をリセットして、いまのCIの状態から続ける
 #           （通っていればレビューへ、落ちていれば直す、承認待ちなら動かし直す）
-#   Issue → PRがまだなら、企画・実装をやり直す（作業のラベルが無ければ企画から）。PRが止まっていれば、PRの続きを始める
+#   Issue → PRがまだなら、企画・実装・画面案をやり直す（作業のラベルが無ければ企画から）。PRが止まっていれば、PRの続きを始める
 #
 # 環境変数：NUMBER、IS_PR（true/false）、READ_TOKEN（ワークフローのトークン、actions: read）
 source "$(dirname "$0")/pipeline-lib.sh"
@@ -82,11 +82,30 @@ else
       add_label "$NUMBER" "ai:implement"
       echo "#$NUMBER：実装をやり直しました"
     fi
+  elif has_label "$NUMBER" "ai:mocks"; then
+    # 画面案のまま止まって人間に回った物（見張り役の 2.5）：画面案をもう一度作る。
+    # 画面案のジョブが動いている・待っている間は、付け直さない（同じ画面案を2つ作らない）
+    running=0
+    for st in in_progress queued; do
+      c=$(GH_TOKEN="${READ_TOKEN:-$GH_TOKEN}" gh api "repos/$REPO/actions/workflows/claude-mocks.yml/runs?status=$st&per_page=30" \
+        -q '[.workflow_runs[] | select(.status != "completed")] | length' 2> /dev/null) || c=0
+      running=$(( running + ${c:-0} ))
+    done
+    if [ "$running" -gt 0 ]; then
+      echo "#$NUMBER：画面案の実行が動いているので、何もしません"
+    else
+      comment "$NUMBER" "▶ 人間の確認が済んだので、画面案をもう一度作ります。
+
+${RESUME_MARK}"
+      remove_label "$NUMBER" "ai:mocks"
+      add_label "$NUMBER" "ai:mocks"
+      echo "#$NUMBER：画面案をやり直しました"
+    fi
   else
     # 企画で止まった物（人間にしかできない作業の依頼・許可の不足・やり直しの上限）は、止めるときに ai:plan を外してある。
     # 作業のラベルが1つも無ければ、企画からやり直す（何もしないと、見張り役が「頼まれていない Issue」として拾うまで10分以上待つ）。
-    # 待っている物（順番待ち・質問・画面案・ほかの作業待ち）と、まだ動かさない物（ai:skip）は、そのまま
-    for l in ai:queue ai:question ai:mocks ai:blocked ai:skip; do
+    # 待っている物（順番待ち・質問・ほかの作業待ち）と、まだ動かさない物（ai:skip）は、そのまま
+    for l in ai:queue ai:question ai:blocked ai:skip; do
       if has_label "$NUMBER" "$l"; then
         echo "#$NUMBER：${l} が付いているので、何もしません"
         exit 0
