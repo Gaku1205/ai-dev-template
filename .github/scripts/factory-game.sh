@@ -18,6 +18,8 @@ for f in src electron scripts index.html vite.config.ts tsconfig.json package.js
   if [ -e "$ex/$f" ]; then cp -r "$ex/$f" .; fi
 done
 cat "$ex/.gitignore" >> .gitignore
+# 日本語の書体の元（どの PC・ブラウザでも同じ見た目にする。npm run build が使う文字だけを抜き出す）
+mkdir -p assets/fonts && cp examples/game-fonts/* assets/fonts/
 rm -rf examples
 # 3. AGENTS.md はゲーム向けの注意にする
 if [ "$mode" = web ]; then
@@ -28,6 +30,7 @@ if [ "$mode" = web ]; then
 - スマホ（縦の画面・タッチ）と PC（キーボード・マウス）の両方で遊べるようにする。画面の大きさが変わっても崩れない
 - 画面を撮る：`npm run build` のあと `node .github/scripts/shot.mjs --serve --widths 390,1440 /`。遊んでいる途中の場面は、`/?scene=play` のように URL で直接開けるようにしておくと撮れる（`--steps` でキーを押してもよい）
 - 音は Web Audio API で作る（外の音のファイルを読み込まない）。ブラウザは最初に触るまで音を出せないので、最初のタップ・キーで鳴らし始める
+- 日本語の書体は同梱の M PLUS 1（`assets/fonts/`）。`npm run build`・`npm run dev` の前に `npm run fonts` が、`src/` と `index.html` に出る文字だけを抜き出して `public/fonts/mplus1.woff2` を作る（文言を変えても作り直し不要。書体を自分で作ったり、外から取ってきたりしない）。canvas の文字は `src/main.ts` の `JP_FONT`（先頭が "GameJP"）を使い、読み込みを待ってから描く
 MD
 else
   cat > AGENTS.md <<'MD'
@@ -37,6 +40,7 @@ else
 - exe は `electron/main.cjs` が `dist/index.html` を開く。`npm run dist` が Windows の exe（`release/*.exe`）を作る（GitHub の Windows のランナーで動く）
 - 画面を撮る：`npm run build` のあと `node .github/scripts/shot.mjs --serve /`。遊んでいる途中の場面は、`/?scene=play` のように URL で直接開けるようにしておくと撮れる（`--steps` でキーを押してもよい）
 - 音は Web Audio API で作る（外の音のファイルを読み込まない）
+- 日本語の書体は同梱の M PLUS 1（`assets/fonts/`）。`npm run build`・`npm run dev` の前に `npm run fonts` が、`src/` と `index.html` に出る文字だけを抜き出して `public/fonts/mplus1.woff2` を作る（文言を変えても作り直し不要。書体を自分で作ったり、外から取ってきたりしない）。canvas の文字は `src/main.ts` の `JP_FONT`（先頭が "GameJP"）を使い、読み込みを待ってから描く
 MD
 fi
 # 4. CLAUDE.md・仕様書をゲーム向けに

@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Game</title>
     <style>
+      /* 日本語の書体：npm run fonts が public/fonts/ に作る（assets/fonts/README.md）。太さ 100〜900 を1つで持つ */
+      @font-face { font-family: "GameJP"; src: url("./fonts/mplus1.woff2") format("woff2"); font-weight: 100 900; font-display: block; }
       html, body { margin: 0; height: 100%; background: #000; overflow: hidden; overscroll-behavior: none; }
       canvas { display: block; width: 100vw; height: 100dvh; touch-action: none; user-select: none; -webkit-user-select: none; }
     </style>
