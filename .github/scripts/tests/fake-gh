@@ -18,6 +18,12 @@ while i<len(args):
         if k.endswith('[]'): flist.append(v)
         else: fields[k]=v
         i+=2
+    elif a=='--input':
+        _b=json.load(sys.stdin) if args[i+1]=='-' else json.load(open(args[i+1]))
+        for _k,_v in _b.items():
+            if isinstance(_v,list): flist.extend(_v)
+            else: fields[_k]=_v if isinstance(_v,str) else json.dumps(_v)
+        i+=2
     elif a=='--paginate': i+=1
     elif a=='-H': i+=2
     elif a=='--slurp': slurp=True; i+=1
@@ -45,7 +51,16 @@ def out(obj):
         print(json.dumps(obj))
 def save(): json.dump(st,open(ST,'w'))
 base=path.split('?')[0]
-if re.match(r'repos/[^/]+/[^/]+$',base): out({'is_template':st.get('is_template',False)}); sys.exit(0)
+if re.match(r'repos/[^/]+/[^/]+$',base): out({'is_template':st.get('is_template',False),'homepage':st.get('homepage')}); sys.exit(0)
+# 公開（deployments）：st['deployments'] = [{'id':1,'environment':'github-pages','url':'https://…'}]
+if base=='deployments':
+    envm=re.search(r'environment=([^&]+)',path)
+    ds=[d for d in st.get('deployments',[]) if not envm or d['environment']==envm.group(1)]
+    out([{'id':d['id'],'environment':d['environment'],'statuses_url':'https://api.github.com/repos/o/r/deployments/%d/statuses'%d['id']} for d in ds]); sys.exit(0)
+m=re.match(r'deployments/(\d+)/statuses$',base)
+if m: out([{'state':'success','environment_url':d.get('url')} for d in st.get('deployments',[]) if str(d['id'])==m.group(1)]); sys.exit(0)
+# main のコミットの一覧：st['main_commit_date']
+if base=='commits': out([{'sha':'h','commit':{'committer':{'date':st.get('main_commit_date','2026-01-01T00:00:00Z')}}}]); sys.exit(0)
 m=re.match(r'issues/(\d+)/comments$',base)
 if m:
     n=m.group(1)
@@ -85,7 +100,7 @@ if m:
 if base=='issues' and method=='POST':
     meta=st.setdefault('issues_meta',{})
     num=str(max([int(k) for k in list(st['labels'])+list(meta)]+[100])+1)
-    meta[num]={'title':fields.get('title',''),'state':'open'}
+    meta[num]={'title':fields.get('title',''),'state':'open','body':fields.get('body','')}
     st['labels'][num]=list(flist); save(); out({'number':int(num)}); sys.exit(0)
 if base=='issues':
     lab=re.search(r'labels=([^&]+)',path); 
