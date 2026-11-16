@@ -239,7 +239,9 @@ ${relabel_mark}"
   # 回数制限）・呼ばれなかった（CIや修正AIが時間切れで「取り消し」になると、進行役は動かない）ときは、ラベルも記録も残らず、
   # 誰も動かないまま止まる。CIが終わっていて、待つ理由（ai:stuck・ai:retry・visual:update・マージ待ちの ai:hold）が無いのに
   # IDLE_ORPHAN_MIN 分なにも起きていなければ、続きを動かす。同じ先頭コミットには1回だけ。それでも進まなければ人間に回す
+  # fork からの他人のPRは見ない（進行役も扱わない。pr-trust.sh と同じく、head がこのリポジトリのPRだけ）
   if [ "$m" -ge "$IDLE_ORPHAN_MIN" ] && [[ "$ref" != pipeline-sync/* ]] &&
+    [ "$(printf '%s' "$pr_json" | jq -r --arg r "$REPO" '((.head.repo.full_name // "") | ascii_downcase) == ($r | ascii_downcase)')" = true ] &&
     [ "$(printf '%s' "$pr_json" | jq -r '.draft // false')" != true ] &&
     ! has_label "$pr" "ai:retry" && ! has_label "$pr" "visual:update"; then
     ci=$(printf '%s' "${runs:-[]}" | jq -c 'sort_by(.created_at // "") | last // empty')

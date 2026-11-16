@@ -5,7 +5,7 @@ source "$(dirname "$0")/lib.sh"
 setup_mock
 
 pr_of() { # 番号 ブランチ 更新からの分 [足す項目（JSON の中身）]
-  echo '{"number":'"$1"',"state":"open","mergeable_state":"clean","body":"Closes #5","head":{"sha":"abc123","ref":"'"$2"'"},"labels":[],"updated_at":"'"$(ago "$3")"'"'"${4:+,$4}"'}'
+  echo '{"number":'"$1"',"state":"open","mergeable_state":"clean","body":"Closes #5","head":{"sha":"abc123","ref":"'"$2"'","repo":{"full_name":"o/r"}},"labels":[],"updated_at":"'"$(ago "$3")"'"'"${4:+,$4}"'}'
 }
 ci() { echo '{"id":11,"name":"CI","status":"completed","conclusion":"'"$1"'","created_at":"2026-01-01T00:00:00Z"}'; }
 reruns() { python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print(len(s.get('reruns_all',[])))"; }
@@ -65,7 +65,8 @@ for case in \
   '{"labels":{"58":[]},"pulls":['"$(pr_of 58 claude/issue-5-x 20)"'],"runs":['"$(ci success)"']}' \
   '{"labels":{"58":[]},"pulls":['"$(pr_of 58 claude/issue-5-x 60)"'],"runs":[{"id":11,"name":"CI","status":"in_progress","conclusion":null,"created_at":"2026-01-01T00:00:00Z"}]}' \
   '{"labels":{"58":[]},"pulls":['"$(pr_of 58 claude/issue-5-x 60 '"draft":true')"'],"runs":['"$(ci success)"']}' \
-  '{"labels":{"58":[]},"pulls":['"$(pr_of 58 pipeline-sync/abc 60)"'],"runs":['"$(ci success)"']}'; do
+  '{"labels":{"58":[]},"pulls":['"$(pr_of 58 pipeline-sync/abc 60)"'],"runs":['"$(ci success)"']}' \
+  '{"labels":{"58":[]},"pulls":['"$(pr_of 58 feature-x 60 | sed 's#"full_name":"o/r"#"full_name":"stranger/r"#')"'],"runs":['"$(ci cancelled)"']}'; do
   init_state "$case"
   before=$(labels_of 58)
   run_script watchdog.sh > /dev/null
