@@ -9,12 +9,25 @@ on:
 
 jobs:
   claude:
-    # 公開リポジトリでは誰でもコメントできるので、呼べるのはオーナー・メンバー・共同作業者と、
-    # パイプラインの App（ボット）だけ。AI自身（claude[bot]）は呼べない（自分で自分を呼ぶ繰り返しを防ぐ）
+    # 公開リポジトリでは誰でもコメントできるので、呼べるのは次の2つだけ：
+    #   1. 人間のオーナー・メンバー・共同作業者（PIPELINE_TOKEN で動かしているときは、進行役のコメントもオーナーの名前で付くので、ここに入る）
+    #   2. このパイプラインの App（ボット）。コメントに付く「どの App が書いたか」（performed_via_github_app.id）が、
+    #      変数 PIPELINE_APP_ID（鍵を作るのに使っている App の番号。Client ID を入れていれば client_id と比べる）と同じときだけ。
+    #      名前（〜[bot]）では見分けない。PIPELINE_APP_ID が空のときは、どのボットも呼べない（空どうしを「同じ」と数えない）
+    # ほかのボット（リポジトリに入れた別の App・dependabot など）と、AI自身（claude[bot]。自分で自分を呼ぶ繰り返しを防ぐ）は呼べない。
+    # ボットは、行へのコメント（pull_request_review_comment）では呼べない：どの App が書いたかがイベントに無く、
+    # 作業フォルダも最初からPRのコードになるため（パイプラインの直す依頼は、いつもPRへの普通のコメント）。
+    # github-actions[bot]（ワークフローのトークン）のコメントは、GitHub の決まりでワークフローを起こさないので、入れなくてよい
     if: >-
       contains(github.event.comment.body, '@claude') &&
-      (contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) ||
-       (github.event.comment.user.type == 'Bot' && github.event.comment.user.login != 'claude[bot]'))
+      ((github.event.comment.user.type != 'Bot' &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
+       (github.event_name == 'issue_comment' &&
+        github.event.comment.user.type == 'Bot' &&
+        github.event.comment.user.login != 'claude[bot]' &&
+        vars.PIPELINE_APP_ID != '' &&
+        (github.event.comment.performed_via_github_app.id == vars.PIPELINE_APP_ID ||
+         github.event.comment.performed_via_github_app.client_id == vars.PIPELINE_APP_ID)))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency:
@@ -35,7 +48,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      # あとで使う道具（PRのコードを動かしてよいかの判断・結果の記録）は、main の版を API で取ってくる。
+      # あとで使う道具（PRのコードを動かしてよいかの判断・差分の画像の取得・結果の記録）は、main の版を API で取ってくる。
       # 作業フォルダの版は使わない：行へのコメント（pull_request_review_comment）で起きたときは、作業フォルダが最初からPRのコードで、
       # AIのアクションもあとでPRのブランチに切り替える。PR（AI）が書き換えたスクリプトに、判断や記録をさせない
       - name: 道具を main から取ってくる
@@ -45,7 +58,7 @@ jobs:
           BASE: ${{ github.event.repository.default_branch }}
         run: |
           mkdir -p "$RUNNER_TEMP/pipeline-tools"
-          for f in pipeline-lib ai-report denials step-log pr-trust notify; do
+          for f in pipeline-lib ai-report denials step-log pr-trust notify fetch-visual-diff; do
             gh api -H "Accept: application/vnd.github.raw" "repos/$GITHUB_REPOSITORY/contents/.github/scripts/$f.sh?ref=$BASE" \
               > "$RUNNER_TEMP/pipeline-tools/$f.sh" 2> /dev/null || rm -f "$RUNNER_TEMP/pipeline-tools/$f.sh"
           done
@@ -75,23 +88,35 @@ jobs:
         if: steps.visual.outputs.enabled == 'true'
         run: npx playwright install --with-deps chromium
       # 見た目のテストが落ちていたら、差分の画像を .visual-diff/ に取ってくる（AI が見て、意図した変更か崩れかを決める。git には入れない）
+      # トークンを持って動くので、作業フォルダ（行へのコメントのときはPRのコード）の版ではなく、main から取った版を動かす
       - name: 見た目のテストの差分の画像を取ってくる
         if: github.event.issue.pull_request || github.event.pull_request
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.issue.number || github.event.pull_request.number }}
-        run: .github/scripts/fetch-visual-diff.sh
-      # パイプラインの App（ボット）がラベル・コメントで起こした実行を、AIのアクションが断らないようにする。
-      # AI自身（claude[bot]）は許さない（自分のコメントで自分を呼ぶ繰り返しを防ぐ）。Secret は使わない
+        run: |
+          if [ -f "$RUNNER_TEMP/pipeline-tools/fetch-visual-diff.sh" ]; then
+            bash "$RUNNER_TEMP/pipeline-tools/fetch-visual-diff.sh"
+          else
+            echo "::warning::差分の画像を取る道具を main から取れなかったので、画像なしで続けます"
+          fi
+      # パイプラインの App（ボット）がコメントで起こした実行を、AIのアクションが断らないようにする。
+      # 入れるのは、上のジョブの条件と同じ「このパイプラインの App」だけ（PRへの普通のコメントで、書いた App の番号が PIPELINE_APP_ID と同じ）。
+      # ほかのボットと AI自身（claude[bot]）は入れない。Secret は使わない
       - name: 起こしたボットを許可に入れる
         id: bots
         env:
-          SENDER: ${{ github.event.sender.login }}
-          SENDER_TYPE: ${{ github.event.sender.type }}
+          EVENT: ${{ github.event_name }}
+          AUTHOR: ${{ github.event.comment.user.login }}
+          AUTHOR_TYPE: ${{ github.event.comment.user.type }}
+          COMMENT_APP_ID: ${{ github.event.comment.performed_via_github_app.id }}
+          COMMENT_APP_CLIENT_ID: ${{ github.event.comment.performed_via_github_app.client_id }}
+          PIPELINE_APP_ID: ${{ vars.PIPELINE_APP_ID }}
         run: |
           list=""
-          if [ "$SENDER_TYPE" = Bot ] && [ "$SENDER" != "claude[bot]" ]; then
-            list="${SENDER},${SENDER%\[bot\]}"
+          if [ "$EVENT" = issue_comment ] && [ "$AUTHOR_TYPE" = Bot ] && [ "$AUTHOR" != "claude[bot]" ] &&
+            [ -n "$PIPELINE_APP_ID" ] && { [ "$COMMENT_APP_ID" = "$PIPELINE_APP_ID" ] || [ "$COMMENT_APP_CLIENT_ID" = "$PIPELINE_APP_ID" ]; }; then
+            list="${AUTHOR},${AUTHOR%\[bot\]}"
           fi
           echo "list=$list" >> "$GITHUB_OUTPUT"
       # AIのアクションは、PRの作者に書き込み権限が確認できないとき（ボットは必ずこの扱い）、npm・npx などのコマンドを、

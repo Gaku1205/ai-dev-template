@@ -111,14 +111,60 @@ echo "== AIのアクションは、パイプラインの App が起こした実�
 for name in claude-plan.yml claude-implement.yml claude-review.yml claude-mention.yml; do
   wf="$(cat "$WORKFLOWS/$name")"
   assert_contains "$name：allowed_bots を渡す" "$wf" "allowed_bots: \${{ steps.bots.outputs.list }}"
-  assert_contains "$name：claude[bot] は許可しない" "$wf" '"$SENDER" != "claude[bot]"'
+done
+for name in claude-plan.yml claude-implement.yml claude-review.yml; do
+  assert_contains "$name：claude[bot] は許可しない" "$(cat "$WORKFLOWS/$name")" '"$SENDER" != "claude[bot]"'
 done
 
-echo "== @claude を呼べるのは、オーナー・メンバー・共同作業者とパイプラインのボットだけ"
-wf="$(cat "$WORKFLOWS/claude-mention.yml")"
-assert_contains "claude-mention.yml：コメントした人の立場を見る" "$wf" "github.event.comment.author_association"
-assert_contains "claude-mention.yml：OWNER・MEMBER・COLLABORATOR だけ" "$wf" "fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]')"
-assert_contains "claude-mention.yml：ボットは claude[bot] 以外" "$wf" "github.event.comment.user.login != 'claude[bot]'"
+echo "== @claude を呼べるのは、人間のオーナー・メンバー・共同作業者と、このパイプラインの App だけ（ほかのボットは呼べない）"
+# ジョブの条件（if）を、GitHub と同じ比べ方で評価する（gha-expr.py）。誰のどのイベントで動くかを、場面ごとに確かめる
+mention_if=$(python3 -c "
+import sys, yaml
+print(' '.join(yaml.safe_load(open(sys.argv[1]))['jobs']['claude']['if'].split()))" "$WORKFLOWS/claude-mention.yml")
+# 引数：イベント 書いた人 種類（User/Bot） 立場 書いた App の番号（無ければ null） PIPELINE_APP_ID [本文] [App の client_id]
+mention_runs() {
+  local app="null"
+  if [ "$5" != null ]; then app='{"id":'"$5"',"client_id":"'"${8:-Iv1.other}"'"}'; fi
+  local comment='{"body":"'"${7:-@claude 直して}"'","user":{"login":"'"$2"'","type":"'"$3"'"},"author_association":"'"$4"'"'
+  # 行へのコメント（pull_request_review_comment）のイベントには、どの App が書いたかの項目が無い
+  if [ "$1" = issue_comment ]; then comment="$comment"',"performed_via_github_app":'"$app"; fi
+  python3 "$TESTS_DIR/gha-expr.py" "$mention_if" '{"github":{"event_name":"'"$1"'","event":{"comment":'"$comment"'}}},"vars":{"PIPELINE_APP_ID":"'"$6"'"}}'
+}
+assert_eq "オーナー（人間）のコメント" "true" "$(mention_runs issue_comment gaku User OWNER null 5506863)"
+assert_eq "オーナーの、行へのコメント" "true" "$(mention_runs pull_request_review_comment gaku User OWNER null 5506863)"
+assert_eq "共同作業者" "true" "$(mention_runs issue_comment friend User COLLABORATOR null 5506863)"
+assert_eq "App を使っていない（PIPELINE_TOKEN だけ）リポジトリのオーナー" "true" "$(mention_runs issue_comment gaku User OWNER null "")"
+assert_eq "@claude が無いコメントでは動かない" "false" "$(mention_runs issue_comment gaku User OWNER null 5506863 "直して")"
+assert_eq "通りすがりの人は呼べない" "false" "$(mention_runs issue_comment stranger User NONE null 5506863)"
+assert_eq "前にPRを出しただけの人は呼べない" "false" "$(mention_runs issue_comment someone User CONTRIBUTOR null 5506863)"
+assert_eq "パイプラインの App（番号が PIPELINE_APP_ID と同じ）" "true" "$(mention_runs issue_comment 'gaku-ai-pipeline[bot]' Bot CONTRIBUTOR 5506863 5506863)"
+assert_eq "PIPELINE_APP_ID に Client ID を入れていても見分けられる" "true" "$(mention_runs issue_comment 'gaku-ai-pipeline[bot]' Bot CONTRIBUTOR 5506863 Iv23liABC "@claude 直して" Iv23liABC)"
+assert_eq "ほかの App のボットは呼べない" "false" "$(mention_runs issue_comment 'dependabot[bot]' Bot NONE 29110 5506863)"
+assert_eq "名前だけ似せたボットは呼べない（番号で見る）" "false" "$(mention_runs issue_comment 'gaku-ai-pipeline[bot]' Bot CONTRIBUTOR 999 5506863)"
+assert_eq "共同作業者の立場が付いたボットでも、ほかの App なら呼べない" "false" "$(mention_runs issue_comment 'helper[bot]' Bot COLLABORATOR 4242 5506863)"
+assert_eq "AI自身（claude[bot]）は呼べない" "false" "$(mention_runs issue_comment 'claude[bot]' Bot NONE 1236702 5506863)"
+assert_eq "AI自身は、番号が同じに設定されていても呼べない" "false" "$(mention_runs issue_comment 'claude[bot]' Bot NONE 1236702 1236702)"
+assert_eq "ボットは、行へのコメントでは呼べない（パイプラインの App でも）" "false" "$(mention_runs pull_request_review_comment 'gaku-ai-pipeline[bot]' Bot CONTRIBUTOR 5506863 5506863)"
+assert_eq "PIPELINE_APP_ID が空なら、どのボットも呼べない（App の印が無いボット）" "false" "$(mention_runs issue_comment 'some[bot]' Bot NONE null "")"
+assert_eq "PIPELINE_APP_ID が空なら、どのボットも呼べない（行へのコメント）" "false" "$(mention_runs pull_request_review_comment 'some[bot]' Bot NONE null "")"
+assert_eq "App の印が無いボットは呼べない" "false" "$(mention_runs issue_comment 'some[bot]' Bot NONE null 5506863)"
+
+# AIのアクションに渡す許可（allowed_bots）も、同じ決まり：ワークフローの「起こしたボットを許可に入れる」の中身を、そのまま動かす
+bots_run=$(python3 -c "
+import sys, yaml
+steps = yaml.safe_load(open(sys.argv[1]))['jobs']['claude']['steps']
+print(next(st['run'] for st in steps if st.get('id') == 'bots'))" "$WORKFLOWS/claude-mention.yml")
+bots_list() { # イベント 書いた人 種類 書いた App の番号 PIPELINE_APP_ID
+  local f; f=$(mktemp)
+  EVENT="$1" AUTHOR="$2" AUTHOR_TYPE="$3" COMMENT_APP_ID="$4" COMMENT_APP_CLIENT_ID="" PIPELINE_APP_ID="$5" GITHUB_OUTPUT="$f" bash -c "$bots_run" > /dev/null 2>&1
+  cat "$f"; rm -f "$f"
+}
+assert_eq "許可：パイプラインの App" "list=gaku-ai-pipeline[bot],gaku-ai-pipeline" "$(bots_list issue_comment 'gaku-ai-pipeline[bot]' Bot 5506863 5506863)"
+assert_eq "許可：人間のコメントでは空" "list=" "$(bots_list issue_comment gaku User "" 5506863)"
+assert_eq "許可：ほかの App のボットは入れない" "list=" "$(bots_list issue_comment 'dependabot[bot]' Bot 29110 5506863)"
+assert_eq "許可：AI自身は入れない" "list=" "$(bots_list issue_comment 'claude[bot]' Bot 1236702 1236702)"
+assert_eq "許可：行へのコメントのボットは入れない" "list=" "$(bots_list pull_request_review_comment 'gaku-ai-pipeline[bot]' Bot "" 5506863)"
+assert_eq "許可：PIPELINE_APP_ID が空なら入れない" "list=" "$(bots_list issue_comment 'some[bot]' Bot "" "")"
 
 echo "== 清書AIの質問には、ダッシュボードが拾う印を付けさせる"
 wf="$(cat "$WORKFLOWS/claude-plan.yml")"
@@ -152,7 +198,8 @@ assert_contains "修正AI：部品を main から取る" "$(cat "$WORKFLOWS/clau
 
 echo "== 修正AIは、見た目のテストの差分の画像を見てから決める"
 wf="$(cat "$WORKFLOWS/claude-mention.yml")"
-assert_contains "claude-mention.yml：差分の画像を取ってくる" "$wf" ".github/scripts/fetch-visual-diff.sh"
+assert_contains "claude-mention.yml：差分の画像を取ってくる（main から取った版で）" "$wf" 'bash "$RUNNER_TEMP/pipeline-tools/fetch-visual-diff.sh"'
+assert_not_contains "claude-mention.yml：作業フォルダ（PRのコード）の版では取らない" "$wf" "run: .github/scripts/fetch-visual-diff.sh"
 assert_contains "部品：画像を見る指示" "$(cat "$SCRIPTS_DIR/prompts/visual-diff.md")" "Read で開いて見る"
 assert_contains "claude-mention.yml：artifact を読む権限" "$wf" "actions: read"
 
