@@ -27,6 +27,16 @@ IFS=$'\t' read -r subtype turns denials <<< "$meta"
 usage=$(jq -r 'if type == "array" then . else [.] end | map(select(type == "object" and .type == "result")) | last // {} | .usage // {}
   | select((.input_tokens // .output_tokens // null) != null)
   | "入力 \((.input_tokens // 0) + (.cache_creation_input_tokens // 0))・キャッシュから \(.cache_read_input_tokens // 0)・出力 \(.output_tokens // 0) トークン"' "$f" 2> /dev/null) || usage=""
+# push が失敗したときの GitHub の返事（最後の push の結果から、error・fatal・remote・rejected の行を3行まで）。
+# 「403 で拒否された」だけでは、権限・ワークフローの更新・保護のどれが原因か分からないため（tap-stack-rush #1）
+push_err=$(jq -r 'if type == "array" then . else [.] end
+  | (map(select(type == "object" and .type == "assistant") | .message.content // [] | .[]? | select(.type == "tool_use")
+      | {key: .id, value: (.input.command // "")}) | from_entries) as $cmd
+  | [.[] | select(type == "object" and .type == "user") | .message.content // [] | .[]? | select(type == "object" and .type == "tool_result")
+      | select(($cmd[.tool_use_id] // "") | test("git push|git-push\\.sh"))
+      | (if (.content | type) == "string" then .content else ([.content[]? | .text? // empty] | join("\n")) end)]
+  | last // ""
+  | [splits("\n") | select(test("error|fatal|rejected|refusing|denied|403"; "i"))] | .[:3] | join(" / ")' "$f" 2> /dev/null) || push_err=""
 raw=$(denied_raw "$f")
 words=$(ai_last_words "$f" 1200)
 
@@ -40,6 +50,9 @@ words=$(ai_last_words "$f" 1200)
   if [ -n "$raw" ]; then
     echo "- 拒否された操作（最大5件）："
     printf '%s\n' "$raw" | sed 's/`/'"'"'/g; s/^/  - `/; s/$/`/'
+  fi
+  if [ -n "$push_err" ]; then
+    echo "- push の失敗：$(printf '%s' "$push_err" | cut -c1-400)"
   fi
   if [ -n "$words" ]; then
     echo "- AIが最後に言ったこと：${words}"
