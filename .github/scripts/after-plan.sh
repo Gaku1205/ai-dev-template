@@ -21,6 +21,16 @@ if [ "$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE" --jq .state 2> /dev/null
   exit 0
 fi
 
+# ai:skip が付いている Issue（オーナー以外が作って、受付が止めた物など）は、進めない。やり直しにも回さない。
+# 雛形（メモ）から作ると誰の Issue にも ai:plan が付き、AIのアクションは書き込み権限の無い人を断って失敗で終わる。
+# それを「一時的な失敗」としてやり直すと、パイプラインの鍵が ai:plan を付け直し、他人の Issue を企画・実装してしまう
+if GH_TOKEN="$GITHUB_TOKEN_FOR_LABELS" has_label "$ISSUE" "ai:skip"; then
+  echo "#$ISSUE は ai:skip が付いているので、企画の結果は使いません（オーナーが ai:skip を外すと、企画に回ります）"
+  GH_TOKEN="$GITHUB_TOKEN_FOR_LABELS" remove_label "$ISSUE" "ai:plan"
+  GH_TOKEN="$GITHUB_TOKEN_FOR_LABELS" remove_label "$ISSUE" "ai:retry"
+  exit 0
+fi
+
 result=$(head -n 1 plan-result.txt 2> /dev/null | tr -d '\r' || true)
 # 企画AIがエラーで終わったとき（使用量の上限など）は、質問扱いにせず、自動でやり直す（watchdog.sh）
 if [ "$PLAN_OUTCOME" != "success" ]; then
@@ -62,7 +72,22 @@ case "$result" in
       busy=$(GH_TOKEN="$pipeline_token" count_open_issues_with_label "ai:implement")
       stuck=$(GH_TOKEN="$pipeline_token" count_open_issues_with_label "ai:stuck")
       echo "企画AIの判断：${parallel:-なし} / 実装中 ${busy} / 停止中 ${stuck}（並列の上限 ${MAX_PARALLEL}）"
-      if [ "$busy" -gt 0 ] && { [ "$parallel" != "PARALLEL" ] || [ "$stuck" -gt 0 ] || [ "$busy" -ge "$MAX_PARALLEL" ]; }; then
+      # 企画AIの「並列でよい」は、企画を始めた時点の進行中の作業を見た判断。企画の間に別の Issue の実装が始まっていると
+      # （まとめて Issue を書いたとき）、その作業とは見比べていない。触るファイルの印（ai-touches）が両方にあって重なるなら、待つ
+      overlap=no
+      if [ "$busy" -gt 0 ] && [ "$parallel" = "PARALLEL" ]; then
+        mine=$(touches_from_body "$(GH_TOKEN="$pipeline_token" gh api "repos/$REPO/issues/$ISSUE" -q '.body // ""' 2> /dev/null || true)")
+        if [ -n "$mine" ]; then
+          inflight=$(GH_TOKEN="$pipeline_token" inflight_touches) || inflight=unknown
+          screen=0
+          if GH_TOKEN="$pipeline_token" repo_has_visual_tests; then screen=1; fi
+          if ! printf '%s\n' "$inflight" | grep -qx unknown && paths_overlap "$mine" "$inflight" "$screen"; then
+            overlap=yes
+            echo "#$ISSUE：企画AIは並列でよいと判断しましたが、進行中の作業と触るファイルが重なるので、待ちます"
+          fi
+        fi
+      fi
+      if [ "$busy" -gt 0 ] && { [ "$parallel" != "PARALLEL" ] || [ "$stuck" -gt 0 ] || [ "$busy" -ge "$MAX_PARALLEL" ] || [ "$overlap" = yes ]; }; then
         # 終われば queue.yml が始める
         GH_TOKEN="$pipeline_token" add_label "$ISSUE" "ai:queue"
         echo "#$ISSUE：進行中の作業とぶつかる・上限なので、順番待ちに入れました"

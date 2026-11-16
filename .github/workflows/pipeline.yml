@@ -162,6 +162,8 @@ jobs:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           READ_TOKEN: ${{ github.token }}
+          # レビューAIの実行記録（上で取った ai-result）。エラーで終わったとき、使用量の上限かどうかを見分けるのに使う（無くてもよい）
+          EXECUTION_FILE: ${{ runner.temp }}/ai-result/execution.json
         run: .github/scripts/after-review.sh
 
   after-mention:

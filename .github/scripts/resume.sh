@@ -2,7 +2,7 @@
 # 人間が ai:stuck を外したとき：止まった所から自動で続ける（resume.yml から呼ぶ）。
 #   PR    → AIに直させる回数をリセットして、いまのCIの状態から続ける
 #           （通っていればレビューへ、落ちていれば直す、承認待ちなら動かし直す）
-#   Issue → PRがまだなら、企画・実装をやり直す
+#   Issue → PRがまだなら、企画・実装をやり直す（作業のラベルが無ければ企画から）。PRが止まっていれば、PRの続きを始める
 #
 # 環境変数：NUMBER、IS_PR（true/false）、READ_TOKEN（ワークフローのトークン、actions: read）
 source "$(dirname "$0")/pipeline-lib.sh"
@@ -20,7 +20,7 @@ fi
 record=$(retry_comment "$NUMBER")
 if [ -n "$record" ]; then
   kind=$(printf '%s' "$record" | jq -r .body | sed -nE 's/.*kind=([a-z]+).*/\1/p' | tail -1)
-  write_retry_record "$NUMBER" 0 "${kind:-implement}" "人間が再開しました"
+  write_retry_record "$NUMBER" 0 "${kind:-implement}" "$RESUMED_REASON"
 fi
 remove_label "$NUMBER" "ai:retry"
 
@@ -68,14 +68,38 @@ else
     add_label "$NUMBER" "ai:plan"
     echo "#$NUMBER：企画をやり直しました"
   elif has_label "$NUMBER" "ai:implement"; then
-    if gh api "repos/$REPO/pulls?state=open&per_page=100" -q '.[].head.ref' | grep -q "^claude/issue-${NUMBER}-"; then
-      echo "#$NUMBER：PRがあるので、実装はやり直しません"
+    pr=$(gh api "repos/$REPO/pulls?state=open&per_page=100" -q ".[] | select(.head.ref | startswith(\"claude/issue-${NUMBER}-\")) | .number" | head -1)
+    if [ -n "$pr" ]; then
+      # PRが止まると、PRと Issue の両方に ai:stuck が付く。Issue の方だけ外されたときも、PRの続きを始める
+      # （パイプラインの鍵で外すので、PRの方の再開（このワークフロー）が動く）
+      if take_label "$pr" "ai:stuck"; then
+        echo "#$NUMBER：PR #$pr の ai:stuck も外しました。PRの止まった所から続けます"
+      else
+        echo "#$NUMBER：PRがあるので、実装はやり直しません"
+      fi
     else
       remove_label "$NUMBER" "ai:implement"
       add_label "$NUMBER" "ai:implement"
       echo "#$NUMBER：実装をやり直しました"
     fi
   else
-    echo "#$NUMBER：やり直す作業のラベルが無いので、何もしません"
+    # 企画で止まった物（人間にしかできない作業の依頼・許可の不足・やり直しの上限）は、止めるときに ai:plan を外してある。
+    # 作業のラベルが1つも無ければ、企画からやり直す（何もしないと、見張り役が「頼まれていない Issue」として拾うまで10分以上待つ）。
+    # 待っている物（順番待ち・質問・画面案・ほかの作業待ち）と、まだ動かさない物（ai:skip）は、そのまま
+    for l in ai:queue ai:question ai:mocks ai:blocked ai:skip; do
+      if has_label "$NUMBER" "$l"; then
+        echo "#$NUMBER：${l} が付いているので、何もしません"
+        exit 0
+      fi
+    done
+    # この Issue を閉じるPRが開いていれば、作業はPRの側で進んでいる（PRを再開すると、紐づく Issue の ai:stuck も外れてここに来る）。企画し直さない
+    linked=$(gh api "repos/$REPO/pulls?state=open&per_page=100" | jq --arg n "$NUMBER" \
+      '[.[] | select((.head.ref | startswith("claude/issue-" + $n + "-")) or ((.body // "") | test("(close[sd]?|fix(e[sd])?|resolve[sd]?) #" + $n + "([^0-9]|$)"; "i")))] | length')
+    if [ "${linked:-0}" -gt 0 ]; then
+      echo "#$NUMBER：この Issue のPRが開いているので、企画はやり直しません"
+      exit 0
+    fi
+    add_label "$NUMBER" "ai:plan"
+    echo "#$NUMBER：作業のラベルが無いので、企画からやり直しました"
   fi
 fi

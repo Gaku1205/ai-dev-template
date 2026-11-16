@@ -60,6 +60,7 @@ import json, os, sys
 pr = {'number': 70, 'body': os.environ.get('SYNC_BODY', '<!-- pipeline-sync -->'), 'user': {'login': os.environ.get('SYNC_AUTHOR', 'gaku-ai-pipeline[bot]')}, 'state': 'open', 'head': {'sha': 'abc', 'ref': 'pipeline-sync/123abcd'}, 'updated_at': '2026-01-01T00:00:00Z'}
 s = {'next_id': 0, 'comments': [], 'labels': {'70': []}, 'issue_updated': {}, 'pulls': [pr], 'jobs': [], 'checks': [], 'runs': [], 'branches': [{'name': 'pipeline-sync/123abcd'}], 'authors': {}, 'ahead_by': int(sys.argv[1])}
 if os.environ.get('MERGE_FAIL'): s['merge_fail'] = os.environ['MERGE_FAIL']
+if os.environ.get('MERGE_FAIL_TIMES'): s['merge_fail_times'] = int(os.environ['MERGE_FAIL_TIMES'])
 json.dump(s, open(os.environ['MOCK_STATE'], 'w'))
 PY
   RUN_ID=1 CONCLUSION="$1" HEAD_SHA=abc HEAD_BRANCH=pipeline-sync/123abcd run_script after-ci.sh > /dev/null
@@ -92,5 +93,14 @@ assert_eq "マージされない" "" "$(merged_of)"
 assert_contains "ai:stuck が付く" "$(labels_of 70)" "ai:stuck"
 assert_contains "理由をコメントする" "$(comments_of 70)" "マージできませんでした"
 assert_not_contains "AIに直させない" "$(comments_of 70)" "auto-fix"
+
+
+echo "== パイプラインの更新のPR：マージが一時的なエラー（502）なら、待って試し直す（1回の 502 で人間に回さない）"
+MERGE_FAIL_TIMES=2 sync_case success 0
+assert_eq "3回目でマージされる" "70" "$(merged_of)"
+assert_not_contains "人間に回さない" "$(labels_of 70)" "ai:stuck"
+MERGE_FAIL_TIMES=3 sync_case success 0
+assert_eq "3回とも駄目ならマージしない" "" "$(merged_of)"
+assert_contains "人間に回す" "$(labels_of 70)" "ai:stuck"
 
 finish

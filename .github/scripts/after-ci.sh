@@ -42,7 +42,8 @@ case "$sync_pr" in
         gh api -X PUT "repos/$REPO/pulls/$pr/update-branch" -f expected_head_sha="$HEAD_SHA" > /dev/null 2>&1 || true
         echo "PR #$pr（パイプラインの更新）：main を取り込みました。CIが終わったらマージします"
       else
-        if ! out=$(gh api -X PUT "repos/$REPO/pulls/$pr/merge" -f sha="$HEAD_SHA" -f merge_method=merge 2>&1); then
+        # 一時的なエラー（502 など）は、少し待って3回まで試す（merge_pr）
+        if ! out=$(merge_pr "$pr" "$HEAD_SHA"); then
           # 配られた更新は AI に直させない（マネージャーが見る）
           add_label "$pr" "ai:stuck"
           comment "$pr" "⚠️ テンプレートから配られたパイプラインの更新を、マージできませんでした（$(printf '%s' "$out" | tail -n 1 | cut -c1-160)）。マネージャーに確認してもらってください。"

@@ -431,4 +431,26 @@ ft=$(printf '%s\n' "$names" | grep -n "^最後の画面を撮る$" | cut -d: -f1
 assert_eq "戻す手順がある" "yes" "$([ -n "$rv" ] && echo yes || echo no)"
 assert_eq "最後の画面を撮る前に戻す" "yes" "$([ -n "$rv" ] && [ -n "$ft" ] && [ "$rv" -lt "$ft" ] && echo yes || echo no)"
 
+echo "== ai:skip が付いた Issue では、ラベルが付け直されても企画・実装を始めない（オーナー以外の Issue を、やり直しで動かさない）"
+result=$(python3 - "$WORKFLOWS" <<'PY'
+import sys, yaml
+bad = []
+for f, job in (("claude-plan.yml", "plan"), ("claude-implement.yml", "implement")):
+    cond = yaml.safe_load(open(f"{sys.argv[1]}/{f}"))["jobs"][job].get("if", "")
+    if "!contains(github.event.issue.labels.*.name, 'ai:skip')" not in cond: bad.append(f)
+print(",".join(bad))
+PY
+)
+assert_eq "企画と実装のジョブの条件にある" "" "$result"
+
+echo "== レビューのあとの処理に、レビューAIの実行記録を渡す（使用量の上限を見分けて、回数を使わずに待つ）"
+result=$(python3 - "$WORKFLOWS" <<'PY'
+import sys, yaml
+steps = yaml.safe_load(open(f"{sys.argv[1]}/pipeline.yml"))["jobs"]["after-review"]["steps"]
+run = [s for s in steps if "after-review.sh" in str(s.get("run", ""))][0]
+print(run.get("env", {}).get("EXECUTION_FILE", ""))
+PY
+)
+assert_contains "after-review.sh に EXECUTION_FILE" "$result" "ai-result/execution.json"
+
 finish

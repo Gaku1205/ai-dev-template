@@ -16,9 +16,11 @@ on:
 jobs:
   implement:
     # テンプレート本体の「新サービス：」のIssueは工場（factory.yml）が受け持つ。ラベルが付いても、テンプレート自身には作らない
+    # ai:skip が付いた Issue（まだ動かさない物・オーナー以外が作って受付が止めた物）では、ラベルが付け直されても始めない
     if: >-
       github.event.label.name == 'ai:implement' &&
       github.event.issue.state == 'open' &&
+      !contains(github.event.issue.labels.*.name, 'ai:skip') &&
       !(github.event.repository.is_template && (startsWith(github.event.issue.title, '新サービス：') || startsWith(github.event.issue.title, '新サービス:') || contains(github.event.issue.labels.*.name, 'factory')))
     runs-on: ubuntu-latest
     outputs:

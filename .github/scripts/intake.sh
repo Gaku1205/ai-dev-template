@@ -2,8 +2,9 @@
 # 新しいIssueを、人間がラベルを付けなくても自動で企画AI（ai:plan）に回す。intake.yml から呼ぶ。
 # ai: で始まるラベルが1つでも付いていれば何もしない（自分で ai:queue などを付けた物、ai:skip で止めている物）。
 #
-# 公開リポジトリでは誰でもIssueを作れるので、オーナー（とパイプライン自身が作る分割Issue）以外が
-# 作ったIssueは、自動で動かさず ai:skip で止める。オーナーが ai:skip を外せば、そのまま企画に回る。
+# 公開リポジトリでは誰でもIssueを作れるので、オーナー（とパイプライン自身が作るIssue）以外が
+# 作ったIssueは、自動で動かさず ai:skip で止める（雛形で付いた ai:plan などの作業のラベルも外す）。
+# オーナーが ai:skip を外せば、そのまま企画に回る。
 #
 # 環境変数：NUMBER、ACTION（opened か unlabeled）
 source "$(dirname "$0")/pipeline-lib.sh"
@@ -11,14 +12,28 @@ has_pipeline_token || { echo "PIPELINE_TOKEN が無いので何もしません";
 
 if [ "${ACTION:-opened}" = "opened" ]; then
   author=$(gh api "repos/$REPO/issues/$NUMBER" -q '.user.login') || exit 1
-  case "${author,,}" in
-    "${OWNER,,}" | "claude[bot]") ;;
-    *)
-      has_label "$NUMBER" "ai:skip" || add_label "$NUMBER" "ai:skip"
-      echo "#$NUMBER：オーナー以外（$author）が作ったので、ai:skip で止めました"
-      exit 0
-      ;;
-  esac
+  if ! trusted_author "$author"; then
+    labels=$(gh api "repos/$REPO/issues/$NUMBER/labels" -q '.[].name') || exit 1
+    case "$author" in
+      *"[bot]")
+        # パイプライン自身（App）が、ラベルを付けて作った Issue（使ってみる役・監査役の ai:found など）は、そのまま進める。
+        # ボットは Issue の雛形を使わないので、ai: のラベルを付けて作れるのは、このリポジトリに書き込める仕組みだけ
+        if printf '%s\n' "$labels" | grep -q '^ai:'; then
+          echo "#$NUMBER：仕組み（$author）がラベルを付けて作った Issue なので、そのまま進めます"
+          exit 0
+        fi
+        ;;
+    esac
+    # 雛形（メモ）から作ると、誰が作っても ai:plan が付く。オーナー以外の Issue では、作業のラベルを外して止める
+    # （残すと、AIのアクションが断ったあと、自動のやり直しがパイプラインの鍵で ai:plan を付け直し、他人の Issue を実装してしまう）
+    # 先に ai:skip を付ける（ai:skip がある間は、企画のあとの処理も見張り役も動かさない）
+    printf '%s\n' "$labels" | grep -qx "ai:skip" || add_label "$NUMBER" "ai:skip"
+    for l in ai:plan ai:implement ai:queue ai:mocks; do
+      if printf '%s\n' "$labels" | grep -qx "$l"; then remove_label "$NUMBER" "$l"; fi
+    done
+    echo "#$NUMBER：オーナー以外（$author）が作ったので、ai:skip で止めました"
+    exit 0
+  fi
 fi
 
 # 作った直後にラベルを付ける人・スクリプトがいるので、少し待ってから見る
