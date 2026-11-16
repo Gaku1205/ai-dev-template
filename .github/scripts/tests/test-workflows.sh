@@ -424,4 +424,27 @@ echo "== 読む量を減らす：企画AIが Issue に「読む所」を書き�
 assert_contains "企画のプロンプト" "$(cat "$WORKFLOWS/claude-plan.yml")" "### 読む所"
 assert_contains "部品：読む所の指示" "$(cat "$SCRIPTS_DIR/prompts/read-sections.md")" "「読む所」の見出しがあれば、docs/spec.md と docs/design.md は最初から全部は読まない"
 
+
+echo "== ai:skip が付いた Issue では、ラベルが付け直されても企画・実装を始めない（オーナー以外の Issue を、やり直しで動かさない）"
+result=$(python3 - "$WORKFLOWS" <<'PY'
+import sys, yaml
+bad = []
+for f, job in (("claude-plan.yml", "plan"), ("claude-implement.yml", "implement")):
+    cond = yaml.safe_load(open(f"{sys.argv[1]}/{f}"))["jobs"][job].get("if", "")
+    if "!contains(github.event.issue.labels.*.name, 'ai:skip')" not in cond: bad.append(f)
+print(",".join(bad))
+PY
+)
+assert_eq "企画と実装のジョブの条件にある" "" "$result"
+
+echo "== レビューのあとの処理に、レビューAIの実行記録を渡す（使用量の上限を見分けて、回数を使わずに待つ）"
+result=$(python3 - "$WORKFLOWS" <<'PY'
+import sys, yaml
+steps = yaml.safe_load(open(f"{sys.argv[1]}/pipeline.yml"))["jobs"]["after-review"]["steps"]
+run = [s for s in steps if "after-review.sh" in str(s.get("run", ""))][0]
+print(run.get("env", {}).get("EXECUTION_FILE", ""))
+PY
+)
+assert_contains "after-review.sh に EXECUTION_FILE" "$result" "ai-result/execution.json"
+
 finish

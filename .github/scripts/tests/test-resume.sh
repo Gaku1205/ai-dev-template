@@ -85,4 +85,13 @@ assert_eq "PRの ai:stuck が外れる" "" "$(labels_of 58)"
 assert_eq "Issue は実装をやり直さない" "ai:implement" "$(labels_of 54)"
 assert_contains "ログに出す" "$out" "PRの止まった所から続けます"
 
+
+echo "== Issue・作業のラベルは無いが、この Issue を閉じるPRが開いている（人間のPRなど）→ 企画し直さない"
+init_state '{"labels":{"54":[],"58":[]},"pulls":[{"number":58,"body":"Closes #54","state":"open","head":{"sha":"abc","ref":"my-branch"},"updated_at":"2026-01-01T00:00:00Z"}]}'
+run_resume 54 false > /dev/null
+assert_eq "ai:plan を付けない" "" "$(labels_of 54)"
+init_state '{"labels":{"5":[],"58":[]},"pulls":[{"number":58,"body":"Closes #54","state":"open","head":{"sha":"abc","ref":"my-branch"},"updated_at":"2026-01-01T00:00:00Z"}]}'
+run_resume 5 false > /dev/null
+assert_eq "別の番号（#54）のPRは関係ない" "ai:plan" "$(labels_of 5)"
+
 finish

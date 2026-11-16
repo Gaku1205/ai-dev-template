@@ -158,6 +158,7 @@ for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aimplem
   fi
   has_label "$n" "ai:stuck" && continue
   has_label "$n" "ai:retry" && continue
+  has_label "$n" "ai:skip" && continue
   has_open_pr_for_issue "$n" && continue
   m=$(idle_min "$(gh api "repos/$REPO/issues/$n" -q .updated_at)")
   [ "$m" -lt "$IDLE_IMPLEMENT_MIN" ] && continue
