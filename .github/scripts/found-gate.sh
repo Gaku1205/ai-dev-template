@@ -55,6 +55,11 @@ case "$kind" in
           fi
           break
         fi
+        # パイプラインの物（.github/・docs/pipeline.md）しか変わっていないコミットは公開されず、ステータスが付かない。飛ばす
+        files=$(gh api "repos/$REPO/commits/$sha" --jq '[.files[].filename] | join("\n")' 2> /dev/null || true)
+        if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -vqE '^(\.github/|docs/pipeline\.md$)'; then
+          continue
+        fi
         first=0
       done
       if [ -n "$behind" ]; then

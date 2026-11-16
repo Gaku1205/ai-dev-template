@@ -42,6 +42,14 @@ echo "== 先頭の公開が成功 → 動かす"
 init_state '{"homepage":"https://app.vercel.app","main_commit_date":"2026-11-16T03:00:00Z","main_commits":["h2","h1"],"statuses_by_sha":{"h2":[{"context":"Vercel","state":"success"},{"context":"CI","state":"failure"}]}}'
 gate try
 assert_eq "run" "true" "$(val run)"
+echo "== 先頭がパイプラインの更新だけのコミット（公開されない）で、前のアプリのコミットが成功 → 動かす"
+init_state '{"homepage":"https://app.vercel.app","main_commit_date":"2026-11-16T03:00:00Z","main_commits":["h3","h2","h1"],"commit_files":{"h3":[".github/scripts/a.sh","docs/pipeline.md"],"h2":["src/app.ts"]},"statuses_by_sha":{"h3":[],"h2":[{"context":"Vercel","state":"success"}]}}'
+gate try
+assert_eq "run" "true" "$(val run)"
+echo "== パイプラインの更新の前にアプリのコミットがあり、公開が無い（追いついていない）→ 動かさない"
+init_state '{"homepage":"https://app.vercel.app","main_commit_date":"2026-11-16T03:00:00Z","main_commits":["h3","h2","h1"],"commit_files":{"h3":["docs/pipeline.md"],"h2":["src/app.ts"]},"statuses_by_sha":{"h3":[],"h2":[],"h1":[{"context":"Vercel","state":"success"}]}}'
+gate try
+assert_eq "run" "false" "$(val run)"
 echo "== 手で動かしたら（FORCE=1）見ない"
 init_state '{"homepage":"https://app.vercel.app","main_commit_date":"2026-11-16T03:00:00Z","main_commits":["h2","h1"],"statuses_by_sha":{"h2":[],"h1":[{"context":"Vercel","state":"success"}]}}'
 FORCE=1 gate try
