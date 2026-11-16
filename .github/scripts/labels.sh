@@ -5,7 +5,6 @@ set -euo pipefail
 make_label() {
   gh label create "$1" -R "$REPO" --color "$2" --description "$3" --force
 }
-make_label "ai:plan" "8B5CF6" "企画AIが短いメモをIssueに清書し、実装に回す"
 make_label "ai:implement" "5E9BF7" "実装AIが作業を始める"
 make_label "ai:review" "5E9BF7" "レビューAIが確認する"
 make_label "ai:queue" "BFD4F2" "順番待ち。前の物がマージされたら自動で実装が始まる"
@@ -21,3 +20,6 @@ make_label "ai:retry" "BFD4F2" "AIが一時的に止まった（使用量の上�
 make_label "visual:update" "C5DEF5" "見た目のテストの基準の画像を、CIの環境で撮り直す"
 make_label "size:S" "C5DEF5" "小さい作業（軽いモデル）"
 make_label "size:L" "0E8A16" "大きい作業（重いモデル）"
+# ai:plan は必ず最後に作る：Bootstrap と Setup Labels は「ai:plan があれば、最初の準備は済んでいる」とみなす。
+# 先に作ると、途中で失敗したとき（GitHub の不調など）に、残りのラベルが無いまま「準備ずみ」になり、二度と作られない
+make_label "ai:plan" "8B5CF6" "企画AIが短いメモをIssueに清書し、実装に回す"

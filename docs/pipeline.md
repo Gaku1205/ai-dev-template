@@ -460,7 +460,7 @@ AIの実行記録から、許可されず拒否された操作（`permission_den
 | 監査役（`claude-audit.yml`） | 毎週月曜 3:41（日本時間）。ただし進行中の作業（`ai:plan`・`ai:implement`・`ai:review`・`ai:queue` の Issue、`claude/` のPR）が無いときだけ。`docs/spec.md` が無いリポジトリでは動かない | 仕様書の中・仕様書とデザイン仕様・仕様書とコードの食い違いを探す。どちらに合わせるかと、直すときに触るファイルも書く（誤字・好み・まだ作っていない機能は書かない） | 1回に最大3件 |
 
 - 動かすかは `found-gate.sh try|audit` が決める。公開先の URL は、GitHub Pages の公開があればその URL、無ければリポジトリの「Website」（工場が公開先を書く）。Actions の画面から手で動かすと（`force`）、日付・進行中の条件を見ずに動く
-- AIは結果を `.try/result.json`・`.audit/result.json`（`{"findings":[{"title","body"}]}`）に書くだけ。Issue は、別のジョブ（`report`）が main の版の `found-report.sh` で作る（AIのジョブにはパイプラインの鍵を渡さない）。同じ題名の `ai:found` の Issue が開いていれば作らない（空白の違いは無視）
+- AIは結果を `.try/result.json`・`.audit/result.json`（`{"findings":[{"title","body"}]}`）に書くだけ。Issue は、別のジョブ（`report`）が main の版の `found-report.sh` で作る（AIのジョブにはパイプラインの鍵を渡さない）。同じ題名の `ai:found` の Issue が開いていれば作らない（空白の違いは無視）。開いている `ai:found` の Issue が6件（`FOUND_OPEN_MAX`）以上あるときは、新しく作らない（AIは同じ問題にも毎回ちがう題名を付けるので、直る前に積み上がるのを止める。人間の返事待ちの `ai:skip` は数えない）
 - 撮った画像は、その実行の artifact（`try-out`・14日）に残り、Issue の本文にログの場所を書く
 - モデルは sonnet（使う量を抑えるため）。手数の上限は 使ってみる役 60・監査役 80
 - AIが結果のファイルを書かずに終わったとき（使用の混み合い 529 など）は、その場で1回だけやり直す。それでも無ければ「確かめられていない」と警告を残す（「問題なし」とは扱わない）
@@ -492,7 +492,7 @@ AIの実行記録から、許可されず拒否された操作（`permission_den
 
 ## セットアップの診断
 
-新しいリポジトリを作ったら、Actions の「Doctor」を1回実行する。Secret・ラベル・設定・`CLAUDE.md` やスクリプトの名前を調べて、✅／⚠️／❌ で、直し方つきで Summary に出す（`.github/scripts/doctor.sh`）。❌ が無くなれば Issue を書くだけで動く。
+新しいリポジトリを作ったら、Actions の「Doctor」を1回実行する。Secret・ラベル・設定・`CLAUDE.md` やスクリプトの名前を調べて、✅／⚠️／❌ で、直し方つきで Summary に出す（`.github/scripts/doctor.sh`）。❌ が無くなれば Issue を書くだけで動く。要るラベルは `labels.sh` に書いてある物の全部（診断は別の一覧を持たない）。`labels.sh` は目印の `ai:plan` を最後に作る：Bootstrap と Setup Labels は「`ai:plan` があれば最初の準備は済んでいる」とみなすので、途中で失敗しても「準備ずみ」にならず、次の push でやり直せる。
 
 ## 必要な設定（リポジトリの Settings → Secrets and variables → Actions）
 

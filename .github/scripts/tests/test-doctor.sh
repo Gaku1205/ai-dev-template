@@ -6,7 +6,7 @@ setup_mock
 source "$SCRIPTS_DIR/doctor.sh"
 REPO=o/r
 
-all_labels="ai:plan ai:implement ai:review ai:queue ai:blocked ai:found ai:hold ai:stuck ai:skip ai:retry visual:update size:S size:L"
+all_labels="ai:plan ai:implement ai:review ai:queue ai:blocked ai:found priority:high ai:hold ai:stuck ai:question ai:mocks ai:skip ai:retry visual:update size:S size:L"
 fetch_labels() { printf '%s\n' $LABELS; }
 fetch_delete_branch() { echo "$DELBR"; }
 token_can_push() { echo "$CANPUSH"; }
@@ -25,6 +25,14 @@ LABELS="$all_labels" DELBR=true CANPUSH=true HAS_OAUTH=1 HAS_PIPELINE_TOKEN=1 HA
 run_doctor
 assert_eq "終了コード 0" "0" "$rc"
 assert_contains "問題なし" "$out" "問題なし"
+
+echo "== labels.sh が作るラベルは、どれが欠けても ❌（診断の一覧を別に持たない。前は ai:question・ai:mocks・priority:high が無くても「全部ある」と出ていた）"
+for miss in ai:question ai:mocks priority:high; do
+  LABELS="${all_labels/$miss/}" run_doctor
+  assert_contains "$miss が無い" "$out" "ラベルが足りない: $miss"
+done
+assert_eq "テストの一覧が labels.sh と同じ" "$(sed -nE 's/^make_label "([^"]+)".*/\1/p' "$SCRIPTS_DIR/labels.sh" | sort | paste -sd' ' -)" "$(printf '%s\n' $all_labels | sort | paste -sd' ' -)"
+LABELS="$all_labels"
 
 echo "== Secret もラベルも無ければ ❌"
 LABELS="ai:plan" DELBR=false CANPUSH=false HAS_OAUTH=0 HAS_PIPELINE_TOKEN=0 HAS_NTFY=0

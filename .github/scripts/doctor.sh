@@ -86,7 +86,10 @@ check_token_expiration() {
 check_labels() {
   local have missing="" l
   have="$(fetch_labels)"
-  for l in ai:plan ai:implement ai:review ai:queue ai:blocked ai:found ai:hold ai:stuck ai:skip ai:retry visual:update size:S size:L; do
+  # 要るラベルは labels.sh に書いてある物の全部（ここに別の一覧を持つと、ラベルを足したときにずれる）
+  local want
+  want=$(sed -nE 's/^make_label "([^"]+)".*/\1/p' "$(dirname "${BASH_SOURCE[0]}")/labels.sh")
+  for l in $want; do
     printf '%s\n' "$have" | grep -qxF "$l" || missing="$missing $l"
   done
   if [ -z "$missing" ]; then ok "ラベルが全部ある"
@@ -169,6 +172,7 @@ check_deploy() {
         else
           ng "公開先 AWS App Runner の設定が足りない" "Settings → Secrets and variables → Actions → Variables に AWS_ROLE_ARN・AWS_REGION・AWS_APPRUNNER_ACCESS_ROLE_ARN（docs/pipeline.md「AWS App Runner」。CloudFormation で1回作れば出てくる）"
         fi ;;
+      supabase) echo "- ➖ 公開先：Supabase の表の変更（Secret の SUPABASE_DB_URL が要る。工場が入れる。ここからは確かめられない）" ;;
       expo)
         if [ "${HAS_EXPO:-0}" = 1 ]; then ok "公開先：Expo（Secret の EXPO_TOKEN がある）"
         else ng "公開先 Expo の鍵が無い" "expo.dev → Access tokens で作り、Secret の EXPO_TOKEN に登録"; fi ;;
