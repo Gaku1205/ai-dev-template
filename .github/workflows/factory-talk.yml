@@ -169,7 +169,7 @@ jobs:
             今までに決まった事は `talk/state.json` です（memo・detail＝オーナーの1行と詳しいメモ、ideas と idea＝出した案と選んだ案、looks と look、mocks と mock、
             answers＝質問の答え、notes＝オーナーの注文。notes に今の段階の注文があれば、前に出した物をそのとおりに直して出し直す）。
             書いてよい場所は `talk/` だけです。
-          claude_args: '--model ${{ needs.route.outputs.next == ''confirm'' && ''sonnet'' || ''opus'' }} --max-turns 150 --allowedTools "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Bash(node .github/scripts/shot.mjs:*)"'
+          claude_args: '--model ${{ needs.route.outputs.next == ''confirm'' && ''sonnet'' || ''opus'' }} --max-turns 150 --allowedTools "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Bash(node .github/scripts/shot.mjs:*),Bash(node .claude/skills/taste-skill/scripts/draw.mjs:*),Bash(node .claude/skills/taste-skill/scripts/lint.mjs:*),Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*),Bash(node .claude/skills/taste-skill/scripts/assets.mjs:*)"'
       - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with:
