@@ -86,7 +86,7 @@ check_token_expiration() {
 check_labels() {
   local have missing="" l
   have="$(fetch_labels)"
-  for l in ai:plan ai:implement ai:review ai:queue ai:blocked ai:hold ai:stuck ai:skip ai:retry visual:update size:S size:L; do
+  for l in ai:plan ai:implement ai:review ai:queue ai:blocked ai:found ai:hold ai:stuck ai:skip ai:retry visual:update size:S size:L; do
     printf '%s\n' "$have" | grep -qxF "$l" || missing="$missing $l"
   done
   if [ -z "$missing" ]; then ok "ラベルが全部ある"

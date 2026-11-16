@@ -1,0 +1,136 @@
+name: Claude Audit
+
+# 週1回、AIが仕様書どうし・仕様書とコードの食い違いを探して、直す Issue を作る（1回に最大3件）
+# docs/pipeline.md「使ってみる役・監査役」。動かすかは found-gate.sh、Issue にするのは found-report.sh
+on:
+  schedule:
+    # 毎週月曜 3:41（日本時間）。進行中の作業が無いときだけ動く
+    - cron: "41 18 * * 0"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "条件を見ずに今すぐ動かす（進行中の作業があっても動かす）"
+        type: boolean
+        default: true
+
+jobs:
+  work:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: audit-${{ github.repository }}
+      cancel-in-progress: false
+    outputs:
+      ran: ${{ steps.claude.outcome != '' && steps.claude.outcome != 'skipped' }}
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      deployments: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: 今日動かすか決める
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force && '1' || '0' }}
+        run: bash .github/scripts/found-gate.sh audit
+      - name: 仕様書があるか
+        id: docs
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          mkdir -p .audit
+          if [ -f docs/spec.md ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; else echo "ok=false" >> "$GITHUB_OUTPUT"; echo "docs/spec.md が無いので、監査はしません"; fi
+      - name: 手順書とスクリプトを読み取り専用にする
+        if: steps.gate.outputs.run == 'true' && steps.docs.outputs.ok == 'true'
+        run: chmod -R a-w .github .claude CLAUDE.md AGENTS.md 2> /dev/null || true
+      - uses: anthropics/claude-code-action@v1
+        id: claude
+        if: steps.gate.outputs.run == 'true' && steps.docs.outputs.ok == 'true'
+        continue-on-error: true
+        with:
+          # 定期実行のきっかけの人は、最後にワークフローを書き換えた人（配布のボット）になるので、ボットも許す（定期実行と手動しか、きっかけが無い）
+          allowed_bots: "*"
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            このリポジトリ（${{ github.repository }}）の仕様書（`docs/spec.md`）・デザイン仕様（`docs/design.md`）と、コードの食い違いを探す監査役です。仕様書は Issue のたびに書き足されていて、古い決まりと新しい決まりが混ざっていることがあります。
+            - 探すのは次の3つ：仕様書の中の食い違い（同じ物の数・条件・文言が節によって違う）／仕様書とデザイン仕様の食い違い／仕様書とコードの食い違い（書いてある挙動と、実装が違う）。書き方の好み・誤字・まだ作っていない機能は書かない
+            - 進め方：Grep で数値・ラベル名・文言・条件を探し、Read の offset と limit で該当の節とコードだけを読む（全部を最初から読まない）。食い違いを見つけたら、どちらが新しい決まりかを、より具体的な方・後から足された節（Issue の番号が新しい方）で判断する
+            - 見つけた中から、利用者や開発の流れへの影響が大きい順に最大3件。無ければ0件でよい（無理に探さない）
+            - 最後に必ず `.audit/result.json` を Write で書く：`{"findings":[{"title":"短い題名（何と何が食い違っているか）","body":"食い違い：A（ファイル・見出し・行）と B（ファイル・見出し・行）がそれぞれ何と書いているか／どちらに合わせるべきかと、その理由／直すときに触るファイル"}]}`。日本語で書く。0件なら `{"findings":[]}`
+            - `.audit/` の外のファイルは変えない。使える道具は Read・Write・Glob・Grep だけ（コマンドは断られる）
+            - 質問して止まらない。オーナーはこの場にいない
+          claude_args: '--model sonnet --max-turns 80 --allowedTools "Read,Write,Glob,Grep"'
+      - name: AIの結果を残す
+        if: ${{ !cancelled() && steps.claude.outcome != 'skipped' }}
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: bash .github/scripts/ai-report.sh --title "Claude Audit" "$EXECUTION_FILE" || true
+      - uses: actions/upload-artifact@v6
+        if: ${{ !cancelled() && steps.claude.outcome != 'skipped' }}
+        with:
+          name: audit-out
+          path: .audit/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # 見つけた問題を Issue にする。AIが動いたジョブとは分け、パイプラインの鍵はこちらだけが持つ（AIのジョブに鍵を渡さない）。
+  # スクリプトは main の版（AIは .audit/ の結果だけを渡す）
+  report:
+    needs: work
+    if: ${{ !cancelled() && needs.work.outputs.ran == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      # 秘密鍵を PKCS#8 にそろえる（create-github-app-token は Node 24 だと「BEGIN RSA PRIVATE KEY」の形式を読めず Invalid keyData になる）
+      - name: パイプラインの鍵の秘密鍵をそろえる
+        id: app-key
+        if: vars.PIPELINE_APP_ID != ''
+        continue-on-error: true
+        env:
+          KEY: ${{ secrets.PIPELINE_APP_PRIVATE_KEY }}
+        run: |
+          # 貼るときに改行が消えて1行になっていても、頭と終わりの行と中身から組み立て直す
+          k=$(printf '%s' "$KEY" | tr -d '\r'); k=${k//\\n/$'\n'}
+          type=$(printf '%s' "$k" | grep -oE 'BEGIN [A-Z ]*PRIVATE KEY' | head -1 | sed 's/^BEGIN //')
+          # 頭と終わりの行が抜けていたら、GitHub App の鍵の形式（RSA）とみなす
+          [ -n "$type" ] || type="RSA PRIVATE KEY"
+          body=$(printf '%s' "$k" | sed -e 's/-----BEGIN [A-Z ]*PRIVATE KEY-----//' -e 's/-----END [A-Z ]*PRIVATE KEY-----//' | tr -d ' \n\t"')
+          pem=$(printf -- '-----BEGIN %s-----\n%s\n-----END %s-----\n' "$type" "$(printf '%s' "$body" | fold -w 64)" "$type" | openssl pkey 2> /dev/null) \
+            || { b=no; e=no; case "$k" in *"-----BEGIN"*) b=yes;; esac; case "$k" in *"-----END"*) e=yes;; esac
+                 echo "::error::PIPELINE_APP_PRIVATE_KEY を秘密鍵として読めません（.pem の中身を -----BEGIN から -----END まで全部貼る）。手がかり：全体 ${#KEY} 文字・$(printf '%s\n' "$KEY" | wc -l) 行・BEGIN の行 $b・END の行 $e・中身 ${#body} 文字（2048ビットの鍵なら中身は約1,600文字）"; exit 1; }
+          while IFS= read -r line; do [ -n "$line" ] && echo "::add-mask::$line"; done <<< "$pem"
+          { echo 'pem<<PEM_END'; echo "$pem"; echo 'PEM_END'; } >> "$GITHUB_OUTPUT"
+      # パイプラインの鍵：GitHub App があれば、その1時間だけの鍵を使う（回数制限がオーナーと別・期限切れなし）。無ければ PIPELINE_TOKEN
+      - name: パイプラインの鍵を作る
+        id: app-token
+        if: steps.app-key.outputs.pem != ''
+        # 鍵が作れなくても（秘密鍵の貼り間違いなど）止めずに PIPELINE_TOKEN で続ける。Doctor が ❌ で知らせる
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.PIPELINE_APP_ID }}
+          private-key: ${{ steps.app-key.outputs.pem }}
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          name: audit-out
+          path: .audit
+      - name: 見つけた問題を Issue にする
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN || github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash .github/scripts/found-report.sh audit .audit/result.json
