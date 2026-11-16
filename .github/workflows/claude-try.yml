@@ -71,10 +71,31 @@ jobs:
             - `.try/` の外のファイルは変えない。使える道具は Read・Write・Glob・Grep と `node .github/scripts/shot.mjs ...` だけ（ほかのコマンドは断られる）
             - 質問して止まらない。オーナーはこの場にいない
           claude_args: '--model sonnet --max-turns 60 --allowedTools "Read,Write,Glob,Grep,Bash(node .github/scripts/shot.mjs:*)"'
+      # 結果のファイルが無いまま終わったら（AIの使用が混み合って止まった 529 など）、1回だけやり直す。黙って「問題なし」にしない
+      - uses: anthropics/claude-code-action@v1
+        id: claude_retry
+        if: ${{ !cancelled() && steps.claude.outcome != 'skipped' && hashFiles('.try/result.json') == '' }}
+        continue-on-error: true
+        with:
+          # 定期実行のきっかけの人は、最後にワークフローを書き換えた人（配布のボット）になるので、ボットも許す（定期実行と手動しか、きっかけが無い）
+          allowed_bots: "*"
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            （2回目です。前回は `.try/result.json` が書かれずに終わりました（AIの使用が混み合って止まった、など）。最初からやり直し、最後に必ず書く）
+            このリポジトリ（${{ github.repository }}）のサービスは ${{ steps.gate.outputs.url }} で公開しています。あなたは、このサービスを初めて使う利用者です。説明を受けず、一人で、主な使い方を一通り試してください。
+            - まず `docs/spec.md` の最初の方（サービスの説明と、主な画面・操作の節）を Read で読み、利用者がやりたいことを3つまで決める。全部は読まない
+            - 本番のサイトを本物のブラウザで開く：`node .github/scripts/shot.mjs --out .try --widths 390,1440 <URL>`。押す・入力する・戻るは、`.try/steps.json` に場面を書いて `node .github/scripts/shot.mjs --out .try --widths 390,1440 --steps .try/steps.json`（書き方は `.github/scripts/shot.mjs` の先頭のコメント）。撮った画像は全部 Read で見る。表示されたページのエラーも見る
+            - 探すのは次の3つだけ：壊れている（エラー・押しても何も起きない・真っ白・データが消える）／迷う（次に何をすればいいか分からない・文言が分からない・戻れない）／崩れている（はみ出し・重なり・読めない文字・スマホで押せない小ささ）。好みの問題（色や雰囲気）は書かない
+            - ログインが要るサービスでは、ログインの手前の画面（入口・ログイン画面）だけを試す。ログインできないこと自体は問題として書かない
+            - 見つけた中から、利用者が困る順に最大3件。無ければ0件でよい（無理に探さない）
+            - 最後に必ず `.try/result.json` を Write で書く：`{"findings":[{"title":"短い題名（何がどうなる）","body":"どこで（URL・画面・幅）／やった手順／期待したこと／実際に起きたこと／その場面の画像のファイル名（.try/ の中）"}]}`。日本語で書く。0件なら `{"findings":[]}`
+            - `.try/` の外のファイルは変えない。使える道具は Read・Write・Glob・Grep と `node .github/scripts/shot.mjs ...` だけ（ほかのコマンドは断られる）
+            - 質問して止まらない。オーナーはこの場にいない
+          claude_args: '--model sonnet --max-turns 60 --allowedTools "Read,Write,Glob,Grep,Bash(node .github/scripts/shot.mjs:*)"'
       - name: AIの結果を残す
         if: ${{ !cancelled() && steps.claude.outcome != 'skipped' }}
         env:
-          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+          EXECUTION_FILE: ${{ steps.claude_retry.outputs.execution_file || steps.claude.outputs.execution_file }}
         run: bash .github/scripts/ai-report.sh --title "Claude Try" "$EXECUTION_FILE" || true
       - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() && steps.claude.outcome != 'skipped' }}

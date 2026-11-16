@@ -106,4 +106,10 @@ assert_eq "終了コード 0" "0" "$?"
 echo '{"findings": "x"}' > "$F"
 bash "$SCRIPTS_DIR/found-report.sh" audit "$F" > /dev/null
 assert_eq "壊れていても 0" "0" "$?"
+out=$(bash "$SCRIPTS_DIR/found-report.sh" try "$MOCK_DIR/none.json" 2>&1)
+assert_contains "結果が無いのを「問題なし」と言わない" "$out" "確かめられていません"
+echo '{"findings": []}' > "$F"
+assert_contains "0件なら問題なし" "$(bash "$SCRIPTS_DIR/found-report.sh" try "$F")" "見つけた問題はありません"
+assert_contains "ワークフロー：結果が無ければ1回やり直す" "$(cat "$SCRIPTS_DIR/../workflows/claude-try.yml")" "hashFiles('.try/result.json') == ''"
+assert_contains "監査役も" "$(cat "$SCRIPTS_DIR/../workflows/claude-audit.yml")" "hashFiles('.audit/result.json') == ''"
 finish

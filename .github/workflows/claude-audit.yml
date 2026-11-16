@@ -65,10 +65,29 @@ jobs:
             - `.audit/` の外のファイルは変えない。使える道具は Read・Write・Glob・Grep だけ（コマンドは断られる）
             - 質問して止まらない。オーナーはこの場にいない
           claude_args: '--model sonnet --max-turns 80 --allowedTools "Read,Write,Glob,Grep"'
+      # 結果のファイルが無いまま終わったら（AIの使用が混み合って止まった 529 など）、1回だけやり直す。黙って「問題なし」にしない
+      - uses: anthropics/claude-code-action@v1
+        id: claude_retry
+        if: ${{ !cancelled() && steps.claude.outcome != 'skipped' && hashFiles('.audit/result.json') == '' }}
+        continue-on-error: true
+        with:
+          # 定期実行のきっかけの人は、最後にワークフローを書き換えた人（配布のボット）になるので、ボットも許す（定期実行と手動しか、きっかけが無い）
+          allowed_bots: "*"
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            （2回目です。前回は `.audit/result.json` が書かれずに終わりました（AIの使用が混み合って止まった、など）。最初からやり直し、最後に必ず書く）
+            このリポジトリ（${{ github.repository }}）の仕様書（`docs/spec.md`）・デザイン仕様（`docs/design.md`）と、コードの食い違いを探す監査役です。仕様書は Issue のたびに書き足されていて、古い決まりと新しい決まりが混ざっていることがあります。
+            - 探すのは次の3つ：仕様書の中の食い違い（同じ物の数・条件・文言が節によって違う）／仕様書とデザイン仕様の食い違い／仕様書とコードの食い違い（書いてある挙動と、実装が違う）。書き方の好み・誤字・まだ作っていない機能は書かない
+            - 進め方：Grep で数値・ラベル名・文言・条件を探し、Read の offset と limit で該当の節とコードだけを読む（全部を最初から読まない）。食い違いを見つけたら、どちらが新しい決まりかを、より具体的な方・後から足された節（Issue の番号が新しい方）で判断する
+            - 見つけた中から、利用者や開発の流れへの影響が大きい順に最大3件。無ければ0件でよい（無理に探さない）
+            - 最後に必ず `.audit/result.json` を Write で書く：`{"findings":[{"title":"短い題名（何と何が食い違っているか）","body":"食い違い：A（ファイル・見出し・行）と B（ファイル・見出し・行）がそれぞれ何と書いているか／どちらに合わせるべきかと、その理由／直すときに触るファイル"}]}`。日本語で書く。0件なら `{"findings":[]}`
+            - `.audit/` の外のファイルは変えない。使える道具は Read・Write・Glob・Grep だけ（コマンドは断られる）
+            - 質問して止まらない。オーナーはこの場にいない
+          claude_args: '--model sonnet --max-turns 80 --allowedTools "Read,Write,Glob,Grep"'
       - name: AIの結果を残す
         if: ${{ !cancelled() && steps.claude.outcome != 'skipped' }}
         env:
-          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+          EXECUTION_FILE: ${{ steps.claude_retry.outputs.execution_file || steps.claude.outputs.execution_file }}
         run: bash .github/scripts/ai-report.sh --title "Claude Audit" "$EXECUTION_FILE" || true
       - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() && steps.claude.outcome != 'skipped' }}

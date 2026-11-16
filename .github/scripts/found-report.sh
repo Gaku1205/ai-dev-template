@@ -21,8 +21,14 @@ esac
 
 norm() { tr -d ' 　\t\n' <<< "$1"; }
 
+# 結果のファイルが無い・形が違う＝AIが最後までやれなかった（「問題なし」とは違う）。失敗として残し、次の回にまた試す
 if [ ! -s "$file" ] || ! jq -e '.findings | type == "array"' "$file" > /dev/null 2>&1; then
-  echo "見つけた問題はありません（結果のファイルが無いか、形が違う）" | tee -a "$summary"
+  echo "::warning::AIが結果を書かずに終わりました（使用の混み合い・上限など）。今回は確かめられていません。次の回にもう一度試します"
+  echo "AIが結果を書かずに終わったので、今回は確かめられていません（「問題なし」ではありません）" >> "$summary"
+  exit 0
+fi
+if [ "$(jq '.findings | length' "$file")" = 0 ]; then
+  echo "見つけた問題はありません" | tee -a "$summary"
   exit 0
 fi
 
