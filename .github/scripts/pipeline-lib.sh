@@ -926,6 +926,12 @@ ci_failed_steps() {
 # 基準の画像の撮り直しを頼んでいる言い方（AIの返事・レビューの指摘・PRの説明のどれかにあれば、撮り直しが要る）
 VISUAL_HINT_RE='visual:update|基準の?画像.{0,60}(古|撮り直|更新|差し替)|(撮り直|更新|差し替).{0,60}基準の?画像|スナップショット.{0,60}(古|撮り直|更新)|update-snapshots'
 # 「指摘が間違い・直す必要が無い」と返している言い方
+# 実装AIが「もう直っている（変更は要らない）」と返したか（open-pr.sh）。直せなかった・分からなかった、は含めない
+# shellcheck disable=SC2034  # open-pr.sh で使う
+ALREADY_FIXED_RE='(すでに|既に).{0,30}(直って|直し済|対応済|修正済|入って|対応されて|修正されて)|直っていた(ため|ので)|(対応|修正)済みのため|already (fixed|resolved|on (this|the) branch|in main)|the fix is already|already (been )?(fixed|addressed)'
+# 「もう直っている」と言いつつ、一部だけ・直せていない言い方（これがあるときは閉じない）
+# shellcheck disable=SC2034  # open-pr.sh で使う
+NOT_FIXED_RE='直せ(ません|なかった|ず)|できません|できなかった|分から|わから|残り|一部|まだ|ただし|しかし|ですが|コンフリクト|未対応|未修正|could not|couldn.t|can.t|cannot|unable|still|but|however|except|partial|remain'
 DISAGREE_HINT_RE='指摘は.{0,40}(誤り|間違|当たら|該当しな|不要)|(前回|前の|これまで)の?(対応|修正|直し)で.{0,30}(直し|対応|修正)?(済み|ずみ|ました)|(すでに|既に).{0,20}(直し|対応|修正|書かれ|入っ)(て|済)|(直し|対応|修正)済み|already (fixed|addressed|done)|(直す|修正の?|変更の?)必要(は|が|も)(ない|無い|ありません)|(修正|変更|対応)(は)?不要|直さず|直しません|直さない|false positive|not (a )?(real )?(bug|issue|problem)'
 # 許可の拒否で、1回だけ自動でやり直した印（2回目は人間に回す）
 # shellcheck disable=SC2034  # after-mention.sh で使う

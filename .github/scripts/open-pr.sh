@@ -29,11 +29,28 @@ fi
 #     やり直しても同じなら、足りない許可を書いて人間に回す。人間が ai:stuck を外して再開すると、また1回やり直せる
 #   拒否が無い → AIが最後に言ったことを書いて人間に回す（AIが「できない」と判断した、など）
 stop_or_retry_no_change() {
-  local what="$1" raw words note="" retried log
+  local what="$1" raw words full note="" retried log
   raw=$(denied_raw "${EXECUTION_FILE:-}")
   words=$(ai_last_words "${EXECUTION_FILE:-}")
   [ -n "$words" ] && note="AIが最後に言ったこと：「${words}」"
   log="ログ：${GITHUB_SERVER_URL:-https://github.com}/${REPO}/actions/runs/${GITHUB_RUN_ID:-0}"
+  # 実装AIが「もう直っている」と確かめて終わった（ほかの Issue のPRで先に直った・前のPRで直った）：
+  # 人間に回さず、確かめた中身を残して Issue を閉じる（tochi-rirekisho #9：#10 のPRで先に直り、実装AIは2回とも
+  # 「このブランチでは既に直っていた」と返したのに、人間待ちで止まった）。違っていれば、開き直すとまた企画から進む
+  # 一部だけ直っている・直せなかった返事は閉じない。打ち消しが300字より後ろにあっても見えるよう、長いほうで見る
+  full=$(ai_last_words "${EXECUTION_FILE:-}" 5000)
+  if [ -n "$words" ] && printf '%s' "$full" | grep -qiE "$ALREADY_FIXED_RE" && ! printf '%s' "$full" | grep -qiE "$NOT_FIXED_RE"; then
+    comment "$ISSUE" "✅ 実装AIが確かめたところ、この Issue の不具合・作業は、すでに main に入っていました（ほかのPRで先に直った、など）。変更は要らないので、この Issue を閉じます。
+${note}（${log}）
+
+まだ直っていなければ、この Issue を開き直してください（開き直すと、企画からもう一度進みます）。
+
+<!-- auto-already-fixed -->" || true
+    for l in ai:implement ai:retry; do remove_label "$ISSUE" "$l" 2> /dev/null || true; done
+    gh api -X PATCH "repos/$REPO/issues/$ISSUE" -f state=closed -f state_reason=completed > /dev/null
+    echo "#$ISSUE：実装AIが「すでに直っている」と確かめたので、閉じました"
+    return 0
+  fi
   if [ -n "$raw" ]; then
     retried=$(all_comments "$ISSUE" | jq --arg m "$PERM_RETRY_MARK" --arg resume "$RESUME_MARK" '
       (map(select(.body | contains($resume)) | .created_at) | max // "") as $since
