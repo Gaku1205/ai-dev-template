@@ -29,6 +29,9 @@ jobs:
       issues: read
       id-token: write
     steps:
+      - name: 始めた時刻（進捗ログ用）
+        id: started
+        run: echo "at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
@@ -94,6 +97,7 @@ jobs:
           fi
           echo "list=$list" >> "$GITHUB_OUTPUT"
       - uses: anthropics/claude-code-action@v1
+        id: claude
         env:
           GH_TOKEN: ${{ github.token }}
         with:
@@ -127,3 +131,29 @@ jobs:
             - CIで分かること（型エラー、リント）は指摘しない（CIが通ったあとにレビューしている）
             - コードは変更しない。コメントを書くだけ
           claude_args: '--model ${{ steps.weight.outputs.model }} --max-turns 40 --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh issue view:*),Bash(gh pr comment:*),Read,Glob,Grep,Write,mcp__github_inline_comment__create_inline_comment"'
+      # AIの実行記録と、使ったモデル・始めた時刻を、データとして進行役（pipeline.yml の after-review）に渡す（進捗ログと、拒否の見える化に使う）。
+      # ここは作業フォルダがPRのコードなので、作業フォルダのスクリプトは動かさない（jq だけで要点をログに出す）
+      - name: AIの結果を取っておく
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+          MODEL: ${{ steps.weight.outputs.model }}
+          STARTED: ${{ steps.started.outputs.at }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/ai-result"
+          jq -n --arg model "$MODEL" --arg started "$STARTED" '{model: $model, started: $started}' > "$RUNNER_TEMP/ai-result/meta.json"
+          if [ -n "$EXECUTION_FILE" ] && [ -f "$EXECUTION_FILE" ]; then
+            cp "$EXECUTION_FILE" "$RUNNER_TEMP/ai-result/execution.json"
+            jq -r 'if type == "array" then . else [.] end | map(select(type == "object" and .type == "result")) | last // {}
+              | "レビューAI：結果 \(.subtype // "不明")・手数 \(.num_turns // "?")・拒否 \(.permission_denials_count // (.permission_denials // [] | length)) 件",
+                ((.permission_denials // [])[:5][] | "  拒否：\(.tool_name // "?")(\((.tool_input.command // .tool_input.file_path // "") | tostring | (split("\n")[0] // "") | .[0:120]))")' \
+              "$EXECUTION_FILE" 2> /dev/null | tee -a "$GITHUB_STEP_SUMMARY" || true
+          fi
+      - uses: actions/upload-artifact@v6
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        with:
+          name: ai-result
+          path: ${{ runner.temp }}/ai-result
+          retention-days: 3

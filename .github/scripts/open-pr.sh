@@ -17,6 +17,38 @@ if ! has_pipeline_token; then
   exit 0
 fi
 
+# 実装AIは正常に終わったのに、変更が残っていないとき。理由を書かずに止めない：
+#   許可されていない操作が拒否されていた → 拒否された操作を書いて、1回だけ実装をやり直す（コメントが、やり直す実装AIへの手がかりになる）。
+#     やり直しても同じなら、足りない許可を書いて人間に回す。人間が ai:stuck を外して再開すると、また1回やり直せる
+#   拒否が無い → AIが最後に言ったことを書いて人間に回す（AIが「できない」と判断した、など）
+stop_or_retry_no_change() {
+  local what="$1" raw words note="" retried log
+  raw=$(denied_raw "${EXECUTION_FILE:-}")
+  words=$(ai_last_words "${EXECUTION_FILE:-}")
+  [ -n "$words" ] && note="AIが最後に言ったこと：「${words}」"
+  log="ログ：${GITHUB_SERVER_URL:-https://github.com}/${REPO}/actions/runs/${GITHUB_RUN_ID:-0}"
+  if [ -n "$raw" ]; then
+    retried=$(all_comments "$ISSUE" | jq --arg m "$PERM_RETRY_MARK" --arg resume "$RESUME_MARK" '
+      (map(select(.body | contains($resume)) | .created_at) | max // "") as $since
+      | [.[] | select((.body | contains($m)) and .created_at > $since)] | length')
+    if [ "${retried:-0}" -lt 1 ]; then
+      comment "$ISSUE" "🔁 実装AIは正常に終わりましたが、${what}。許可されていない操作が拒否されていたので、1回だけ自動でやり直します（${log}）。
+
+実装AIへ：前回は、次の操作が拒否されました：$(permission_list_short "$raw")。同じ操作は使わないでください。コマンドは1つずつ動かし、; や && や | でつながず、cd や 2>&1 も付けない。ファイルを読む・探すのは Read・Grep・Glob を使う。確認コマンドは、pipeline.json の checks（無ければ npm run typecheck・npm run lint・npm run test・npm run build）を、書かれたとおりの形で動かす。作業が終わったら、必ずコミットして push する。${note}
+
+${PERM_RETRY_MARK}"
+      remove_label "$ISSUE" "ai:implement"
+      add_label "$ISSUE" "ai:implement"
+      echo "#$ISSUE：${what}。拒否された操作（$(permission_list_short "$raw")）を書いて、1回だけ実装をやり直します"
+      return 0
+    fi
+    stop_issue_for_human "$ISSUE" "実装AIは正常に終わりましたが、${what}。1回自動でやり直しても、許可されていない操作が拒否されました：$(permission_list_short "$raw")（docs/pipeline.md の「AIの許可」の表と、ワークフローの --allowedTools を見てください）。${note}（${log}）"
+    report_permission_gap "$ISSUE" "$(denied_tools "${EXECUTION_FILE:-}")"
+    return 0
+  fi
+  stop_issue_for_human "$ISSUE" "実装AIは正常に終わりましたが、${what}（拒否された操作はありません）。${note:-AIが最後に言ったことは、実行記録にありません}（${log}）"
+}
+
 # いちばん新しいコミットがある claude/issue-<番号>- ブランチを探す
 branch=""
 latest=""
@@ -34,8 +66,7 @@ if [ -z "$branch" ]; then
   if [ "$AI_OUTCOME" != "success" ]; then
     handle_ai_failure "$ISSUE" implement "実装AIが途中で止まり、変更が作られませんでした" "${EXECUTION_FILE:-}"
   else
-    add_label "$ISSUE" "ai:stuck" || true
-    notify stuck "AIが止まりました" "#${ISSUE} ${ISSUE_TITLE}：変更が作られませんでした。Issueのコメントを確認してください" 4
+    stop_or_retry_no_change "変更が作られませんでした（作業ブランチがありません）"
   fi
   exit 0
 fi
@@ -45,8 +76,7 @@ if [ "${ahead:-0}" -eq 0 ]; then
   if [ "$AI_OUTCOME" != "success" ]; then
     handle_ai_failure "$ISSUE" implement "実装AIが途中で止まり、ブランチに変更がありません" "${EXECUTION_FILE:-}"
   else
-    add_label "$ISSUE" "ai:stuck" || true
-    notify stuck "AIが止まりました" "#${ISSUE} ${ISSUE_TITLE}：ブランチに変更がありません" 4
+    stop_or_retry_no_change "作業ブランチに変更がありません"
   fi
   exit 0
 fi

@@ -21,6 +21,9 @@ AUTO_FIX_MARK="<!-- auto-fix -->"
 RESUME_MARK="<!-- auto-resume -->"
 # shellcheck disable=SC2034  # after-ci.sh など、この下を読み込む側のスクリプトで使う
 VISUAL_MARK="<!-- auto-visual-update -->"
+# 他の Issue・PR の完了待ち（ai:blocked）で、待ち先を書くコメントの印（待ち先ごとに1つ：<!-- blocked-by: owner/repo#N -->）
+# shellcheck disable=SC2034  # after-plan.sh・watchdog.sh で使う
+BLOCKED_MARK_RE='<!-- blocked-by: ([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#([0-9]+) -->'
 # shellcheck disable=SC2034  # after-ci.sh で使う
 PIPELINE_TEST_MARK="<!-- auto-pipeline-test-rerun -->"
 # 自動でやり直す回数の上限と、失敗してからやり直すまでの待ち時間（分）。
@@ -402,6 +405,16 @@ denied_raw() {
   jq -r 'if type == "array" then . else [.] end | map(select(.type == "result")) | last // {} | .permission_denials // []
     | .[] | ((.tool_input.command // .tool_input.file_path // "") | tostring | (split("\n")[0] // "") | gsub("[\t\r]"; " ") | .[0:120]) as $a
     | (.tool_name // "?" | tostring) + (if $a == "" then "" else "(" + $a + ")" end)' "$f" 2> /dev/null | awk 'NF && !seen[$0]++' | head -n 5 || true
+}
+
+# AIの実行記録から、AIが最後に言ったこと（result）を1行にして出す（既定で最大300文字。無ければ何も出さない）。
+# 「正常に終わったのに何も残さなかった」とき、理由を人間とログに見せるのに使う
+ai_last_words() {
+  local f="${1:-}" max="${2:-300}"
+  { [ -n "$f" ] && [ -s "$f" ] && [ ! -L "$f" ]; } || return 0
+  jq -r --argjson max "$max" 'if type == "array" then . else [.] end | map(select(type == "object" and .type == "result")) | last // {}
+    | (.result // "" | tostring | gsub("[\t\r\n]+"; " ") | gsub("^ +| +$"; "")) as $t
+    | if ($t | length) > $max then $t[0:$max] + "…" else $t end' "$f" 2> /dev/null || true
 }
 
 # 許可の一覧を、コメント・通知に書く短い形にする（最初の3件。残りは「ほかN件」）

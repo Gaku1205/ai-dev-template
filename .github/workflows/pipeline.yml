@@ -28,6 +28,9 @@ jobs:
     permissions:
       contents: read
       actions: read
+      # 進捗ログ（Issue のコメント）を書く・PRから Issue を引く
+      issues: write
+      pull-requests: read
     steps:
       # 秘密鍵を PKCS#8 にそろえる（create-github-app-token は Node 24 だと「BEGIN RSA PRIVATE KEY」の形式を読めず Invalid keyData になる）
       - name: パイプラインの鍵の秘密鍵をそろえる
@@ -59,6 +62,17 @@ jobs:
           app-id: ${{ vars.PIPELINE_APP_ID }}
           private-key: ${{ steps.app-key.outputs.pem }}
       - uses: actions/checkout@v6
+      # 進捗ログ：CIの所要時間と結果（モデルは使わないので null）。ワークフローのトークンで書く（オーナーの名義のコメントにしない）
+      - name: 進捗ログ（CI）
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.workflow_run.pull_requests[0].number }}
+          STARTED: ${{ github.event.workflow_run.run_started_at }}
+          RESULT: ${{ github.event.workflow_run.conclusion == 'success' && 'success' || 'failure' }}
+        run: |
+          [ -n "$PR" ] || { echo "PRの番号が分からないので、進捗ログは残しません"; exit 0; }
+          bash .github/scripts/step-log.sh --pr "$PR" --step ci --model null --result "$RESULT" --started "$STARTED"
       - env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
@@ -83,6 +97,10 @@ jobs:
     permissions:
       contents: read
       checks: read
+      # レビューAIの結果（ai-result）を読む・進捗ログ（Issue のコメント）を書く・PRから Issue を引く
+      actions: read
+      issues: write
+      pull-requests: read
     steps:
       # 秘密鍵を PKCS#8 にそろえる（create-github-app-token は Node 24 だと「BEGIN RSA PRIVATE KEY」の形式を読めず Invalid keyData になる）
       - name: パイプラインの鍵の秘密鍵をそろえる
@@ -114,6 +132,27 @@ jobs:
           app-id: ${{ vars.PIPELINE_APP_ID }}
           private-key: ${{ steps.app-key.outputs.pem }}
       - uses: actions/checkout@v6
+      # レビューAIの実行記録と、使ったモデル（claude-review.yml が ai-result として残す）。データとしてだけ読む。無くても続ける
+      - uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          name: ai-result
+          path: ${{ runner.temp }}/ai-result
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: 進捗ログ（レビュー）
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.workflow_run.pull_requests[0].number }}
+          RESULT: ${{ github.event.workflow_run.conclusion == 'success' && 'success' || 'failure' }}
+        run: |
+          [ -n "$PR" ] || { echo "PRの番号が分からないので、進捗ログは残しません"; exit 0; }
+          meta="$RUNNER_TEMP/ai-result/meta.json"
+          # モデル名・時刻は、決まった形のときだけ使う（データとして読む）
+          model=$(jq -r '.model // empty' "$meta" 2> /dev/null | grep -xE '[a-z0-9.-]{1,40}' || true)
+          started=$(jq -r '.started // empty' "$meta" 2> /dev/null | grep -xE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z' || true)
+          bash .github/scripts/step-log.sh --pr "$PR" --step review --model "${model:-null}" --result "$RESULT" ${started:+--started "$started"}
       - env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
@@ -165,8 +204,17 @@ jobs:
           app-id: ${{ vars.PIPELINE_APP_ID }}
           private-key: ${{ steps.app-key.outputs.pem }}
       - uses: actions/checkout@v6
+      # 修正AIの実行記録（claude-mention.yml が ai-result として残す）。データとしてだけ読む。無くても続ける
+      - uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          name: ai-result
+          path: ${{ runner.temp }}/ai-result
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
       - env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN }}
+          EXECUTION_FILE: ${{ runner.temp }}/ai-result/execution.json
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}

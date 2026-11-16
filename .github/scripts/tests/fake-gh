@@ -25,6 +25,15 @@ while i<len(args):
     else: path=a; i+=1
 if fields or flist:
     if method=='GET': method='POST'
+# 別のリポジトリ（GITHUB_REPOSITORY ではない所）の Issue・PR：状態だけを other_repos から返す（無ければ 404。非公開で読めない待ち先を表す）
+_m=re.match(r'^repos/([^/]+/[^/]+)/issues/(\d+)$',path.split('?')[0])
+if _m and _m.group(1).lower()!=os.environ.get('GITHUB_REPOSITORY','o/r').lower():
+    _o=st.get('other_repos',{}).get(_m.group(1),{}).get(_m.group(2))
+    if _o is None: sys.stderr.write('HTTP 404: Not Found\n'); sys.exit(1)
+    if q:
+        _r=subprocess.run(['jq','-r',q],input=json.dumps(_o),capture_output=True,text=True); sys.stdout.write(_r.stdout)
+    else: print(json.dumps(_o))
+    sys.exit(0)
 path=re.sub(r'^repos/[^/]+/[^/]+/','',path)
 now=st.get('now', datetime.datetime.utcnow().isoformat()+'Z')
 def out(obj):

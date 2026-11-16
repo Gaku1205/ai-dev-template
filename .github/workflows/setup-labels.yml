@@ -4,6 +4,11 @@ name: Setup Labels
 
 on:
   workflow_dispatch:
+  # ラベルの一覧（labels.sh）が変わったら、自動でそろえる（テンプレートからの配布で新しいラベルが増えたとき、人間が手で実行しなくてよいように）
+  push:
+    branches: [main]
+    paths:
+      - .github/scripts/labels.sh
 
 jobs:
   labels:
@@ -16,4 +21,12 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-        run: .github/scripts/labels.sh
+          EVENT: ${{ github.event_name }}
+        run: |
+          # push で動いたとき：Bootstrap（最初の push でラベルを作り、CLAUDE.md を整える）がまだなら何もしない。
+          # 先にラベルを作ると、Bootstrap が「もう済んでいる」とみなして何もしなくなるため
+          if [ "$EVENT" = push ] && ! gh api "repos/$REPO/labels/ai%3Aplan" > /dev/null 2>&1; then
+            echo "Bootstrap がまだなので、何もしません（Bootstrap がラベルを作ります）"
+            exit 0
+          fi
+          .github/scripts/labels.sh

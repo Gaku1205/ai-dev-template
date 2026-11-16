@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       outcome: ${{ steps.claude.outcome }}
+      model: ${{ env.MODEL }}
     timeout-minutes: 75
     concurrency:
       group: claude-implement-${{ github.event.issue.number }}
@@ -115,6 +116,13 @@ jobs:
             list="${SENDER},${SENDER%\[bot\]}"
           fi
           echo "list=$list" >> "$GITHUB_OUTPUT"
+      # 進捗ログ：AIが動く前（作業フォルダはまだ main のまま）に「進行中」を残す。終わりは open-pr が残す
+      - name: 進捗ログ（実装・開始）
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: bash .github/scripts/step-log.sh --issue "$ISSUE" --step implement --model "$MODEL" --result running
       - uses: anthropics/claude-code-action@v1
         id: claude
         continue-on-error: true
@@ -246,6 +254,17 @@ jobs:
         with:
           name: ai-result
           path: ${{ runner.temp }}/ai-result
+      # 何が起きたかを、ログと Summary に残す（拒否された操作と、AIが最後に言ったこと）。ここは main の版のスクリプト
+      - name: AIの結果を残す
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          MODEL: ${{ needs.implement.outputs.model }}
+          RESULT: ${{ needs.implement.outputs.outcome == 'success' && 'success' || 'failure' }}
+        run: |
+          bash .github/scripts/ai-report.sh --title "実装AI" "$RUNNER_TEMP/ai-result/execution.json" || true
+          bash .github/scripts/step-log.sh --issue "$ISSUE" --step implement --model "${MODEL:-null}" --result "$RESULT"
       - name: PRを作る（作業回数の上限で止まっても、変更があればPRにしてCIで確かめる）
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN }}

@@ -300,4 +300,70 @@ PY2
 )
 assert_eq "見た目のテストの扱い" "claude-implement:ok,claude-mention:ok,handoff:ok" "$result"
 
+echo "== 修正AI：ボットが作ったPRでも確認コマンドを動かせる。ただし、このリポジトリの claude/ ブランチのPRだけ（pr-trust.sh）"
+result=$(python3 - "$WORKFLOWS" <<'PY3'
+import sys, yaml
+w = sys.argv[1]
+steps = yaml.safe_load(open(f"{w}/claude-mention.yml"))["jobs"]["claude"]["steps"]
+names = [st.get("name") or st.get("uses", "") for st in steps]
+ai = [i for i, st in enumerate(steps) if str(st.get("uses", "")).startswith("anthropics/claude-code-action")]
+trust = [i for i, st in enumerate(steps) if st.get("id") == "trust"]
+copy = [i for i, st in enumerate(steps) if st.get("name") == "道具を main から取ってくる" and "?ref=$BASE" in st["run"] and ".github/scripts/$f.sh " not in st["run"]]
+out = []
+# 既定（拒否する）のままにならないのは、pr-trust.sh が false と言ったときだけ
+out.append("restrict:" + ("ok" if ai and steps[ai[0]]["with"].get("restrict_untrusted_prs") == "${{ steps.trust.outputs.restrict != 'false' }}" else "ng"))
+out.append("trust:" + ("ok" if trust and copy and copy[0] < trust[0] < ai[0] and "pipeline-tools/pr-trust.sh" in steps[trust[0]]["run"] else "ng"))
+# AIのあとの工程は、作業フォルダ（PRのコード）のスクリプトを動かさない
+after = [st.get("run", "") for st in steps[ai[0] + 1:]]
+out.append("after:" + ("ok" if after and not any(".github/scripts/" in r for r in after) else "ng"))
+print(",".join(out))
+PY3
+)
+assert_eq "修正AIの拒否の外し方" "restrict:ok,trust:ok,after:ok" "$result"
+
+echo "== レビューAI：PRのコードがある作業フォルダのスクリプトを動かさない"
+result=$(python3 - "$WORKFLOWS" <<'PY4'
+import sys, yaml
+steps = yaml.safe_load(open(f"{sys.argv[1]}/claude-review.yml"))["jobs"]["review"]["steps"]
+print("ok" if not any(".github/scripts/" in st.get("run", "") for st in steps) else "ng")
+PY4
+)
+assert_eq "レビューのジョブ" "ok" "$result"
+
+echo "== 画面案：専用の手順書（mocks.md）を読み、作れなければその場で1回やり直し、それでも無ければ案なしで企画へ（MOCKS_RETRY=1）"
+result=$(python3 - "$WORKFLOWS" <<'PY5'
+import os, sys, yaml
+w = sys.argv[1]
+d = yaml.safe_load(open(f"{w}/claude-mocks.yml"))["jobs"]
+work = d["work"]["steps"]; pub = d["publish"]["steps"]
+ai = [st for st in work if str(st.get("uses", "")).startswith("anthropics/claude-code-action")]
+out = []
+out.append("doc:" + ("ok" if len(ai) == 2 and all(".github/factory/mocks.md" in st["with"]["prompt"] and "talk/" not in st["with"]["prompt"] for st in ai) and os.path.exists(f"{w}/../factory/mocks.md") else "ng"))
+out.append("retry:" + ("ok" if len(ai) == 2 and ai[1].get("if") and "steps.retry.outputs.redo == 'true'" in ai[1]["if"] else "ng"))
+p = [st for st in pub if st.get("run") == ".github/scripts/mocks-publish.sh"]
+out.append("publish:" + ("ok" if p and p[0]["env"].get("MOCKS_RETRY") == "1" and "steps.app-token.outputs.token" in p[0]["env"]["GH_TOKEN"] else "ng"))
+print(",".join(out))
+PY5
+)
+assert_eq "画面案のやり直し" "doc:ok,retry:ok,publish:ok" "$result"
+
+echo "== 進捗ログ：企画・画面案・実装・CI・レビュー・修正の全部が step-log.sh を呼ぶ（オーナーの名義にならないよう、ワークフローのトークンで）"
+result=$(python3 - "$WORKFLOWS" <<'PY6'
+import re, sys, yaml
+w = sys.argv[1]
+found = {}
+for f in ["claude-plan.yml", "claude-mocks.yml", "claude-implement.yml", "claude-mention.yml", "pipeline.yml"]:
+    for job in yaml.safe_load(open(f"{w}/{f}"))["jobs"].values():
+        for st in job["steps"]:
+            for m in re.finditer(r"step-log\.sh.*?--step (\w+)", st.get("run", "")):
+                found.setdefault(m.group(1), []).append(st.get("env", {}).get("GH_TOKEN"))
+want = ["plan", "mocks", "implement", "ci", "review", "fix"]
+print(",".join(f"{k}:" + ("ok" if found.get(k) and all(t == "${{ github.token }}" for t in found[k]) else "ng") for k in want))
+PY6
+)
+assert_eq "進捗ログの呼び出し" "plan:ok,mocks:ok,implement:ok,ci:ok,review:ok,fix:ok" "$result"
+
+echo "== 企画AI：他の Issue・PR の完了待ち（BLOCKED）の書き方がプロンプトにある"
+assert_contains "BLOCKED" "$(cat "$WORKFLOWS/claude-plan.yml")" '`BLOCKED`：'
+
 finish

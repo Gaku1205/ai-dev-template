@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# 実装AIのあと（open-pr.sh）：AIが正常に終わったのに変更が無いとき、理由を書かずに止めない
+source "$(dirname "$0")/lib.sh"
+setup_mock
+exec_file="$MOCK_DIR/execution.json"
+run_open() { ISSUE=7 ISSUE_TITLE="題" AI_OUTCOME="${1:-success}" EXECUTION_FILE="$exec_file" GITHUB_RUN_ID=99 run_script open-pr.sh; }
+denied='[{"type":"result","subtype":"success","result":"テストを動かせず、作業を終えました。","permission_denials":[{"tool_name":"Bash","tool_input":{"command":"chmod +x .github/scripts/tests/test-x.sh"}},{"tool_name":"Bash","tool_input":{"command":"bash .github/scripts/tests/test-x.sh 2>&1"}}]}]'
+clean='[{"type":"result","subtype":"success","result":"この作業は docs/pipeline.md の形式が決まるまで始められません。","permission_denials":[]}]'
+
+echo "== 拒否があって変更が無い：拒否された操作を書いて、1回だけ実装をやり直す（人間に回さない）"
+init_state '{"labels":{"7":["ai:implement"]}}'
+printf '%s' "$denied" > "$exec_file"
+run_open > /dev/null
+c=$(comments_of 7)
+assert_eq "ai:implement を付け直す（ai:stuck にしない）" "ai:implement" "$(labels_of 7)"
+assert_contains "拒否された操作を書く" "$c" "Bash(chmod +x .github/scripts/tests/test-x.sh)"
+assert_contains "AIの最後の言葉を書く" "$c" "テストを動かせず、作業を終えました。"
+assert_contains "やり直しの印" "$c" "<!-- auto-perm-retry -->"
+assert_contains "ログのURL" "$c" "actions/runs/99"
+assert_eq "通知しない" "0" "$(notify_count)"
+
+echo "== やり直しても同じ：足りない許可を書いて人間に回す（3回目は無い）"
+run_open > /dev/null
+c=$(comments_of 7)
+assert_contains "ai:stuck" "$(labels_of 7)" "ai:stuck"
+assert_contains "理由を書く" "$c" "1回自動でやり直しても"
+assert_eq "やり直しの印は1つのまま" "1" "$(printf '%s' "$c" | grep -c 'auto-perm-retry')"
+assert_eq "通知する" "1" "$(notify_count)"
+
+echo "== 人間が再開（auto-resume）したあとは、また1回やり直せる"
+state_py "
+s['labels']['7']=['ai:implement']
+for c in s['comments']: c['created_at']='2026-01-01T00:00:00Z'
+s['next_id']+=1
+s['comments'].append({'id':s['next_id'],'issue':'7','body':'▶ 再開\n<!-- auto-resume -->','user':{'login':'x'},'created_at':'2026-01-02T00:00:00Z','updated_at':'2026-01-02T00:00:00Z'})"
+run_open > /dev/null
+assert_eq "やり直す" "ai:implement" "$(labels_of 7)"
+assert_eq "やり直しの印が2つ" "2" "$(comments_of 7 | grep -c 'auto-perm-retry')"
+
+echo "== 拒否が無くて変更が無い：AIが最後に言ったことを書いて人間に回す（黙って止めない）"
+init_state '{"labels":{"7":["ai:implement"]}}'
+: > "$MOCK_DIR/curl.log"
+printf '%s' "$clean" > "$exec_file"
+run_open > /dev/null
+c=$(comments_of 7)
+assert_contains "ai:stuck" "$(labels_of 7)" "ai:stuck"
+assert_contains "AIの最後の言葉" "$c" "形式が決まるまで始められません"
+assert_contains "拒否は無いと書く" "$c" "拒否された操作はありません"
+assert_not_contains "やり直さない" "$c" "auto-perm-retry"
+
+echo "== 実行記録が無くても、理由のコメントは残す"
+init_state '{"labels":{"7":["ai:implement"]}}'
+rm -f "$exec_file"
+run_open > /dev/null
+assert_contains "コメントがある" "$(comments_of 7)" "変更が作られませんでした"
+assert_contains "記録が無いと書く" "$(comments_of 7)" "実行記録にありません"
+
+echo "== AIがエラーで終わって変更が無い：今までどおり、自動のやり直し待ち"
+init_state '{"labels":{"7":["ai:implement"]}}'
+run_open failure > /dev/null
+assert_contains "ai:retry" "$(labels_of 7)" "ai:retry"
+
+finish

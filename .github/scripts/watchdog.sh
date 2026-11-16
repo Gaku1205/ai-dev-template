@@ -4,6 +4,7 @@
 #   2. 失敗の知らせも無いまま止まっている物（時間切れなど）を見つけて、ai:retry を付ける
 #   3. CIが「承認待ち」で止まっている物を動かし直す
 #   4. ラベルが無いまま放置されたIssueを企画（ai:plan）に回す
+#   4.5 他の Issue・PR の完了待ち（ai:blocked）で、待ち先が全部閉じた物を企画（ai:plan）に戻す
 #   5. 使い終わった claude/* ブランチを掃除する
 #   6. ラベルの矛盾（ai:queue と ai:implement など）を直す
 #   7. 順番待ち（ai:queue）を進める
@@ -186,6 +187,52 @@ for n in $(gh api "repos/$REPO/issues?state=open&per_page=100" -q '.[] | select(
   notify intake "頼まれていないIssueがありました" "#${n} $(issue_title "$n")：ラベルが無いまま${m}分たったので、企画に回しました（受付が動いていないかもしれません。Secretsとトークンの期限を確認してください）" 3
 done
 
+# ---- 3.6 他の Issue・PR の完了待ち（ai:blocked）：待ち先が全部閉じたら、企画に戻す ----
+# 待ち先は、いちばん新しい「待ち先のコメント」の印（<!-- blocked-by: owner/repo#N -->）。別のリポジトリでもよい（Issue でも PR でもよい。
+# PR は issues の API で読めて、マージ・クローズで closed になる）。読めない待ち先があるときは、戻さない（間違って再開しない）。
+# 読めないまま BLOCKED_UNREADABLE_MIN 分たったら、黙って待ち続けないように、理由を書いて人間に回す
+BLOCKED_UNREADABLE_MIN="${BLOCKED_UNREADABLE_MIN:-60}"
+for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Ablocked" -q '.[] | select(.pull_request | not) | .number'); do
+  case "$handled" in *" $n "*) continue ;; esac
+  has_label "$n" "ai:stuck" && continue
+  marks=$(all_comments "$n" | jq -r 'map(select(.body | test("<!-- blocked-by: "))) | last | .body // ""' | grep -oE "$BLOCKED_MARK_RE" || true)
+  if [ -z "$marks" ]; then
+    stop_issue_for_human "$n" "ai:blocked（他の Issue・PR の完了待ち）が付いていますが、待ち先の印（blocked-by）がありません。待つ必要が無ければ、ai:blocked を外して ai:plan を付けてください"
+    continue
+  fi
+  still="" unreadable=""
+  while IFS= read -r mark; do
+    [ -z "$mark" ] && continue
+    [[ "$mark" =~ $BLOCKED_MARK_RE ]] || continue
+    t_repo="${BASH_REMATCH[1]}"
+    t_num="${BASH_REMATCH[2]}"
+    state=$(gh api "repos/$t_repo/issues/$t_num" -q .state 2> /dev/null) || state=""
+    case "$state" in
+      closed) ;;
+      open) still="${still}${t_repo}#${t_num} " ;;
+      *) unreadable="${unreadable}${t_repo}#${t_num} " ;;
+    esac
+  done <<< "$marks"
+  if [ -n "$unreadable" ]; then
+    m=$(idle_min "$(gh api "repos/$REPO/issues/$n" -q .updated_at)")
+    if [ "$m" -ge "$BLOCKED_UNREADABLE_MIN" ]; then
+      stop_issue_for_human "$n" "待ち先（${unreadable% }）の状態を読めないまま${m}分たちました（別のリポジトリが非公開で、パイプラインの鍵では読めない、など）。待ち先が終わっていれば、ai:blocked を外して ai:plan を付けてください"
+    else
+      echo "#$n：待ち先（${unreadable% }）を読めないので、今回は何もしません"
+    fi
+    continue
+  fi
+  if [ -n "$still" ]; then
+    echo "#$n：待ち先（${still% }）がまだ開いているので、待ちます"
+    continue
+  fi
+  remove_label "$n" "ai:blocked"
+  comment "$n" "▶ 待ち先が全部終わったので、企画に戻します（自動）。" || true
+  add_label "$n" "ai:plan"
+  handled="${handled}${n} "
+  echo "#$n：待ち先が全部終わったので、企画に戻しました"
+done
+
 # ---- 3.8 使い終わった claude/* ブランチを掃除する ----
 # 開いているPRが無く、最後のコミットから2日以上たった物だけ（作業中の物は消さない）。1回に消すのは20本まで
 cleaned=0
@@ -243,7 +290,7 @@ while IFS=$'\t' read -r n labels; do
   [ -z "$n" ] && continue
   [ "$fixed" -ge 20 ] && break
   stale=()
-  for l in ai:stuck ai:retry ai:queue; do
+  for l in ai:stuck ai:retry ai:queue ai:blocked; do
     case ",$labels," in *,"$l",*) stale+=("$l") ;; esac
   done
   [ "${#stale[@]}" -eq 0 ] && continue

@@ -6,7 +6,7 @@ setup_mock
 source "$SCRIPTS_DIR/doctor.sh"
 REPO=o/r
 
-all_labels="ai:plan ai:implement ai:review ai:queue ai:hold ai:stuck ai:skip ai:retry visual:update size:S size:L"
+all_labels="ai:plan ai:implement ai:review ai:queue ai:blocked ai:hold ai:stuck ai:skip ai:retry visual:update size:S size:L"
 fetch_labels() { printf '%s\n' $LABELS; }
 fetch_delete_branch() { echo "$DELBR"; }
 token_can_push() { echo "$CANPUSH"; }
