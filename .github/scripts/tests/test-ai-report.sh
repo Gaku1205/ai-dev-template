@@ -29,6 +29,19 @@ assert_contains "入力・キャッシュ・出力" "$out" "使った量：入�
 printf '%s' '{"type":"result","subtype":"success","num_turns":5,"result":""}' > "$f"
 assert_not_contains "無ければ出さない" "$(report "$f")" "使った量"
 
+echo "== push が失敗したら、GitHub の返事を出す（原因を追えるように）"
+cat > "$f" <<'JSON'
+[{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","input":{"command":"git push -u origin claude/issue-1-x"}},{"type":"tool_use","id":"t2","input":{"command":"npm run build"}}]}},
+ {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t2","content":"error TS2304 (ビルドの物は出さない)"},{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":[{"type":"text","text":"To https://github.com/o/r\n ! [remote rejected] HEAD -> claude/issue-1-x (refusing to allow a GitHub App to create or update workflow `.github/workflows/ci.yml` without `workflows` permission)\nerror: failed to push some refs"}]}]}},
+ {"type":"result","subtype":"success","num_turns":3,"result":"push できませんでした"}]
+JSON
+out=$(report "$f")
+assert_contains "push の失敗の行" "$out" "push の失敗："
+assert_contains "GitHub の理由" "$out" "without \`workflows\` permission"
+assert_not_contains "ほかのコマンドの失敗は出さない" "$out" "TS2304"
+printf '%s' '{"type":"result","subtype":"success","num_turns":5,"result":""}' > "$f"
+assert_not_contains "push が無ければ出さない" "$(report "$f")" "push の失敗"
+
 echo "== ファイルが無い・壊れていても止めない"
 out=$(report "$MOCK_DIR/none.json"); rc=$?
 assert_eq "終了コード 0" "0" "$rc"
