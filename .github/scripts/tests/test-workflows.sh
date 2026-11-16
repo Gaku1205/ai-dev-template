@@ -424,4 +424,11 @@ echo "== 読む量を減らす：企画AIが Issue に「読む所」を書き�
 assert_contains "企画のプロンプト" "$(cat "$WORKFLOWS/claude-plan.yml")" "### 読む所"
 assert_contains "部品：読む所の指示" "$(cat "$SCRIPTS_DIR/prompts/read-sections.md")" "「読む所」の見出しがあれば、docs/spec.md と docs/design.md は最初から全部は読まない"
 
+echo "== 工場の審査：直した後の点が下がったら、直す前の物に戻してから最後の画面を撮る"
+names=$(python3 -c "import yaml;print('\n'.join(st.get('name','') for st in yaml.safe_load(open('$WORKFLOWS/factory.yml'))['jobs']['design']['steps']))")
+rv=$(printf '%s\n' "$names" | grep -n "直した後の方が悪ければ" | cut -d: -f1)
+ft=$(printf '%s\n' "$names" | grep -n "^最後の画面を撮る$" | cut -d: -f1)
+assert_eq "戻す手順がある" "yes" "$([ -n "$rv" ] && echo yes || echo no)"
+assert_eq "最後の画面を撮る前に戻す" "yes" "$([ -n "$rv" ] && [ -n "$ft" ] && [ "$rv" -lt "$ft" ] && echo yes || echo no)"
+
 finish

@@ -358,11 +358,33 @@ jobs:
         id: verdict2
         if: ${{ !cancelled() && steps.review2.outputs.ok == 'true' }}
         run: .github/scripts/design-review.sh verdict screen 2
+      # 直した後の点が直す前より下がったら、直す前の物に戻す（#88：7.3 点 → 直した後 6.7 点で、崩れが増えた物が残った）
+      - name: 直した後の方が悪ければ、直す前の物に戻す
+        if: ${{ !cancelled() && steps.snapshot.outputs.ok == 'true' && steps.verdict1.outputs.score != '' && steps.verdict2.outputs.score != '' }}
+        env:
+          S1: ${{ steps.verdict1.outputs.score }}
+          S2: ${{ steps.verdict2.outputs.score }}
+        run: |
+          if awk -v a="$S1" -v b="$S2" 'BEGIN { exit !(b + 0 < a + 0) }'; then
+            b="$RUNNER_TEMP/before-judge-fix"
+            rm -rf src && cp -R "$b/src" src
+            if [ -d "$b/public" ]; then rm -rf public && cp -R "$b/public" public; fi
+            if [ -f "$b/design.md" ]; then cp "$b/design.md" docs/design.md; fi
+            if npm run build > /dev/null 2>&1; then
+              echo "::warning::直した後の点（${S2}）が直す前（${S1}）より低いので、直す前の物に戻しました"
+              echo "- 直した後の点（${S2}）が直す前（${S1}）より低かったので、直す前の物を使いました" >> "$RUNNER_TEMP/judge-revert.md"
+            else
+              echo "::warning::直す前の物に戻すとビルドできないので、直した後の物のままにします"
+            fi
+          else
+            echo "直した後の点（${S2}）は直す前（${S1}）以上なので、そのまま使います"
+          fi
       - name: 審査の結果をまとめる
         if: ${{ !cancelled() }}
         run: |
           mkdir -p "$RUNNER_TEMP/design"
           .github/scripts/design-review.sh summary "$RUNNER_TEMP/design/judge.md" || true
+          if [ -f "$RUNNER_TEMP/judge-revert.md" ] && [ -f "$RUNNER_TEMP/design/judge.md" ]; then cat "$RUNNER_TEMP/judge-revert.md" >> "$RUNNER_TEMP/design/judge.md"; fi
           if [ -f "$RUNNER_TEMP/design/judge.md" ]; then cat "$RUNNER_TEMP/design/judge.md"; fi
       # 最後の画面を撮る：最初の1画面（390・1440・1920）と、1画面ずつスクロールした絵（390・1440）。ページは / と factory-pages.txt の物（合わせて3つまで。ゲームは /?scene=play のような場面も）
       - name: 最後の画面を撮る
