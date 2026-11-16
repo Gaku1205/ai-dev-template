@@ -3,7 +3,7 @@
 #   指摘なし → CIも全部通っていれば自動でマージ（ai:hold が付いていたら、マージは人間に任せて通知）
 #   指摘あり → AIに直させる（上限を超えたら人間に回す）
 #
-# 環境変数：CONCLUSION、HEAD_SHA、HEAD_BRANCH、READ_TOKEN（ワークフローのトークン）
+# 環境変数：CONCLUSION、HEAD_SHA、HEAD_BRANCH、READ_TOKEN（ワークフローのトークン）、EXECUTION_FILE（あれば。レビューAIの実行記録。失敗の原因を見分ける）
 source "$(dirname "$0")/pipeline-lib.sh"
 set -e
 
@@ -31,7 +31,8 @@ if [ "$CONCLUSION" != "success" ]; then
     '[.[] | select((.user.login == "claude[bot]" or .user.login == "github-actions[bot]") and (.body | startswith("## Code review")) and .created_at >= $since)] | length')
   if [ "$written" -eq 0 ]; then
     # 使用量の上限などの一時的な失敗かもしれないので、人間に回す前に自動でやり直す（watchdog.sh）
-    mark_for_retry "$pr" review "$(failure_reason "レビューAIがエラーで止まりました（ログは、レビューAIの実行の方を見てください）")"
+    # 実行記録（EXECUTION_FILE。pipeline.yml が渡していれば）で、原因に合わせる：使用量の上限ならリセットまで待つ（回数を使わない）
+    retry_ai_failure "$pr" review "レビューAIがエラーで止まりました（ログは、レビューAIの実行の方を見てください）" "${EXECUTION_FILE:-}"
     exit 0
   fi
   echo "PR #$pr：レビューAIはエラーで終わったが、結果のコメントは書けているので、その結果で進めます"
@@ -69,6 +70,19 @@ if [ -z "$review" ]; then
     review="No issues found"
     echo "PR #$pr：文字で読めない変更だけなので、指摘なしとして進めます"
   fi
+fi
+# レビューのワークフロー自体（claude-review.yml）を変えるPRでは、レビューAIは動けない（AIのアクションは、ワークフローのファイルが
+# main と同じ内容でないと、何もせず成功で終わる）。やり直しても同じなので、やり直さず、すぐ人間のマージ待ち（ai:hold）にする
+# （今までは、30分おきに2回やり直してから「結果のコメントが見つかりません」で人間に回していた）
+if [ -z "$review" ] && gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null | grep -qx '.github/workflows/claude-review.yml'; then
+  has_label "$pr" "ai:hold" || add_label "$pr" "ai:hold" || true
+  remove_label "$pr" "ai:retry"
+  comment "$pr" "ℹ️ このPRはレビューのワークフロー（\`.github/workflows/claude-review.yml\`）を変えるので、レビューAIは動けません（ワークフローが main と同じ内容でないと、AIのアクションは何もしません）。CIは通っています。人間が中身を確かめて、マージしてください。
+
+<!-- ${REVIEW_UNAVAILABLE_MARK} ${HEAD_SHA} -->" || true
+  notify hold "あなたが確かめてマージしてください" "PR #${pr} $(issue_title "$pr")：レビューのワークフローを変えるPRなので、レビューAIは動けません" 4
+  echo "PR #$pr：レビューのワークフローを変えるPRなので、人間のマージ待ちにしました"
+  exit 0
 fi
 if [ -z "$review" ]; then
   # レビューAIが、エラーにならずに何も書かずに終わることがある（一時的な不調）。2回までは自動でやり直し、続くなら人間に回す

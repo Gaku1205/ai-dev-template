@@ -64,4 +64,34 @@ assert_contains "再開の文" "$(comments_of 40)" "▶ 人間が再開しまし
 assert_not_contains "止まったとは書かない" "$(comments_of 40)" "AIが止まったので"
 assert_contains "印は残る（次のやり直しで書き換える）" "$(comments_of 40)" "<!-- count=0 kind=implement -->"
 
+
+echo "== Issue・作業のラベルが無い（企画で人間に回したとき ai:plan は外してある）→ 企画からやり直す"
+init_state '{"labels":{"54":[]}}'
+out=$(run_resume 54 false)
+assert_eq "ai:plan が付く" "ai:plan" "$(labels_of 54)"
+assert_contains "ログに出す" "$out" "企画からやり直しました"
+
+echo "== Issue・待っている物（質問・順番待ち・ほかの作業待ち）や ai:skip は、そのまま"
+for l in ai:question ai:queue ai:blocked ai:mocks ai:skip; do
+  init_state '{"labels":{"54":["'"$l"'"]}}'
+  run_resume 54 false > /dev/null
+  assert_eq "$l はそのまま" "$l" "$(labels_of 54)"
+done
+
+echo "== Issue の ai:stuck だけ外された・PRも止まっている → PRの ai:stuck も外して、PRの続きを始める"
+init_state '{"labels":{"54":["ai:implement"],"58":["ai:stuck"]},"pulls":[{"number":58,"body":"Closes #54","state":"open","head":{"sha":"abc","ref":"claude/issue-54-x"},"updated_at":"2026-01-01T00:00:00Z"}]}'
+out=$(run_resume 54 false)
+assert_eq "PRの ai:stuck が外れる" "" "$(labels_of 58)"
+assert_eq "Issue は実装をやり直さない" "ai:implement" "$(labels_of 54)"
+assert_contains "ログに出す" "$out" "PRの止まった所から続けます"
+
+
+echo "== Issue・作業のラベルは無いが、この Issue を閉じるPRが開いている（人間のPRなど）→ 企画し直さない"
+init_state '{"labels":{"54":[],"58":[]},"pulls":[{"number":58,"body":"Closes #54","state":"open","head":{"sha":"abc","ref":"my-branch"},"updated_at":"2026-01-01T00:00:00Z"}]}'
+run_resume 54 false > /dev/null
+assert_eq "ai:plan を付けない" "" "$(labels_of 54)"
+init_state '{"labels":{"5":[],"58":[]},"pulls":[{"number":58,"body":"Closes #54","state":"open","head":{"sha":"abc","ref":"my-branch"},"updated_at":"2026-01-01T00:00:00Z"}]}'
+run_resume 5 false > /dev/null
+assert_eq "別の番号（#54）のPRは関係ない" "ai:plan" "$(labels_of 5)"
+
 finish

@@ -24,11 +24,17 @@ VISUAL_MARK="<!-- auto-visual-update -->"
 # 他の Issue・PR の完了待ち（ai:blocked）で、待ち先を書くコメントの印（待ち先ごとに1つ：<!-- blocked-by: owner/repo#N -->）
 # shellcheck disable=SC2034  # after-plan.sh・watchdog.sh で使う
 BLOCKED_MARK_RE='<!-- blocked-by: ([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#([0-9]+) -->'
+# レビューAIが動けないPR（レビューのワークフロー自体を変えるPR）を、人間のマージ待ちにした印（after-review.sh が書き、watchdog.sh が「待っている」と読む）
+# 先頭コミットごとに書く：<!-- review-unavailable: 先頭コミット -->（新しいコミットが入れば、もう一度確かめる）
+# shellcheck disable=SC2034  # after-review.sh・watchdog.sh で使う
+REVIEW_UNAVAILABLE_MARK="review-unavailable:"
 # shellcheck disable=SC2034  # after-ci.sh で使う
 PIPELINE_TEST_MARK="<!-- auto-pipeline-test-rerun -->"
 # 自動でやり直す回数の上限と、失敗してからやり直すまでの待ち時間（分）。
 # 使用量の上限で止まったときは、リセットされるまで何度かやり直しながら待つ
 RETRY_MARK="<!-- auto-retry -->"
+# 人間が再開したとき（resume.sh）に、やり直しの記録に書く理由。write_retry_record が、この文のときだけ「回数を0に戻しました」と書く
+RESUMED_REASON="人間が再開しました"
 MAX_RETRY="${MAX_RETRY:-10}"
 RETRY_COOLDOWN_MIN="${RETRY_COOLDOWN_MIN:-30}"
 # 使用量の上限で止まったときは、回数を減らさずに待つ。リセット時刻が分からないときの待ち時間（分）と、待つのをあきらめる上限（時間）
@@ -124,6 +130,16 @@ linked_issue() {
   printf '%s' "$n"
 }
 
+# Issue を作った人を、そのまま自動で動かしてよいか：オーナーと、このパイプラインのワークフロー（企画AIが分けて作る Issue は
+# github-actions[bot]、AI自身は claude[bot]）だけ。公開リポジトリでは誰でも Issue を作れるので、ほかの人・ほかのボットの Issue は
+# オーナーが ai:skip を外すまで動かさない（intake.sh・watchdog.sh）
+trusted_author() {
+  case "${1,,}" in
+    "${OWNER,,}" | "claude[bot]" | "github-actions[bot]") return 0 ;;
+  esac
+  return 1
+}
+
 # まだパイプラインに乗っていないIssueか（ai: で始まるラベルが1つも無い。ai:skip も ai: なので「まだ動かさない」になる）
 needs_intake() {
   local labels title
@@ -215,11 +231,31 @@ pr_merge_state() {
   echo "${state:-unknown}"
 }
 
+# PRをマージする。GitHub の一時的なエラー（502 などのサーバー側のエラー・通信の失敗）なら、少し待って3回まで試す
+# （1回の 502 で、配られたパイプラインの更新が人間待ちになったことがある。tap-stack-rush #37）。
+#   使い方：merge_pr PR番号 先頭コミット。マージできたら 0。できなければ 1 で、標準出力に最後のエラーの文
+merge_pr() {
+  local pr="$1" sha="$2" out="" i
+  for i in 1 2 3; do
+    if out=$(gh api -X PUT "repos/$REPO/pulls/$pr/merge" -f merge_method=merge -f sha="$sha" 2>&1); then
+      return 0
+    fi
+    # エラーが返っても、マージ自体は済んでいることがある
+    if [ "$(gh api "repos/$REPO/pulls/$pr" -q '.merged // false' 2> /dev/null)" = true ]; then
+      return 0
+    fi
+    printf '%s' "$out" | grep -qiE 'HTTP 5[0-9][0-9]|server error|bad gateway|timeout|timed out|connection' || break
+    [ "$i" -lt 3 ] && sleep "${MERGE_RETRY_WAIT_SEC:-10}"
+  done
+  printf '%s' "$out"
+  return 1
+}
+
 # 自動でマージする。できなかったら黙って終わらず、main との衝突なら AI に解消させ、それ以外はやり直し待ちに回す。
 #   使い方：merge_or_handle PR番号 先頭コミット 種類（mark_for_retry に渡す）。マージできたら 0、できなければ 1
 merge_or_handle() {
   local pr="$1" sha="$2" kind="$3" out state
-  if out=$(gh api -X PUT "repos/$REPO/pulls/$pr/merge" -f merge_method=merge -f sha="$sha" 2>&1); then
+  if out=$(merge_pr "$pr" "$sha"); then
     return 0
   fi
   state=$(pr_merge_state "$pr")
@@ -389,7 +425,8 @@ write_retry_record() {
 <!-- limit-until=${until_at} -->"
   [ -n "$first" ] && marks="${marks}
 <!-- limit-first=${first} -->"
-  if [ "$count" -eq 0 ]; then
+  # 最初の失敗も回数は 0 なので、回数だけでは見分けない（見分けないと、最初の失敗が「回数を0に戻しました」と出て、理由の行も残らない）
+  if [ "$count" -eq 0 ] && [ "$reason" = "$RESUMED_REASON" ]; then
     # 人間が再開したとき（resume.sh）：回数を0に戻しただけ。「AIが止まった」とは書かない
     body=$(printf '▶ %s。自動のやり直しの回数を0に戻しました。\n\n%s\n<!-- count=0 kind=%s -->%s' "$reason" "$RETRY_MARK" "$kind" "$marks")
   else
@@ -588,7 +625,9 @@ AIが \`${key}\` を許可されておらず、${n}回止まりました（記�
 handle_ai_failure() {
   local num="$1" kind="$2" label="$3" file="${4:-}" denied reason
   denied=$(denied_tools "$file")
-  if [ -n "$denied" ]; then
+  # 使用量の上限で止まったのなら、途中に拒否された操作があっても、許可の不足として人間に回さない（上限は待てば直る。
+  # 拒否は、AIが別のやり方で先へ進めていることが多い）。上限のリセットを待ってやり直す（retry_ai_failure）
+  if [ -n "$denied" ] && [ -z "$(limit_signal "$file")" ]; then
     reason="$(failure_reason "$label" "$file")。足りない許可：$(permission_list_short "$denied")（docs/pipeline.md の「AIの許可」の表と、ワークフローの --allowedTools を見てください）"
     # 先に人間に回す（ラベル・コメント・通知）。記録は後。記録が遅くてジョブが時間切れになっても、宙に浮かないように
     case "$kind" in
@@ -599,7 +638,39 @@ handle_ai_failure() {
     report_permission_gap "$num" "$denied"
     return 0
   fi
-  mark_for_retry "$num" "$kind" "$(failure_reason "$label" "$file")" "$(limit_signal "$file")"
+  retry_ai_failure "$num" "$kind" "$label" "$file"
+}
+
+# AIがエラーで終わったとき、やり直し待ち（ai:retry）にする。実行記録があれば、原因に合わせる：
+#   使用量の上限        → リセットまで待つ（やり直しの回数を使わない）
+#   作業回数の上限が続く → やり直さず人間に回す（max_turns_again）
+#   それ以外            → 30分あけてやり直す
+# 使い方：retry_ai_failure 番号 kind(plan|implement|review|mention) 説明 [実行記録のファイル]
+retry_ai_failure() {
+  local num="$1" kind="$2" label="$3" file="${4:-}" limit reason
+  limit=$(limit_signal "$file")
+  if [ -z "$limit" ] && max_turns_again "$num" "$file"; then
+    reason="$(failure_reason "$label" "$file")。やり直しても、また作業回数の上限に届きました（同じ上限で何度やり直しても、同じ所で止まります）。作業が大きすぎるかもしれません"
+    case "$kind" in
+      plan) remove_label "$num" "ai:plan"; stop_issue_for_human "$num" "${reason}。Issue を小さく分けてください" ;;
+      implement) stop_issue_for_human "$num" "${reason}。Issue を小さく分けるか、\`size:L\` を付けてから \`ai:stuck\` を外してください" ;;
+      *) stop_for_human "$num" "${reason}。PRのコメントとログを確かめてください" ;;
+    esac
+    return 0
+  fi
+  mark_for_retry "$num" "$kind" "$(failure_reason "$label" "$file")" "$limit"
+}
+
+# AIが作業回数の上限（--max-turns）で止まり、もう MAX_TURNS_RETRY 回やり直した後か。
+# 同じ上限のままやり直しても同じ所で止まるので、10回やり直す前に人間に回すのに使う（やり直しのたびに、上限いっぱいまでAIを使うため）
+#   使い方：max_turns_again 番号 実行記録のファイル
+MAX_TURNS_RETRY="${MAX_TURNS_RETRY:-1}"
+max_turns_again() {
+  local num="$1" f="${2:-}" subtype
+  { [ -n "$f" ] && [ -s "$f" ]; } || return 1
+  subtype=$(jq -r 'if type == "array" then . else [.] end | map(select(type == "object" and .type == "result")) | last // {} | .subtype // ""' "$f" 2> /dev/null) || return 1
+  [ "$subtype" = "error_max_turns" ] || return 1
+  [ "$(retry_count "$num")" -ge "$MAX_TURNS_RETRY" ]
 }
 
 # 止まったことを記録して、あとで自動でやり直す。使い方：mark_for_retry 番号 kind 理由 [limit]
