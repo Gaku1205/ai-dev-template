@@ -124,6 +124,40 @@ assert_contains "短くする案の印" "$(grep '^仕様書の保存' <<< "$all"
 assert_not_contains "食い違いに短くする印は付かない" "$(grep '^食い違いA|' <<< "$all")" "ai-found-kind"
 assert_not_contains "枠を超えた分は作らない" "$all" "デザインの節"
 
+echo "== 開いている ai:found が多いとき（直る前に、同じ問題がちがう題名で積み上がる）：新しく作らない"
+init_state '{"labels":{"1":["ai:found","ai:plan"],"2":["ai:found","ai:implement"],"3":["ai:found","ai:queue"],"4":["ai:found"],"5":["ai:found","ai:stuck"],"6":["ai:found","ai:review"],"7":["ai:found","ai:skip"]}}'
+echo '{"findings":[{"title":"新しい問題","body":"本文"}]}' > "$F"
+out=$(bash "$SCRIPTS_DIR/found-report.sh" try "$F")
+assert_contains "作らないと言う" "$out" "開いている ai:found の Issue が 6 件あるので、今回は新しく作りません"
+assert_eq "Issue は増えない" "0" "$(python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print(len(s.get('issues_meta',{})))")"
+state_py "s['issues_meta']={'6':{'state':'closed','title':'t'}}"
+out=$(bash "$SCRIPTS_DIR/found-report.sh" try "$F")
+assert_contains "1件片付いたら（人間の返事待ちの ai:skip は数えない）、また作る" "$out" "作った Issue：1件"
+out=$(FOUND_OPEN_MAX=2 bash "$SCRIPTS_DIR/found-report.sh" try "$F")
+assert_contains "上限は FOUND_OPEN_MAX で変えられる" "$out" "今回は新しく作りません"
+
+echo "== もう報告してある問題の一覧（found-known.sh）：開いている物と、最近閉じた物の題名をAIに渡す"
+K="$MOCK_DIR/known/known.md"
+init_state '{"labels":{"1":["ai:found","ai:plan"],"2":["ai:found"],"3":["ai:found"],"4":["bug"],"5":["ai:found"]},
+  "issues_meta":{"1":{"title":"スマホで表がはみ出す","state":"open"},"2":{"title":"戻るボタンが無い","state":"closed","closed_at":"2026-11-10T00:00:00Z"},
+                 "3":{"title":"古い問題","state":"closed","closed_at":"2026-10-01T00:00:00Z"},"4":{"title":"人間が書いた別の Issue","state":"open"},
+                 "5":{"title":"`rm -rf` して @owner に <b>知らせる</b>","state":"open"}}}'
+NOW=$(date -u -d 2026-11-16T12:00:00Z +%s) bash "$SCRIPTS_DIR/found-known.sh" "$K" > /dev/null; rc=$?
+assert_eq "終了コード 0" "0" "$rc"
+known=$(cat "$K")
+assert_contains "開いている物" "$known" "- （対応中）スマホで表がはみ出す"
+assert_contains "最近閉じた物" "$known" "- （最近閉じた）戻るボタンが無い"
+assert_not_contains "14日より前に閉じた物は入れない" "$known" "古い問題"
+assert_not_contains "ai:found ではない Issue は入れない" "$known" "人間が書いた"
+assert_contains "記号を落とす（AIが書いた題名を、そのまま指示にしない）" "$known" "- （対応中）rm -rf して owner に b知らせる/b"
+init_state '{}'
+bash "$SCRIPTS_DIR/found-known.sh" "$K" > /dev/null
+assert_contains "無ければ、無いと書く" "$(cat "$K")" "（まだありません）"
+mkdir -p "$MOCK_DIR/ngbin" && printf '#!/usr/bin/env bash\necho "HTTP 502" >&2\nexit 1\n' > "$MOCK_DIR/ngbin/gh" && chmod +x "$MOCK_DIR/ngbin/gh"
+PATH="$MOCK_DIR/ngbin:$PATH" bash "$SCRIPTS_DIR/found-known.sh" "$K" > /dev/null 2>&1; rc=$?
+assert_eq "読めなくても 0 で終わる（役は動かす）" "0" "$rc"
+assert_contains "読めなくても、空の一覧を書く" "$(cat "$K")" "（まだありません）"
+
 echo "== 結果のファイルが無い・壊れている → 何もしない（失敗にしない）"
 init_state '{}'
 bash "$SCRIPTS_DIR/found-report.sh" audit "$MOCK_DIR/none.json" > /dev/null
