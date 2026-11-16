@@ -60,4 +60,28 @@ init_state '{"labels":{"7":["ai:implement"]}}'
 run_open failure > /dev/null
 assert_contains "ai:retry" "$(labels_of 7)" "ai:retry"
 
+echo "== 実装AIが「すでに直っている」と確かめて終わった：人間に回さず、確かめた中身を残して閉じる（tochi-rirekisho #9）"
+init_state '{"labels":{"7":["ai:implement"]},"issues_meta":{"7":{"title":"t","state":"open"}}}'
+printf '%s' '[{"type":"result","subtype":"success","result":"このブランチでは既に直っていたため、コードは変えていません。コミット 5ec18d9 で対応済み。","permission_denials":[]}]' > "$exec_file"
+run_open > /dev/null
+assert_eq "閉じる" "closed" "$(python3 -c "import json,os;print(json.load(open(os.environ['MOCK_STATE']))['issues_meta']['7']['state'])")"
+assert_not_contains "人間に回さない" "$(labels_of 7)" "ai:stuck"
+assert_not_contains "ai:implement を外す" "$(labels_of 7)" "ai:implement"
+assert_contains "理由と開き直し方" "$(comments_of 7)" "開き直してください"
+assert_contains "AIの言葉を残す" "$(comments_of 7)" "5ec18d9"
+
+echo "== 拒否があっても、すでに直っていると確かめたなら閉じる（やり直しを使わない）"
+init_state '{"labels":{"7":["ai:implement"]},"issues_meta":{"7":{"title":"t","state":"open"}}}'
+printf '%s' '[{"type":"result","subtype":"success","result":"The fix is already on this branch, so I made no code changes.","permission_denials":[{"tool_name":"Bash","tool_input":{"command":"npx vitest run"}}]}]' > "$exec_file"
+run_open > /dev/null
+assert_eq "閉じる" "closed" "$(python3 -c "import json,os;print(json.load(open(os.environ['MOCK_STATE']))['issues_meta']['7']['state'])")"
+assert_not_contains "やり直しの印を付けない" "$(comments_of 7)" "auto-perm-retry"
+
+echo "== 直せなかった、は閉じない（今までどおり人間に回す）"
+init_state '{"labels":{"7":["ai:implement"]},"issues_meta":{"7":{"title":"t","state":"open"}}}'
+printf '%s' '[{"type":"result","subtype":"success","result":"原因が分からず、直せませんでした。","permission_denials":[]}]' > "$exec_file"
+run_open > /dev/null
+assert_eq "開いたまま" "open" "$(python3 -c "import json,os;print(json.load(open(os.environ['MOCK_STATE']))['issues_meta']['7']['state'])")"
+assert_contains "人間に回す" "$(labels_of 7)" "ai:stuck"
+
 finish
