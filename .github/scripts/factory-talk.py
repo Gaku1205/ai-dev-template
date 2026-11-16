@@ -184,6 +184,9 @@ def apply(state, reply):
             state.pop(later, None)
             state.pop({"ideas": "idea", "looks": "look", "mocks": "mock"}.get(later, later), None)
         state["stage"], stage, action = back, back, "pick"
+        # 戻って選ぶ物が無い（「方向からやり直して」）：その段階を作り直す（選ぶ番号を聞き返さない。#88）
+        if not choice:
+            action = "redo"
     if action == "redo":
         return {"next": stage, "state": state, "message": ""}
     if action == "go" and stage != "confirm" and choice:
