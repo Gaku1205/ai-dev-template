@@ -29,9 +29,12 @@ jobs:
           case "$DESCRIPTION" in
             *"Ignored Build Step"* | *"rate limited"*) echo "知らせない：$DESCRIPTION"; exit 0 ;;
           esac
-          # マージコミットの説明（2行目以降）にPRのタイトルが入っている
-          title=$(printf '%s\n' "$MESSAGE" | sed -n '3p')
-          [ -z "$title" ] && title=$(printf '%s\n' "$MESSAGE" | head -n 1)
+          # 題：マージコミット（1行目が「Merge pull request …」）は3行目が PR のタイトル。
+          # まとめてマージ（squash）・直接のコミットは1行目（3行目は本文の続きで、「Closes #12」などになる）
+          first=$(printf '%s\n' "$MESSAGE" | sed -n '1p')
+          title=""
+          case "$first" in "Merge pull request "* | "Merge branch "*) title=$(printf '%s\n' "$MESSAGE" | sed -n '3p') ;; esac
+          [ -z "$title" ] && title="$first"
           if [ "$STATE" = "success" ]; then
             .github/scripts/notify.sh deployed "公開されました" "$title" 3
           else

@@ -32,6 +32,10 @@ jobs:
        (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      # 前のコミットの公開の結果（deploy/*）を読む（まだ公開されていないアプリの変更が残っていないかを見る）
+      statuses: read
     outputs:
       sha: ${{ steps.sha.outputs.sha }}
       apprunner: ${{ steps.plan.outputs.apprunner }}
@@ -56,6 +60,10 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
       - id: plan
+        env:
+          # パイプラインの更新だけのコミットでも、前のアプリの変更がまだ公開されていなければ公開する（deploy-plan.sh がさかのぼって調べる）
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.sha.outputs.sha }}
         run: .github/scripts/deploy-plan.sh
 
   apprunner:
