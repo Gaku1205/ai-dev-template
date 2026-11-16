@@ -105,6 +105,17 @@ assert_eq "回数の上限は知らせない（あとで自動でやり直す）
 run "$ok" > /dev/null
 assert_eq "頼めたときは、ここでは知らせない（結果は Vercel の状態から知らせる）" "0" "$(notified)"
 
+echo "== VERCEL_TOKEN が無いのに、vercel.json で Vercel が自分で公開するのを止めている：どこからも公開されないので、失敗として知らせる"
+mkdir -p "$T/app" && echo '{"git":{"deploymentEnabled":false}}' > "$T/app/vercel.json"
+out=$(cd "$T/app" && run "$ok" VERCEL_TOKEN=); code=$?
+assert_eq "失敗で終わる" "1" "$code"
+assert_contains "理由を書く" "$out" "どこからも公開されません"
+assert_eq "知らせる" "1" "$(notified)"
+echo '{"framework":"nextjs"}' > "$T/app/vercel.json"
+out=$(cd "$T/app" && run "$ok" VERCEL_TOKEN=); code=$?
+assert_eq "Vercel が自分で公開する設定なら、今までどおり何もしない" "0" "$code"
+assert_eq "知らせない" "0" "$(notified)"
+
 echo "== 3時間ごとの確かめ：同じコミットが何度も失敗していたら、もう頼まない"
 out=$(run '{"commits":[{"sha":"c3","state":"failure","fails":["Deployment has failed","Deployment has failed","Deployment has failed"]},{"sha":"c2","state":"success"}],"changed":["src/a.ts"]}' GITHUB_EVENT_NAME=schedule); code=$?
 assert_eq "頼まない" "no" "$(deployed)"

@@ -5,6 +5,7 @@
 #   - 最新の main が、もう公開に成功している（Vercel の状態が success）なら何もしない
 #   - 最後に公開に成功したコミットから、パイプラインの物（.github/・docs/pipeline.md）しか変わっていなければ何もしない
 #   - そうでなければ、Vercel の API で最新の main を本番に公開する（プロジェクトは、このリポジトリにつながっている物を探す）
+#   - VERCEL_TOKEN が無いのに、vercel.json で Vercel が自分で公開するのを止めていたら（どこからも公開されない）、失敗として知らせる
 #   - 頼めなかったら（鍵の期限切れ・プロジェクトが見つからない など）、スマホに知らせる（Vercel まで届いていないので、Vercel の結果を待つ
 #     deploy-notify.yml は鳴らない。黙って公開されないままになるのを防ぐ）。3時間ごとの確かめでは知らせない（同じ知らせが1日8回鳴るため）
 #   - 3時間ごとの確かめでは、同じコミットの公開が VERCEL_RETRY_MAX 回（既定 3）失敗していたら、もう頼まない（作る途中のエラーなど、
@@ -26,6 +27,11 @@ give_up() {
 }
 
 if [ -z "${VERCEL_TOKEN:-}" ]; then
+  # 鍵が無いのに、vercel.json で Vercel が自分で公開するのを止めている：どこからも公開されない（鍵を配れなかった・消えた など）。
+  # 黙って「何もしない」で終わると、マージしても本番が古いままになるので、失敗として知らせる
+  if [ -f vercel.json ] && [ "$(jq -r '.git.deploymentEnabled' vercel.json 2> /dev/null)" = false ]; then
+    give_up "VERCEL_TOKEN が無いのに、vercel.json で Vercel が自分で公開するのを止めています（git.deploymentEnabled: false）。このままでは、どこからも公開されません。Secret の VERCEL_TOKEN を入れるか、vercel.json のその行を消してください"
+  fi
   echo "::notice::VERCEL_TOKEN が無いので、ここでは公開しません（vercel.json で Vercel が自分で公開する設定なら、そちらで公開されます）"
   exit 0
 fi
