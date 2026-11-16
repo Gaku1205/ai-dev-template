@@ -241,11 +241,11 @@ AIのアクションは作業フォルダをPRのブランチに切り替える�
 
 AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions/` を触るPRは、どのリポジトリでも自動でマージしない（`ai:hold`）。書き間違いは、CI・公開の最初で `::error::` になり、Doctor でも ❌ で出る。
 
-公開先（`deploy.yml`。main の CI が通ったら動く。パイプラインの更新だけのコミットでは動かない）：
+公開先（`deploy.yml`。main の CI が通ったら動く。パイプラインの更新だけのコミットでは動かない。ただし、その前のアプリの変更がまだ公開されていなければ動く：公開は1つずつ順に動き、待っている古い公開は新しい公開が来ると取り消されるので、アプリの変更のすぐあとに配布のコミットが入ると、アプリの変更が公開されないまま残る。`deploy-plan.sh` が、公開の結果（`deploy/*` の success・failure・error）が付いた一番新しいコミットからの差で決め直す）：
 
 | `kind` | 公開のしかた | 要る設定 | 書く物 |
 | --- | --- | --- | --- |
-| `vercel` | `deploy-vercel.yml` が、main の CI が通ってから3分（変数 `VERCEL_DEPLOY_DELAY_MIN`）待ち、その間にまたマージされたら新しい方だけが、最新の main を1回だけ本番に公開する（Vercel の無料プランは「1日100回まで」なので、マージのたびに公開しない）。最後に公開に成功したコミットから、パイプラインの物（`.github/`・`docs/pipeline.md`）しか変わっていなければ公開しない。Secret `VERCEL_TOKEN` が無いときは何もせず、Vercel が自分で公開する（今までの形）。`pipeline.json` が無いときの既定 | Vercel でリポジトリを読み込み、`vercel.json` を `"git": { "deploymentEnabled": false }` にし、`ignoreCommand` を消す（Vercel が自分で公開するのを止める。`ignoreCommand` は直前のコミットとの差しか見ないので、まとめて公開すると間の変更を見落として公開が飛ばされる）。`VERCEL_TOKEN` は工場（新しいサービス）と配布（`sync.yml` の vercel-token。`vercel.json` があるリポジトリだけ）が入れる | `VERCEL_TOKEN`（任意）、変数 `VERCEL_TEAM_ID`（チームのとき） |
+| `vercel` | `deploy-vercel.yml` が、main の CI が通ってから3分（変数 `VERCEL_DEPLOY_DELAY_MIN`）待ち、その間にまたマージされたら新しい方だけが、最新の main を1回だけ本番に公開する（Vercel の無料プランは「1日100回まで」なので、マージのたびに公開しない）。最後に公開に成功したコミットから、パイプラインの物（`.github/`・`docs/pipeline.md`）しか変わっていなければ公開しない。Secret `VERCEL_TOKEN` が無いときは何もせず、Vercel が自分で公開する（今までの形）。`VERCEL_TOKEN` が無いのに `vercel.json` が `deploymentEnabled: false` のままだと、どこからも公開されないので、失敗としてスマホに知らせる。公開を頼めなかったとき（鍵の期限切れ・プロジェクトが見つからない など）は、スマホに知らせる（`deploy_failed`）。3時間ごとに、最新の main が公開されているかを確かめ、まだなら頼み直す（回数の上限に当たったときのため。同じコミットの公開が3回失敗していたら、頼み直しても直らないので、次のマージか手で動かすまで頼まない）。`pipeline.json` が無いときの既定 | Vercel でリポジトリを読み込み、`vercel.json` を `"git": { "deploymentEnabled": false }` にし、`ignoreCommand` を消す（Vercel が自分で公開するのを止める。`ignoreCommand` は直前のコミットとの差しか見ないので、まとめて公開すると間の変更を見落として公開が飛ばされる）。`VERCEL_TOKEN` は工場（新しいサービス）と配布（`sync.yml` の vercel-token。`vercel.json` があるリポジトリだけ）が入れる | `VERCEL_TOKEN`（任意）、変数 `VERCEL_TEAM_ID`（チームのとき） |
 | `github-pages` | 静的なサイトを作って GitHub Pages に出す（`<ユーザー名>.github.io` という名前のリポジトリなら、そのアドレスのトップに出る）。Next.js なら `next.config` で `output: "export"`・`images: { unoptimized: true }` にする（サーバーで動く機能は使えない） | Settings → Pages の Source を **GitHub Actions** にする。工場が作るサービスは、工場が `FACTORY_TOKEN` で自動で有効にする（`build_type=workflow`）。それ以外は手で1回だけ。Doctor が、有効で Source が GitHub Actions かを確かめる（無効や別の Source は ❌ と直し方、読めないときは ⚠️）。公開が失敗したときの知らせ（`deploy/pages`）には、設定のページの URL が付く | `build`（作るコマンド。既定 `npm run build`）、`dir`（出すフォルダ。既定 `out`） |
 | `aws-apprunner` | Docker のイメージを作って ECR に置き、App Runner で動かす。最初の公開でサービスを作り、2回目から差し替える。言語を選ばない（Web・API） | 下の「AWS App Runner」 | `service`（サービス名・小文字の英数字と `-` `_`。ECR の名前にも使う）、`port`（既定 8080）、`dockerfile`（既定 `Dockerfile`）、`cpu`（既定 256）、`memory`（既定 512）、`health`（HTTPのヘルスチェックのパス。省くとTCP） |
 | `github-release` | OS ごとに配布物（exe など）を作り、GitHub Releases に置く。ファイル名に OS が付く（`hello.exe` → `hello-windows.exe`）。タグは `build-<日時>-<コミット>` | なし | `build`（作るコマンド）、`files`（置くファイル。例 `dist/*`）、`os`（既定 `["windows-latest"]`。`macos-latest`・`ubuntu-latest` も） |
@@ -253,7 +253,7 @@ AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions
 | `supabase` | `supabase/migrations/*.sql` のうち、まだ流していない物を番号の順に1ファイルずつ流す（`deploy-supabase.sh`。流した印は `app_meta.migrations`。1ファイル1まとまりで、失敗したら後ろは流さない）。Vercel の公開より先に動く | Secret の `SUPABASE_DB_URL`（工場が saas を作るときに入れる） | なし |
 | `none` | 公開しない | なし | なし |
 
-結果はコミットの状態（`deploy/<kind>`）に書き、スマホに通知する（`deploy-status.sh`）。
+結果はコミットの状態（`deploy/<kind>`）に書き、スマホに通知する（`deploy-status.sh`。説明は GitHub の上限の140文字まで。通知の題は PR のタイトル：マージコミットなら3行目、まとめてマージ（squash）や直接のコミットなら1行目）。
 
 ### AWS App Runner（1つの AWS アカウントで1回だけ）
 
