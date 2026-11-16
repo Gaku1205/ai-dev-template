@@ -82,4 +82,32 @@ run_after > /dev/null
 assert_contains "ai:stuck" "$(labels_of 58)" "ai:stuck"
 assert_not_contains "visual:update は付けない" "$(labels_of 58)" "visual:update"
 
+echo "== main とコンフリクトしたまま：撮り直しは動かないので visual:update を付けない。拒否があれば、手がかりを付けて1回だけ出し直す"
+exec_file="$MOCK_DIR/exec.json"
+printf '%s' '[{"type":"result","subtype":"success","result":"","permission_denials":[{"tool_name":"Bash","tool_input":{"command":"git checkout --ours tests/visual/__screenshots__"}}]}]' > "$exec_file"
+setup_case '基準の画像12枚がコンフリクトしています。`git checkout --ours` が実行できませんでした。解消したら `visual:update` ラベルで撮り直してください。' "$visual_only"
+state_py "s['pulls'][0]['mergeable_state']='dirty'"
+out=$(RUN_STARTED=$(ago 1) CONCLUSION=success EXECUTION_FILE="$exec_file" run_script after-mention.sh)
+c=$(comments_of 58)
+assert_not_contains "visual:update を付けない" "$(labels_of 58)" "visual:update"
+assert_not_contains "撮り直しの回数を使わない" "$c" "auto-visual-update"
+assert_contains "許可の拒否として出し直す" "$c" "auto-perm-retry"
+assert_contains "拒否された操作を書く" "$c" "git checkout --ours tests/visual/__screenshots__"
+assert_contains "解消のしかたを書く" "$c" "git checkout --theirs -- パス"
+assert_not_contains "人間に回さない" "$(labels_of 58)" "ai:stuck"
+
+echo "== コンフリクトしたままで、拒否も無い：理由を書いて人間に回す（黙って visual:update を付けて止まらない）"
+setup_case '基準の画像がコンフリクトしています。`visual:update` ラベルで撮り直してください。' "$visual_only"
+state_py "s['pulls'][0]['mergeable_state']='dirty'"
+run_after > /dev/null
+assert_not_contains "visual:update を付けない" "$(labels_of 58)" "visual:update"
+assert_contains "人間に回す" "$(labels_of 58)" "ai:stuck"
+assert_contains "理由" "$(comments_of 58)" "コンフリクトを解消できず"
+
+echo "== コンフリクトが無ければ、今までどおり撮り直す"
+setup_case '基準の画像が古いだけです。`visual:update` ラベルで撮り直してください。' "$visual_only"
+state_py "s['pulls'][0]['mergeable_state']='clean'"
+run_after > /dev/null
+assert_contains "visual:update が付く" "$(labels_of 58)" "visual:update"
+
 finish
