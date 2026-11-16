@@ -23,6 +23,10 @@ fi
 meta=$(jq -r 'if type == "array" then . else [.] end | map(select(type == "object" and .type == "result")) | last // {}
   | "\(.subtype // "不明")\t\(.num_turns // "?")\t\(.permission_denials_count // (.permission_denials // [] | length))"' "$f" 2> /dev/null) || meta=""
 IFS=$'\t' read -r subtype turns denials <<< "$meta"
+# 使った量（あれば）：入力・出力のトークンと、キャッシュから読んだ分。読む量を減らす工夫が効いているかを、実行ごとに比べられるようにする
+usage=$(jq -r 'if type == "array" then . else [.] end | map(select(type == "object" and .type == "result")) | last // {} | .usage // {}
+  | select((.input_tokens // .output_tokens // null) != null)
+  | "入力 \((.input_tokens // 0) + (.cache_creation_input_tokens // 0))・キャッシュから \(.cache_read_input_tokens // 0)・出力 \(.output_tokens // 0) トークン"' "$f" 2> /dev/null) || usage=""
 raw=$(denied_raw "$f")
 words=$(ai_last_words "$f" 1200)
 
@@ -30,6 +34,9 @@ words=$(ai_last_words "$f" 1200)
   echo "### ${title}"
   echo
   echo "- 結果：${subtype:-不明}（手数 ${turns:-?}・拒否 ${denials:-0} 件）"
+  if [ -n "$usage" ]; then
+    echo "- 使った量：${usage}"
+  fi
   if [ -n "$raw" ]; then
     echo "- 拒否された操作（最大5件）："
     printf '%s\n' "$raw" | sed 's/`/'"'"'/g; s/^/  - `/; s/$/`/'

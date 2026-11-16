@@ -22,6 +22,13 @@ assert_contains "結果" "$out" "結果：error_max_turns（手数 60・拒否 0
 assert_not_contains "拒否の行なし" "$out" "拒否された操作"
 assert_not_contains "最後の言葉なし" "$out" "最後に言ったこと"
 
+echo "== 使った量（トークン）が実行記録にあれば出す。無ければ行ごと出さない"
+printf '%s' '{"type":"result","subtype":"success","num_turns":5,"result":"","usage":{"input_tokens":1200,"cache_creation_input_tokens":300,"cache_read_input_tokens":90000,"output_tokens":4500}}' > "$f"
+out=$(report "$f")
+assert_contains "入力・キャッシュ・出力" "$out" "使った量：入力 1500・キャッシュから 90000・出力 4500 トークン"
+printf '%s' '{"type":"result","subtype":"success","num_turns":5,"result":""}' > "$f"
+assert_not_contains "無ければ出さない" "$(report "$f")" "使った量"
+
 echo "== ファイルが無い・壊れていても止めない"
 out=$(report "$MOCK_DIR/none.json"); rc=$?
 assert_eq "終了コード 0" "0" "$rc"
