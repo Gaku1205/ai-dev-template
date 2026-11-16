@@ -257,14 +257,7 @@ jobs:
       # 何が起きたかを、ログと Summary に残す（拒否された操作と、AIが最後に言ったこと）。ここは main の版のスクリプト
       - name: AIの結果を残す
         continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE: ${{ github.event.issue.number }}
-          MODEL: ${{ needs.implement.outputs.model }}
-          RESULT: ${{ needs.implement.outputs.outcome == 'success' && 'success' || 'failure' }}
-        run: |
-          bash .github/scripts/ai-report.sh --title "実装AI" "$RUNNER_TEMP/ai-result/execution.json" || true
-          bash .github/scripts/step-log.sh --issue "$ISSUE" --step implement --model "${MODEL:-null}" --result "$RESULT"
+        run: bash .github/scripts/ai-report.sh --title "実装AI" "$RUNNER_TEMP/ai-result/execution.json" || true
       - name: PRを作る（作業回数の上限で止まっても、変更があればPRにしてCIで確かめる）
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN }}
@@ -277,3 +270,16 @@ jobs:
           EXECUTION_FILE: ${{ runner.temp }}/ai-result/execution.json
           CRITIQUE_FILE: ${{ runner.temp }}/ai-result/critique.md
         run: .github/scripts/open-pr.sh
+      # 進捗ログ：実装の結果は「PRができたか」で決める。AIのアクションは、作業回数の上限を超えると、仕事が終わっていても失敗で終わる
+      # （それでも変更があればPRにする。上の工程）。AIの終わり方ではなく、PRの有無を見ないと、進んでいるのに「失敗」と出てしまう
+      - name: 進捗ログ（実装・終了）
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          MODEL: ${{ needs.implement.outputs.model }}
+        run: |
+          made=$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100" --jq "[.[] | select(.head.ref | startswith(\"claude/issue-${ISSUE}-\"))] | length" 2> /dev/null) || made=0
+          if [ "${made:-0}" -gt 0 ]; then result=success; else result=failure; fi
+          bash .github/scripts/step-log.sh --issue "$ISSUE" --step implement --model "${MODEL:-null}" --result "$result"
