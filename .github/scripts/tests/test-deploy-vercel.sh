@@ -20,6 +20,9 @@ elif base == "/commits": out([{"sha": c["sha"]} for c in commits])
 elif m := re.match(r"/commits/(\w+)/status$", base):
     c = [c for c in commits if c["sha"] == m.group(1)][0]
     out({"statuses": [{"context": "Vercel", "state": "success" if c["state"] == "ignored" else c["state"], "description": "Canceled by Ignored Build Step" if c["state"] == "ignored" else "Deployment has completed", "updated_at": "2026-01-01T00:00:00Z"}] if c.get("state") else []})
+elif m := re.match(r"/commits/(\w+)/statuses$", base):
+    c = [c for c in commits if c["sha"] == m.group(1)][0]
+    out([{"context": "Vercel", "state": "failure", "description": d} for d in c.get("fails", [])])
 elif m := re.match(r"/compare/(\w+)\.\.\.(\w+)$", base): out({"files": [{"filename": f} for f in st["changed"]]})
 elif base == "": out({"id": 4242})
 else: sys.stderr.write("UNHANDLED " + path + "\n"); sys.exit(1)
@@ -28,16 +31,19 @@ cat > "$T/bin/curl" <<'SH'
 #!/usr/bin/env bash
 echo "curl $*" >> "$FT/calls.log"
 case "$*" in
+  *ntfy.sh*) cat >> "$FT/ntfy.log"; echo >> "$FT/ntfy.log" ;;
   *v10/projects*) if [ -n "${NO_PROJECT:-}" ]; then echo '{"projects":[]}'; else echo '{"projects":[{"name":"agent-desk-ip1u"}]}'; fi ;;
-  *v13/deployments*) cat > "$FT/deploy-body.json"; echo '{"url":"agent-desk-abc.vercel.app"}' ;;
+  *v13/deployments*) cat > "$FT/deploy-body.json"
+    if [ -n "${DEPLOY_ERROR:-}" ]; then rm -f "$FT/deploy-body.json"; printf '{"error":{"message":"%s"}}\n' "$DEPLOY_ERROR"; else echo '{"url":"agent-desk-abc.vercel.app"}'; fi ;;
 esac
 SH
 chmod +x "$T/bin/gh" "$T/bin/curl"
 run() { # 状態のJSON [追加の環境変数...]
-  printf '%s' "$1" > "$T/state.json"; rm -f "$T/calls.log" "$T/deploy-body.json"
-  env PATH="$T/bin:$PATH" FT="$T" GITHUB_REPOSITORY=o/r GH_TOKEN=x VERCEL_TOKEN=v "${@:2}" bash "$SCRIPTS_DIR/deploy-vercel.sh" 2>&1
+  printf '%s' "$1" > "$T/state.json"; rm -f "$T/calls.log" "$T/deploy-body.json" "$T/ntfy.log"
+  env -u NOTIFY_EVENTS -u AGENT_DESK_URL PATH="$T/bin:$PATH" FT="$T" GITHUB_REPOSITORY=o/r GH_TOKEN=x VERCEL_TOKEN=v NTFY_TOPIC=test-topic GITHUB_EVENT_NAME=workflow_run "${@:2}" bash "$SCRIPTS_DIR/deploy-vercel.sh" 2>&1
 }
 deployed() { [ -f "$T/deploy-body.json" ] && echo yes || echo no; }
+notified() { local n; n=$(grep -c '"topic"' "$T/ntfy.log" 2> /dev/null); echo "${n:-0}"; }
 
 echo "== アプリの変更が公開されていない：最新の main を本番に1回だけ公開する"
 out=$(run '{"commits":[{"sha":"c3"},{"sha":"c2"},{"sha":"c1","state":"success"}],"changed":["src/app/page.tsx",".github/x.yml"]}')
@@ -81,5 +87,45 @@ echo "== 最新の main そのものが ignoreCommand で飛ばされた：頼�
 out=$(run '{"commits":[{"sha":"c3","state":"ignored"},{"sha":"c1","state":"success"}],"changed":["src/a.ts"]}')
 assert_eq "頼み直さない" "no" "$(deployed)"
 assert_contains "ignoreCommand を消すよう書く" "$out" "ignoreCommand を消してください"
+
+echo "== 頼めなかった：スマホに知らせる（Vercel まで届いていないので、Vercel の結果の通知は鳴らない）"
+ok='{"commits":[{"sha":"c3"},{"sha":"c2","state":"success"}],"changed":["src/a.ts"]}'
+out=$(run "$ok" DEPLOY_ERROR="Not authorized"); code=$?
+assert_eq "失敗で終わる" "1" "$code"
+assert_contains "理由をログに出す" "$out" "::error::Vercel に公開を頼めませんでした（Not authorized）"
+assert_eq "最後の行は理由（工場が結果のコメントに使う）" "::error::Vercel に公開を頼めませんでした（Not authorized）" "$(printf '%s\n' "$out" | tail -1)"
+assert_eq "知らせる" "1" "$(notified)"
+assert_contains "知らせに理由" "$(cat "$T/ntfy.log")" "Not authorized"
+run "$ok" NO_PROJECT=1 > /dev/null
+assert_eq "プロジェクトが見つからないときも知らせる" "1" "$(notified)"
+run "$ok" DEPLOY_ERROR="Not authorized" GITHUB_EVENT_NAME=schedule > /dev/null
+assert_eq "3時間ごとの確かめでは知らせない（1日に何度も鳴らさない）" "0" "$(notified)"
+run "$ok" DEPLOY_ERROR="You have been rate limited" > /dev/null
+assert_eq "回数の上限は知らせない（あとで自動でやり直す）" "0" "$(notified)"
+run "$ok" > /dev/null
+assert_eq "頼めたときは、ここでは知らせない（結果は Vercel の状態から知らせる）" "0" "$(notified)"
+
+echo "== VERCEL_TOKEN が無いのに、vercel.json で Vercel が自分で公開するのを止めている：どこからも公開されないので、失敗として知らせる"
+mkdir -p "$T/app" && echo '{"git":{"deploymentEnabled":false}}' > "$T/app/vercel.json"
+out=$(cd "$T/app" && run "$ok" VERCEL_TOKEN=); code=$?
+assert_eq "失敗で終わる" "1" "$code"
+assert_contains "理由を書く" "$out" "どこからも公開されません"
+assert_eq "知らせる" "1" "$(notified)"
+echo '{"framework":"nextjs"}' > "$T/app/vercel.json"
+out=$(cd "$T/app" && run "$ok" VERCEL_TOKEN=); code=$?
+assert_eq "Vercel が自分で公開する設定なら、今までどおり何もしない" "0" "$code"
+assert_eq "知らせない" "0" "$(notified)"
+
+echo "== 3時間ごとの確かめ：同じコミットが何度も失敗していたら、もう頼まない"
+out=$(run '{"commits":[{"sha":"c3","state":"failure","fails":["Deployment has failed","Deployment has failed","Deployment has failed"]},{"sha":"c2","state":"success"}],"changed":["src/a.ts"]}' GITHUB_EVENT_NAME=schedule); code=$?
+assert_eq "頼まない" "no" "$(deployed)"
+assert_eq "失敗にはしない" "0" "$code"
+assert_contains "理由を書く" "$out" "3 回失敗しています"
+run '{"commits":[{"sha":"c3","state":"failure","fails":["Deployment has failed","Deployment has failed"]},{"sha":"c2","state":"success"}],"changed":["src/a.ts"]}' GITHUB_EVENT_NAME=schedule > /dev/null
+assert_eq "2回までは頼み直す" "yes" "$(deployed)"
+run '{"commits":[{"sha":"c3","state":"failure","fails":["rate limited","Rate Limited","rate limited","rate limited"]},{"sha":"c2","state":"success"}],"changed":["src/a.ts"]}' GITHUB_EVENT_NAME=schedule > /dev/null
+assert_eq "回数の上限での失敗は数えない（頼み直す）" "yes" "$(deployed)"
+run '{"commits":[{"sha":"c3","state":"failure","fails":["Deployment has failed","Deployment has failed","Deployment has failed"]},{"sha":"c2","state":"success"}],"changed":["src/a.ts"]}' GITHUB_EVENT_NAME=workflow_dispatch > /dev/null
+assert_eq "手で動かしたときは、何度失敗していても頼む" "yes" "$(deployed)"
 
 finish
