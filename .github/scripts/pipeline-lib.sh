@@ -400,7 +400,7 @@ start_queued_issue() {
 # ---- 自動のやり直し ----
 # 止まったとき、すぐ人間に回さず「あとでやり直す」印（ai:retry）と記録のコメントを付ける。
 # やり直しは watchdog.sh（定期・ほかのワークフロー完了のたび）が、待ち時間（RETRY_COOLDOWN_MIN）が過ぎてから行う。
-# 上限（MAX_RETRY）を超えたら人間に回す。kind：plan / implement（Issue）、review / mention（PR）
+# 上限（MAX_RETRY）を超えたら人間に回す。kind：plan / implement / mocks（Issue）、review / mention（PR）
 
 retry_comment() {
   all_comments "$1" | jq -c --arg mark "$RETRY_MARK" 'map(select(.body | contains($mark))) | last // empty'
@@ -698,7 +698,7 @@ mark_for_retry() {
       remove_label "$num" "ai:plan"
     fi
     case "$kind" in
-      plan | implement) stop_issue_for_human "$num" "${reason}。自動でやり直しても${MAX_RETRY}回解決しませんでした" ;;
+      plan | implement | mocks) stop_issue_for_human "$num" "${reason}。自動でやり直しても${MAX_RETRY}回解決しませんでした" ;;
       *) stop_for_human "$num" "${reason}。自動でやり直しても${MAX_RETRY}回解決しませんでした" ;;
     esac
     return

@@ -2,6 +2,7 @@
 # 見張り役（watchdog.yml が、定期的に・ほかのワークフローが終わるたびに動かす）：パイプラインが止まったまま動かなくなっていないか見て、自動で再開させる。
 #   1. ai:retry が付いた物（使用量の上限・AIのエラーで止まった物）を、待ち時間が過ぎていたらやり直す
 #   2. 失敗の知らせも無いまま止まっている物（時間切れなど）を見つけて、ai:retry を付ける
+#   2.5 画面案（ai:mocks）のまま、後片付けが動かず止まっている物をやり直す（2回目は人間に回す）
 #   3. CIが「承認待ち」で止まっている物を動かし直す
 #   3.3 visual:update が付いたまま撮り直しが動いていない物を動かす（コンフリクトならAIに解消させる）
 #   3.4 CIは終わっているのに、誰も先へ進めていないPRを動かす（進行役の処理が途中で落ちた・時間切れで呼ばれなかった、など）
@@ -23,6 +24,10 @@ IDLE_PLAN_MIN="${IDLE_PLAN_MIN:-30}"
 IDLE_IMPLEMENT_MIN="${IDLE_IMPLEMENT_MIN:-45}"
 IDLE_REVIEW_MIN="${IDLE_REVIEW_MIN:-30}"
 IDLE_CI_MIN="${IDLE_CI_MIN:-5}"
+# 画面案のジョブ（claude-mocks.yml）の時間の上限（100分）より長くする
+IDLE_MOCKS_MIN="${IDLE_MOCKS_MIN:-120}"
+# 見張り役が画面案をやり直した印（同じ画面案の回で、やり直すのは1回だけ。2回目は人間に回す）
+MOCKS_RETRY_MARK="<!-- auto-mocks-retry -->"
 # CIが終わったPRが、これだけ何も起きなければ「誰も進めていない」とみなす（修正AIの時間の上限 30分より長くする）
 IDLE_ORPHAN_MIN="${IDLE_ORPHAN_MIN:-45}"
 
@@ -88,6 +93,20 @@ for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry"
       remove_label "$n" "ai:retry"
       remove_label "$n" "ai:plan"
       add_label "$n" "ai:plan"
+      ;;
+    mocks)
+      write_retry_record "$n" "$next" "$kind" "$reason" "" "$limit_first"
+      remove_label "$n" "ai:retry"
+      if has_label "$n" "ai:mocks"; then
+        # 付け直すと labeled イベントが起きて、画面案のワークフローが最初から動く。印は「やり直した」の記録（次に止まったら人間に回す）
+        comment "$n" "🔁 画面案をやり直します（見張り役。同じ画面案でやり直すのは1回だけです）。
+
+${MOCKS_RETRY_MARK}"
+        remove_label "$n" "ai:mocks"
+        add_label "$n" "ai:mocks"
+      else
+        echo "#$n：画面案はもう先へ進んでいる（ai:mocks が無い）ので、やり直しません"
+      fi
       ;;
     implement)
       write_retry_record "$n" "$next" "$kind" "$reason" "" "$limit_first"
@@ -163,6 +182,45 @@ for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aimplem
   m=$(idle_min "$(gh api "repos/$REPO/issues/$n" -q .updated_at)")
   [ "$m" -lt "$IDLE_IMPLEMENT_MIN" ] && continue
   mark_for_retry "$n" implement "実装AIの終了が確認できないまま${m}分たちました"
+done
+
+# ---- 2.5 画面案：ai:mocks が付いたまま、動きが無い ----
+# 画面案は、AIが動くジョブ（work）のあとの後片付け（publish：画面案のコメントを書いて ai:question にする・案なしなら ai:plan にする）で
+# 次へ進む。work が時間切れ・取り消しになる、実行環境が落ちる、後片付けが途中で落ちると、ai:mocks が残ったまま誰も拾わない
+# （失敗の知らせも ai:retry も付かない）。IDLE_MOCKS_MIN 分なにも起きず、画面案のジョブも動いていなければ、やり直し待ちにする。
+# やり直すのは、同じ画面案の回で1回だけ（Opus を最大100分動かすので、何度も回さない）。やり直しても止まったら、人間に回す
+mocks_running=""
+for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Amocks" --paginate -q '.[] | select(.pull_request | not) | .number'); do
+  case "$handled" in *" $n "*) continue ;; esac
+  has_label "$n" "ai:stuck" && continue
+  has_label "$n" "ai:retry" && continue
+  has_label "$n" "ai:skip" && continue
+  m=$(idle_min "$(gh api "repos/$REPO/issues/$n" -q .updated_at)")
+  [ "$m" -lt "$IDLE_MOCKS_MIN" ] && continue
+  # 画面案のジョブが動いている・待っている間は、止まったとみなさない（時間がたった物があるときだけ調べる。どの Issue の実行かは
+  # 分からないので、1つでも動いていれば今回は見ない）。読めなければ「動いていない」とみなす（時間の上限は、もう過ぎている）
+  if [ -z "$mocks_running" ]; then
+    mocks_running=0
+    for st in in_progress queued; do
+      c=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/workflows/claude-mocks.yml/runs?status=$st&per_page=30" \
+        -q '[.workflow_runs[] | select(.status != "completed")] | length' 2> /dev/null) || c=0
+      mocks_running=$(( mocks_running + ${c:-0} ))
+    done
+  fi
+  if [ "$mocks_running" -gt 0 ]; then
+    echo "画面案の実行が動いている（${mocks_running} 件）ので、画面案の止まりは今回は見ません"
+    break
+  fi
+  # この画面案の回で、もうやり直したか：いちばん新しい「画面案のコメント」（前の回が終わった印）・人間の再開より後に、やり直しの印がある
+  retried=$(all_comments "$n" | jq --arg mk "$MOCKS_RETRY_MARK" --arg resume "$RESUME_MARK" '
+    (map(select((.body | contains("<!-- ai-mocks: ")) or (.body | contains($resume))) | .created_at) | max // "") as $since
+    | [.[] | select((.body | contains($mk)) and .created_at > $since)] | length')
+  if [ "${retried:-0}" -gt 0 ]; then
+    stop_issue_for_human "$n" "画面案（ai:mocks）が、やり直しても${m}分のあいだ進みませんでした（画面案のコメントも、企画への切り替えも出ていません）。Actions の Claude Mocks の実行を確かめてください。画面案をもう一度作るなら \`ai:stuck\` を外し、案なしで進めるなら \`ai:mocks\` を外して \`ai:plan\` を付けてください"
+    echo "#$n：画面案をやり直しても進まないので、人間に回しました"
+    continue
+  fi
+  mark_for_retry "$n" mocks "画面案（ai:mocks）のまま${m}分のあいだ動きがありません（画面案のジョブが時間切れ・取り消しになり、後片付けが動かなかった、など）"
 done
 
 # PRごとの確認
