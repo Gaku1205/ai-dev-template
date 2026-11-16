@@ -234,34 +234,122 @@ merge_or_handle() {
   return 1
 }
 
-# 順番待ち（ai:queue）のIssueのうち、番号がいちばん小さい物を実装に回す。
-# 止まっている物（ai:stuck）や実装中の物、openのPRがあれば何もしない
+# ---- 順番待ち（ai:queue）を進める ----
+# 企画AIが本文に書く「触るファイル」の印：<!-- ai-touches: src/lib/a.ts, src/components/ --> （/ で終わる物はフォルダ）
+TOUCHES_MARK_RE='<!-- ai-touches: ([^>]*) -->'
+# 同時に動かす実装の上限（after-plan.sh と同じ）
+MAX_PARALLEL="${MAX_PARALLEL:-2}"
+# 画面のファイル：見た目のテストがあるリポジトリでは、ここを触る物どうしは基準の画像がぶつかるので、1つずつにする
+SCREEN_PATHS_RE='^(src/)?(app|components|styles|pages)/'
+
+# 本文の印から、触るファイルを1行に1つ出す（印が無ければ何も出さない）
+touches_from_body() {
+  local body="$1" list
+  [[ "$body" =~ $TOUCHES_MARK_RE ]] || return 0
+  list="${BASH_REMATCH[1]}"
+  printf '%s\n' "$list" | tr ',' '\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's#^\./##' | grep -v '^$' || true
+}
+
+# 2つの一覧（改行区切り）が重なるか。同じファイル・片方のフォルダの中にもう片方がある、を重なりとみなす。
+# 第3引数が 1 なら、画面のファイルどうしも重なりとみなす（見た目のテストの基準の画像がぶつかるため）
+paths_overlap() {
+  local a b screen="${3:-0}"
+  while IFS= read -r a; do
+    [ -z "$a" ] && continue
+    while IFS= read -r b; do
+      [ -z "$b" ] && continue
+      [ "$a" = "$b" ] && return 0
+      case "$a" in */) case "$b" in "$a"*) return 0 ;; esac ;; esac
+      case "$b" in */) case "$a" in "$b"*) return 0 ;; esac ;; esac
+      if [ "$screen" = 1 ] && [[ "$a" =~ $SCREEN_PATHS_RE ]] && [[ "$b" =~ $SCREEN_PATHS_RE ]]; then return 0; fi
+    done <<< "$2"
+  done <<< "$1"
+  return 1
+}
+
+# 見た目のテスト（tests/visual/）があるリポジトリか
+repo_has_visual_tests() {
+  gh api "repos/$REPO/contents/tests/visual?ref=main" --jq 'type' > /dev/null 2>&1
+}
+
+# 進行中の作業が触っているファイル。1行目に「unknown」が出たら、分からない物がある（並列にしない）
+# 実装中の Issue は本文の印、open のPRは変えたファイル（AI以外のPR＝配布・依存の更新なども含む）
+inflight_touches() {
+  local n body t pr files
+  for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aimplement" -q '.[] | select(.pull_request | not) | .number'); do
+    # PRがもうあれば、PRの変えたファイルで数える（下）
+    if gh api "repos/$REPO/pulls?state=open&per_page=100" -q ".[] | select(.head.ref | startswith(\"claude/issue-$n-\")) | .number" | grep -q .; then continue; fi
+    body=$(gh api "repos/$REPO/issues/$n" -q '.body // ""')
+    t=$(touches_from_body "$body")
+    if [ -z "$t" ]; then echo unknown; else printf '%s\n' "$t"; fi
+  done
+  for pr in $(gh api "repos/$REPO/pulls?state=open&per_page=100" -q '.[].number'); do
+    files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" -q '.[].filename' 2> /dev/null) || { echo unknown; continue; }
+    printf '%s\n' "$files"
+  done
+}
+
+# 順番待ち（ai:queue）から、次に実装に回す物を選んで始める。
+# - 進行中の物が無ければ、先頭の1つ（priority:high が付いた物を先に、その中は番号の小さい順）
+# - 進行中の物があっても、上限（MAX_PARALLEL）に達しておらず、触るファイルが進行中の物と重ならない物は、並べて始める
+#   （触るファイルが分からない物・進行中の物に分からない物があるときは、今までどおり待つ。見た目のテストがあれば画面どうしも待つ）
+# 止まっている物（ai:stuck）は数えない（企画で止まった物はコードに触れていない）
 start_next_in_queue() {
-  local busy stuck prs next
+  local busy stuck prs inflight queue n body t started=0 screen=0
   busy=$(count_open_issues_with_label "ai:implement") || return 1
   stuck=$(count_open_issues_with_label "ai:stuck") || return 1
   prs=$(count_open_prs) || return 1
-  # 停止中（ai:stuck）の数は表示だけにする。実装まで進んだ物は ai:implement か open のPRが残っていて、それで止まる。
-  # 企画の段階で止まった物（人間の作業待ち・質問）はコードに触れていないので、後ろの作業をぶつからずに進められる。
-  # （これを数えると、人間の作業待ちのIssueが1つあるだけで、ほかの作業が永久に始まらない）
-  echo "実装中 ${busy} / 停止中 ${stuck}（数えない） / openのPR ${prs}"
-  if [ "$busy" -gt 0 ] || [ "$prs" -gt 0 ]; then
-    echo "進行中の物があるので、順番待ちは進めません"
-    return 0
-  fi
-  next=$(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aqueue" \
-    -q '[.[] | select(.pull_request | not) | .number] | min // empty') || return 1
-  if [ -z "$next" ]; then
+  echo "実装中 ${busy} / 停止中 ${stuck}（数えない） / openのPR ${prs}（並列の上限 ${MAX_PARALLEL}）"
+  queue=$(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aqueue" \
+    -q '[.[] | select(.pull_request | not) | {n: .number, p: ([.labels[].name] | index("priority:high") != null)}] | sort_by((if .p then 0 else 1 end), .n) | .[].n') || return 1
+  if [ -z "$queue" ]; then
     echo "順番待ちはありません"
     return 0
   fi
-  # PRが閉じたとき（queue.yml）と見張り役が同時に進めることがある。ai:queue を外せた方だけが進める（コメントが2回出ないように）
-  if ! take_label "$next" "ai:queue"; then
-    echo "#$next はほかの処理がもう始めたので、何もしません"
+  if [ "$busy" -eq 0 ] && [ "$prs" -eq 0 ]; then
+    start_queued_issue "$(printf '%s\n' "$queue" | head -1)"
+    return $?
+  fi
+  inflight=$(inflight_touches) || return 1
+  if printf '%s\n' "$inflight" | grep -qx unknown; then
+    echo "進行中の物に、触るファイルが分からない物があるので、順番待ちは進めません"
     return 0
   fi
+  if repo_has_visual_tests; then screen=1; fi
+  for n in $queue; do
+    if [ $((busy + started)) -ge "$MAX_PARALLEL" ]; then
+      echo "並列の上限（${MAX_PARALLEL}）なので、ここまでにします"
+      break
+    fi
+    body=$(gh api "repos/$REPO/issues/$n" -q '.body // ""') || continue
+    t=$(touches_from_body "$body")
+    if [ -z "$t" ]; then
+      echo "#$n：触るファイルが分からないので、進行中の物が終わるまで待ちます"
+      continue
+    fi
+    if paths_overlap "$t" "$inflight" "$screen"; then
+      echo "#$n：進行中の作業と触るファイルが重なるので、待ちます"
+      continue
+    fi
+    if start_queued_issue "$n" "（進行中の作業と触るファイルが重ならないので、並べて始めます）"; then
+      started=$((started + 1))
+      inflight="$inflight
+$t"
+    fi
+  done
+  [ "$started" -eq 0 ] && echo "今は始められる物がありません（進行中の物が終わると、もう一度見ます）"
+  return 0
+}
+
+# 順番待ちの1つを実装に回す。PRが閉じたとき（queue.yml）と見張り役が同時に進めることがあるので、ai:queue を外せた方だけが進める
+start_queued_issue() {
+  local next="$1" why="${2:-（前の作業は全部終わっています）}"
+  if ! take_label "$next" "ai:queue"; then
+    echo "#$next はほかの処理がもう始めたので、何もしません"
+    return 1
+  fi
   # 企画AIの「待ち」のコメントを読んだ実装AIが、前の作業が終わったか確かめられずに止まらないよう、先に伝えておく
-  comment "$next" "▶ 順番が来たので実装を始めます（前の作業は全部終わっています）。" || true
+  comment "$next" "▶ 順番が来たので実装を始めます${why}。" || true
   add_label "$next" "ai:implement" || return 1
   echo "順番待ちの #$next を実装に回しました"
 }
