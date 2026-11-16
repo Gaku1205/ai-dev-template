@@ -1,0 +1,142 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>大橋2丁目の履歴書｜土地の履歴書</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,500&family=Jost:wght@400;500&family=Murecho:wght@400;500;700&family=Shippori+Mincho+B1:wght@800&display=swap" rel="stylesheet"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--sand:#DDD6C6;--sand2:#D2CAB8;--ink:#2A2A26;--soft:#4F4D45;--moss:#4F6238;--deep:#3F5A2A}
+html{background:var(--sand);color:var(--ink)}
+body{font:400 17px/1.6 Jost,Murecho,sans-serif}
+img{display:block}
+a{color:inherit}
+.name{font-family:"Shippori Mincho B1",serif;font-weight:800;letter-spacing:-.02em;line-height:.95}
+.yr{font-family:"Bodoni Moda",serif;font-weight:500;font-variant-numeric:lining-nums tabular-nums;line-height:1}
+.btn{display:inline-flex;align-items:center;min-height:48px;padding:0 22px;background:var(--moss);color:#fff;font:500 16px/1 Jost,Murecho,sans-serif;border:0;text-decoration:none;cursor:pointer;transition:background .2s}
+.btn:hover{background:var(--deep)}
+.btn:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+@keyframes shutter{from{clip-path:inset(0 0 100% 0)}to{clip-path:inset(0 0 0 0)}}
+@keyframes settle{from{transform:scale(1.08)}to{transform:scale(1)}}
+@keyframes rise{from{transform:translateY(14px)}to{opacity:1;transform:none}}
+.stage{animation:shutter 1.1s cubic-bezier(.7,0,.2,1) both}
+.stage>.layer{animation:settle 1.4s cubic-bezier(.2,.7,.2,1) both}
+.plaque{animation:rise .7s .9s cubic-bezier(.2,.7,.2,1) both}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+.stage{position:relative;overflow:hidden;background:#d2cab8}
+.layer{position:absolute;inset:0}
+.layer .anchor{position:absolute}
+.tiles{position:absolute;width:2560px;height:1792px}
+.tiles img{position:absolute;display:block}
+.now .tiles{left:calc(var(--ax) - 1206px);top:calc(var(--ay) - 802px)}
+.old{clip-path:inset(0 calc(100% - var(--split)) 0 0)}
+.oldmap{position:absolute;max-width:none;left:calc(var(--ax) - var(--ox));top:calc(var(--ay) - var(--oy))}
+.split{position:absolute;top:0;bottom:0;left:var(--split);width:6px;margin-left:-3px;background:#2A2A26}
+.knob{position:absolute;top:72%;left:50%;width:56px;height:56px;margin:-28px 0 0 -28px;background:#2A2A26;color:#DDD6C6;display:grid;place-items:center;font:500 22px/1 Jost,sans-serif;cursor:ew-resize}
+.knob:focus-visible{outline:3px solid #DDD6C6;outline-offset:3px}
+
+body{display:grid;grid-template-columns:minmax(0,560px) 1fr;min-height:100svh}
+.paper{padding:28px 40px 48px 32px;background:var(--sand)}
+.bar{display:flex;align-items:center;gap:12px;margin-bottom:40px}
+.bar b{font:700 17px/1 Murecho,sans-serif;margin-right:auto}
+.bar a{font:500 16px Jost,Murecho,sans-serif;text-decoration:none;min-height:44px;display:flex;align-items:center;padding:0 10px}
+.bar a:hover{background:var(--sand2)}
+.search{display:flex;gap:0;margin-bottom:44px}
+.search input{flex:1;min-width:0;min-height:52px;padding:0 16px;border:0;background:var(--sand2);font:400 17px Murecho,sans-serif;color:var(--ink)}
+h1{font-size:96px;margin-bottom:6px}
+h1 .yr{font-size:1.04em}
+.addr{font:400 16px Murecho,sans-serif;color:var(--soft);margin-bottom:28px}
+.verdict{background:var(--ink);color:var(--sand);padding:22px 24px;font:500 19px/1.65 Murecho,sans-serif}
+.verdict small{display:block;margin-top:10px;font:400 14px/1.5 Murecho,sans-serif;color:#cfc8b8}
+.rows{list-style:none;margin-top:40px}
+.rows li{display:grid;grid-template-columns:116px 1fr;gap:20px;padding:18px 18px}
+.rows li:nth-child(odd){background:var(--sand2)}
+.rows .yr{font-size:38px}
+.rows b{display:block;font:700 18px/1.4 Murecho,sans-serif}
+.rows p{font:400 16px/1.6 Murecho,sans-serif;color:var(--soft)}
+.rows .k{font:500 16px Murecho,sans-serif;color:var(--soft);padding-top:4px}
+.rows li.hz{background:none}
+.rows li.hz:nth-child(even){background:var(--sand2)}
+.sim{margin-top:40px}
+.sim h2{font:700 22px/1.4 Murecho,sans-serif;margin-bottom:14px}
+.sim a{display:grid;grid-template-columns:1fr auto auto;gap:16px;align-items:baseline;padding:14px 18px;text-decoration:none;background:var(--sand2)}
+.sim a+a{margin-top:6px}
+.sim a:hover{background:#c9c0ac}
+.sim b{font:700 18px Murecho,sans-serif}
+.sim .yr{font-size:34px}
+.sim em{font:500 15px Murecho,sans-serif;font-style:normal;color:var(--deep)}
+.save{margin-top:32px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.save span{font:400 15px Murecho,sans-serif;color:var(--soft)}
+.credit{margin-top:40px;font:400 14px/1.6 Murecho,sans-serif;color:var(--soft)}
+.side{position:sticky;top:0;height:100svh;display:grid;grid-template-rows:1fr auto}
+.mapb{--split:50%;--ax:50%;--ay:44svh;--ox:4600px;--oy:3560px}
+.tag{position:absolute;top:20px;background:var(--sand);padding:8px 14px;font:500 15px/1.3 Murecho,sans-serif;z-index:2}
+.tag.l{right:calc(50% + 14px)} .tag.r{left:calc(50% + 14px)}
+.pin{position:absolute;left:50%;top:44svh;width:20px;height:20px;margin:-10px 0 0 -10px;background:var(--deep);border:4px solid var(--sand);border-radius:50%;z-index:2}
+.strip{display:grid;grid-template-columns:repeat(4,1fr) 1.3fr;background:var(--ink)}
+.strip a{padding:16px 20px 14px;text-decoration:none;color:#cfc8b8;display:flex;flex-direction:column;justify-content:flex-end;min-height:96px}
+.strip a .yr{font-size:36px;color:var(--sand)}
+.strip a span{font:400 14px Murecho,sans-serif;margin-top:6px}
+.strip a[aria-current]{background:var(--moss)} .strip a[aria-current] span{color:#fff}
+.strip a:hover:not([aria-current]){background:#3a3a35}
+.strip figure{position:relative;overflow:hidden}
+.strip figure img{width:100%;height:100%;object-fit:cover;filter:none}
+.strip figcaption{position:absolute;left:8px;bottom:8px;background:var(--ink);color:var(--sand);font:400 13px Murecho,sans-serif;padding:3px 8px}
+@media (max-width:1100px) and (min-width:761px){body{grid-template-columns:400px minmax(0,1fr)}h1{font-size:64px;white-space:nowrap}.side{min-width:0;overflow:hidden}.strip{grid-template-columns:repeat(4,1fr)}.strip figure{display:none}.strip a{padding:14px 12px}.strip a:last-of-type{padding-right:20px}.strip a .yr{font-size:26px}}
+@media (max-width:760px){
+ body{display:flex;flex-direction:column}
+ .side{order:-1;position:relative;height:auto}
+ .mapb{height:56svh;min-height:420px;--ay:28svh}
+ .pin{top:28svh}
+ .tag{top:auto;bottom:12px;font-size:14px}
+ .tag.l{right:auto;left:12px} .tag.r{left:auto;right:12px}
+ .strip{grid-template-columns:repeat(4,1fr)}
+ .strip a{padding:12px 8px 10px;min-height:76px}
+ .strip a:first-child{padding-left:16px}
+ .strip a .yr{font-size:22px}
+ .strip a span{font-size:13px}
+ .strip figure{display:none}
+ .paper{padding:20px 16px 40px}
+ .bar{position:absolute;top:12px;left:12px;right:12px;background:var(--sand);padding:4px 4px 4px 12px;margin:0;z-index:3}
+ .bar a{display:none}
+ .bar a.keep{display:flex}
+ .search{margin-bottom:28px}
+ h1{font-size:64px}
+ .verdict{font-size:17px;padding:18px}
+ .rows li{grid-template-columns:72px 1fr;gap:12px;padding:14px 12px}
+ .rows .yr{font-size:28px}
+ .rows .k{font-size:14px}
+ .sim a{grid-template-columns:1fr auto;padding:12px 14px}
+ .sim em{grid-column:1/-1}
+ .sim .yr{font-size:28px}
+}
+</style></head><body>
+<main class="paper">
+  <nav class="bar"><b>土地の履歴書</b><a href="#sim">似た土地</a><a class="keep" href="#">使い方</a></nav>
+  <form class="search" role="search"><input aria-label="住所" value="福岡市南区大橋2丁目"><button class="btn" type="button">調べる</button></form>
+  <h1 class="name">大橋2丁目</h1>
+  <p class="addr">福岡市南区・西鉄大橋駅の西 400m</p>
+  <div class="verdict">大正のころ、ここは那珂川ぞいの田んぼでした。1970年代に埋めて住宅地になった、川の近くの低い土地です。<small>年代ごとの地図と、浸水・地盤・地価の公開データから、AIが読み解いた要約</small></div>
+  <ol class="rows">
+    <li><span class="yr">1926</span><div><b>田んぼ</b><p>那珂川の東にひろがる低い田。家は道ぞいに数軒だけ。</p></div></li><li><span class="yr">1948</span><div><b>田んぼと畑</b><p>空中写真では、まだ田の区画がそのまま残っている。</p></div></li><li><span class="yr">1975</span><div><b>住宅地へ</b><p>区画整理で田が埋められ、2階建ての家とアパートが並ぶ。</p></div></li><li><span class="yr">2026</span><div><b>駅前の住宅地</b><p>西鉄大橋駅から歩いて6分。マンションと戸建てが混じる。</p></div></li>
+    <li class="hz"><span class="k">浸水の想定</span><div><b>0.5〜1.0m</b><p>那珂川があふれたときの想定（最大規模）。2階は届かない高さ。</p></div></li><li class="hz"><span class="k">地盤</span><div><b>川が運んだ砂と泥の低地</b><p>昔の田んぼの上。揺れはやや大きく出やすい。</p></div></li><li class="hz"><span class="k">地価</span><div><b>1㎡あたり 41.6万円</b><p>10年で 38% 上がった（公示地価の近くの地点）。</p></div></li>
+  </ol>
+  <section class="sim" id="sim"><h2>似た土地</h2>
+    <a href="#"><b>春日市 須玖北</b><span class="yr">0.86</span><em>よく似ている</em></a><a href="#"><b>博多区 井相田</b><span class="yr">0.79</span><em>似ている</em></a><a href="#"><b>早良区 田村</b><span class="yr">0.71</span><em>少し似ている</em></a>
+  </section>
+  <div class="save"><a class="btn" href="#">縦長の画像で保存</a><span>スマホの画面くらいの1枚</span></div>
+  <p class="credit">地図：五万分の一地形図「FUKUOKA」（米陸軍地図局、1945年。もとは1926〜29年の日本の測量）パブリックドメイン、Wikimedia Commons／今の地図：地理院タイル（国土地理院）／空中写真：国土地理院 USA-M180-35 を加工した物（CC BY 4.0、Wikimedia Commons）／写真：そらみみ「View of Ohashi Station (Fukuoka)」CC BY-SA 4.0、Wikimedia Commons</p>
+</main>
+<aside class="side" aria-label="大橋2丁目の地図">
+  <div class="stage mapb">
+    <div class="layer now"><div class="tiles"><img src="img/gsi15/28251-13135.png" width="256" height="256" alt="" style="left:0px;top:0px"><img src="img/gsi15/28252-13135.png" width="256" height="256" alt="" style="left:256px;top:0px"><img src="img/gsi15/28253-13135.png" width="256" height="256" alt="" style="left:512px;top:0px"><img src="img/gsi15/28254-13135.png" width="256" height="256" alt="" style="left:768px;top:0px"><img src="img/gsi15/28255-13135.png" width="256" height="256" alt="" style="left:1024px;top:0px"><img src="img/gsi15/28256-13135.png" width="256" height="256" alt="" style="left:1280px;top:0px"><img src="img/gsi15/28257-13135.png" width="256" height="256" alt="" style="left:1536px;top:0px"><img src="img/gsi15/28258-13135.png" width="256" height="256" alt="" style="left:1792px;top:0px"><img src="img/gsi15/28259-13135.png" width="256" height="256" alt="" style="left:2048px;top:0px"><img src="img/gsi15/28260-13135.png" width="256" height="256" alt="" style="left:2304px;top:0px"><img src="img/gsi15/28251-13136.png" width="256" height="256" alt="" style="left:0px;top:256px"><img src="img/gsi15/28252-13136.png" width="256" height="256" alt="" style="left:256px;top:256px"><img src="img/gsi15/28253-13136.png" width="256" height="256" alt="" style="left:512px;top:256px"><img src="img/gsi15/28254-13136.png" width="256" height="256" alt="" style="left:768px;top:256px"><img src="img/gsi15/28255-13136.png" width="256" height="256" alt="" style="left:1024px;top:256px"><img src="img/gsi15/28256-13136.png" width="256" height="256" alt="" style="left:1280px;top:256px"><img src="img/gsi15/28257-13136.png" width="256" height="256" alt="" style="left:1536px;top:256px"><img src="img/gsi15/28258-13136.png" width="256" height="256" alt="" style="left:1792px;top:256px"><img src="img/gsi15/28259-13136.png" width="256" height="256" alt="" style="left:2048px;top:256px"><img src="img/gsi15/28260-13136.png" width="256" height="256" alt="" style="left:2304px;top:256px"><img src="img/gsi15/28251-13137.png" width="256" height="256" alt="" style="left:0px;top:512px"><img src="img/gsi15/28252-13137.png" width="256" height="256" alt="" style="left:256px;top:512px"><img src="img/gsi15/28253-13137.png" width="256" height="256" alt="" style="left:512px;top:512px"><img src="img/gsi15/28254-13137.png" width="256" height="256" alt="" style="left:768px;top:512px"><img src="img/gsi15/28255-13137.png" width="256" height="256" alt="" style="left:1024px;top:512px"><img src="img/gsi15/28256-13137.png" width="256" height="256" alt="" style="left:1280px;top:512px"><img src="img/gsi15/28257-13137.png" width="256" height="256" alt="" style="left:1536px;top:512px"><img src="img/gsi15/28258-13137.png" width="256" height="256" alt="" style="left:1792px;top:512px"><img src="img/gsi15/28259-13137.png" width="256" height="256" alt="" style="left:2048px;top:512px"><img src="img/gsi15/28260-13137.png" width="256" height="256" alt="" style="left:2304px;top:512px"><img src="img/gsi15/28251-13138.png" width="256" height="256" alt="" style="left:0px;top:768px"><img src="img/gsi15/28252-13138.png" width="256" height="256" alt="" style="left:256px;top:768px"><img src="img/gsi15/28253-13138.png" width="256" height="256" alt="" style="left:512px;top:768px"><img src="img/gsi15/28254-13138.png" width="256" height="256" alt="" style="left:768px;top:768px"><img src="img/gsi15/28255-13138.png" width="256" height="256" alt="" style="left:1024px;top:768px"><img src="img/gsi15/28256-13138.png" width="256" height="256" alt="" style="left:1280px;top:768px"><img src="img/gsi15/28257-13138.png" width="256" height="256" alt="" style="left:1536px;top:768px"><img src="img/gsi15/28258-13138.png" width="256" height="256" alt="" style="left:1792px;top:768px"><img src="img/gsi15/28259-13138.png" width="256" height="256" alt="" style="left:2048px;top:768px"><img src="img/gsi15/28260-13138.png" width="256" height="256" alt="" style="left:2304px;top:768px"><img src="img/gsi15/28251-13139.png" width="256" height="256" alt="" style="left:0px;top:1024px"><img src="img/gsi15/28252-13139.png" width="256" height="256" alt="" style="left:256px;top:1024px"><img src="img/gsi15/28253-13139.png" width="256" height="256" alt="" style="left:512px;top:1024px"><img src="img/gsi15/28254-13139.png" width="256" height="256" alt="" style="left:768px;top:1024px"><img src="img/gsi15/28255-13139.png" width="256" height="256" alt="" style="left:1024px;top:1024px"><img src="img/gsi15/28256-13139.png" width="256" height="256" alt="" style="left:1280px;top:1024px"><img src="img/gsi15/28257-13139.png" width="256" height="256" alt="" style="left:1536px;top:1024px"><img src="img/gsi15/28258-13139.png" width="256" height="256" alt="" style="left:1792px;top:1024px"><img src="img/gsi15/28259-13139.png" width="256" height="256" alt="" style="left:2048px;top:1024px"><img src="img/gsi15/28260-13139.png" width="256" height="256" alt="" style="left:2304px;top:1024px"><img src="img/gsi15/28251-13140.png" width="256" height="256" alt="" style="left:0px;top:1280px"><img src="img/gsi15/28252-13140.png" width="256" height="256" alt="" style="left:256px;top:1280px"><img src="img/gsi15/28253-13140.png" width="256" height="256" alt="" style="left:512px;top:1280px"><img src="img/gsi15/28254-13140.png" width="256" height="256" alt="" style="left:768px;top:1280px"><img src="img/gsi15/28255-13140.png" width="256" height="256" alt="" style="left:1024px;top:1280px"><img src="img/gsi15/28256-13140.png" width="256" height="256" alt="" style="left:1280px;top:1280px"><img src="img/gsi15/28257-13140.png" width="256" height="256" alt="" style="left:1536px;top:1280px"><img src="img/gsi15/28258-13140.png" width="256" height="256" alt="" style="left:1792px;top:1280px"><img src="img/gsi15/28259-13140.png" width="256" height="256" alt="" style="left:2048px;top:1280px"><img src="img/gsi15/28260-13140.png" width="256" height="256" alt="" style="left:2304px;top:1280px"><img src="img/gsi15/28251-13141.png" width="256" height="256" alt="" style="left:0px;top:1536px"><img src="img/gsi15/28252-13141.png" width="256" height="256" alt="" style="left:256px;top:1536px"><img src="img/gsi15/28253-13141.png" width="256" height="256" alt="" style="left:512px;top:1536px"><img src="img/gsi15/28254-13141.png" width="256" height="256" alt="" style="left:768px;top:1536px"><img src="img/gsi15/28255-13141.png" width="256" height="256" alt="" style="left:1024px;top:1536px"><img src="img/gsi15/28256-13141.png" width="256" height="256" alt="" style="left:1280px;top:1536px"><img src="img/gsi15/28257-13141.png" width="256" height="256" alt="" style="left:1536px;top:1536px"><img src="img/gsi15/28258-13141.png" width="256" height="256" alt="" style="left:1792px;top:1536px"><img src="img/gsi15/28259-13141.png" width="256" height="256" alt="" style="left:2048px;top:1536px"><img src="img/gsi15/28260-13141.png" width="256" height="256" alt="" style="left:2304px;top:1536px"></div></div>
+    <div class="layer old"><img class="oldmap" src="img/map-1945-large.jpg" width="7142" height="6383" alt="1945年に刷られた五万分の一の地形図。大橋のあたりは田んぼの記号が並ぶ"></div>
+    <div class="split"><span class="knob" role="slider" tabindex="0" aria-label="昔と今の境目" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">⇆</span></div>
+    <span class="pin" aria-hidden="true"></span>
+    <span class="tag l">1926年ごろの地形図</span><span class="tag r">2026年の地図</span>
+  </div>
+  <nav class="strip" aria-label="年代">
+    <a href="#" aria-current="true"><b class="yr">1926</b><span>田んぼ</span></a>
+    <a href="#"><b class="yr">1948</b><span>空中写真</span></a>
+    <a href="#"><b class="yr">1975</b><span>住宅地へ</span></a>
+    <a href="#"><b class="yr">2026</b><span>いま</span></a>
+    <figure><img src="img/ohashi-2015.jpg" width="1920" height="1440" alt="西鉄大橋駅の西口。大きな楠の向こうに駅舎" loading="lazy"><figcaption>大橋駅 西口（2015年）</figcaption></figure>
+  </nav>
+</aside>
+</body></html>
