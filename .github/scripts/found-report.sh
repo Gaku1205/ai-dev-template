@@ -5,6 +5,7 @@
 # - 1回に最大 FOUND_MAX（既定 3）件
 # - 同じ題名の Issue が開いていれば作らない（ai:found のもの。空白の違いは無視）
 # - ラベル ai:found と ai:plan を付ける（企画AIが清書して、いつもの流れに乗る）
+# - "kind":"shorten"（節を短くする提案）は ai:found と ai:skip（ai:plan は付けない。人間が ai:skip を外すと企画に回る）。本文の最後に <!-- ai-found-kind: shorten --> を付ける。枠（FOUND_MAX）は食い違いと合わせて数える
 # 環境変数：GITHUB_REPOSITORY、GH_TOKEN、RUN_URL（ログの場所。本文に書く）、GITHUB_STEP_SUMMARY
 # docs/pipeline.md「使ってみる役・監査役」
 set -uo pipefail
@@ -46,7 +47,13 @@ for ((i = 0; i < n && made < max; i++)); do
 ---
 見つけた役：$who${RUN_URL:+（ログと画面の画像：$RUN_URL）}
 <!-- ai-found: $kind -->"
-  if num=$(jq -n --arg t "$title" --arg b "$full" '{title:$t, body:$b, labels:["ai:found","ai:plan"]}' |
+  labels='["ai:found","ai:plan"]'
+  if [ "$(jq -r ".findings[$i].kind // empty" "$file")" = "shorten" ]; then
+    labels='["ai:found","ai:skip"]'
+    full="$full
+<!-- ai-found-kind: shorten -->"
+  fi
+  if num=$(jq -n --arg t "$title" --arg b "$full" --argjson l "$labels" '{title:$t, body:$b, labels:$l}' |
     gh api "repos/$REPO/issues" --input - --jq '.number' 2> /dev/null); then
     made=$((made + 1))
     existing="$existing
