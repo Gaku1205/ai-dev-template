@@ -123,8 +123,7 @@ ${MOCKS_RETRY_MARK}"
     review)
       write_retry_record "$n" "$next" "$kind" "$reason" "" "$limit_first"
       remove_label "$n" "ai:retry"
-      remove_label "$n" "ai:review"
-      add_label "$n" "ai:review"
+      request_review "$n"
       ;;
     merge)
       # CIもレビューも済んでいて、マージだけができなかった（CI 以外のチェックが通っていない・GitHub が断った）。
