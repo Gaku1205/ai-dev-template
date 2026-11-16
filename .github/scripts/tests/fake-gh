@@ -72,7 +72,7 @@ if base=='deployments':
 m=re.match(r'deployments/(\d+)/statuses$',base)
 if m: out([{'state':'success','environment_url':d.get('url')} for d in st.get('deployments',[]) if str(d['id'])==m.group(1)]); sys.exit(0)
 # main のコミットの一覧：st['main_commit_date']
-if base=='commits': out([{'sha':'h','commit':{'committer':{'date':st.get('main_commit_date','2026-01-01T00:00:00Z')}}}]); sys.exit(0)
+if base=='commits': out([{'sha':x,'commit':{'committer':{'date':st.get('main_commit_date','2026-01-01T00:00:00Z')}}} for x in st.get('main_commits',['h'])]); sys.exit(0)
 m=re.match(r'issues/(\d+)/comments$',base)
 if m:
     n=m.group(1)
@@ -160,7 +160,7 @@ if m:
 # コミットステータス（まとめ）：st['statuses'] = [{'context':'Vercel','state':'failure','description':'…','target_url':'…'}]
 m=re.match(r'commits/([^/]+)/status$',base)
 if m:
-    ss=st.get('statuses',[])
+    ss=st.get('statuses_by_sha',{}).get(m.group(1), st.get('statuses',[]))
     out({'state':'pending' if not ss or any(x['state']=='pending' for x in ss) else ('failure' if any(x['state']!='success' for x in ss) else 'success'),'statuses':ss}); sys.exit(0)
 if re.match(r'actions/runs/\d+/jobs$',base): out({'jobs':st.get('jobs',[])}); sys.exit(0)
 m=re.match(r'actions/runs/(\d+)/rerun-failed-jobs$',base)
@@ -179,7 +179,8 @@ if m and method=='POST':
     st.setdefault('dispatches',[]).append({'workflow':m.group(1),**fields}); save(); sys.exit(0)
 if base=='actions/runs': out({'workflow_runs':st.get('runs',[])}); sys.exit(0)
 if base.startswith('compare/'): out({'ahead_by':0}); sys.exit(0)
-if re.match(r'commits/[^/]+$',base): out({'commit':{'committer':{'date':'2026-01-01T00:00:00Z'}}}); sys.exit(0)
+m=re.match(r'commits/([^/]+)$',base)
+if m: out({'commit':{'committer':{'date':'2026-01-01T00:00:00Z'}},'files':[{'filename':f} for f in st.get('commit_files',{}).get(m.group(1),[])]}); sys.exit(0)
 if base=='pulls':
     paged(st.get('pulls',[])); sys.exit(0)
 if base=='branches':
