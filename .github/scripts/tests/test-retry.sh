@@ -63,4 +63,24 @@ before=$(notify_count)
 run_lib 'mark_for_retry 32 plan "x"' > /dev/null
 assert_eq "古い物と合わせても鳴らない" "$before" "$(notify_count)"
 
+echo "== 企画のやり直し待ちでも、もう先へ進んでいれば（順番待ち・実装中など）やり直さない（印だけ外す）"
+init_state '{"labels":{"8":["ai:plan"]}}'
+run_lib 'mark_for_retry 8 plan "置き換わった実行の失敗"' > /dev/null
+state_py "s['labels']['8']=['ai:queue','ai:retry']"
+age_retry_comments 40
+out=$(run_script watchdog.sh)
+assert_contains "やり直さないと知らせる" "$out" "もう先へ進んでいる（ai:queue）"
+assert_not_contains "企画に戻さない" "$(labels_of 8)" "ai:plan"
+assert_not_contains "印は外す" "$(labels_of 8)" "ai:retry"
+assert_not_contains "やり直すとは言わない" "$out" "plan をやり直します"
+assert_contains "回数は増やさない" "$(comments_of 8)" "count=0 kind=plan"
+
+echo "== 企画が本当に止まっているとき（ai:plan のまま）は、今までどおりやり直す"
+init_state '{"labels":{"8":["ai:plan"]}}'
+run_lib 'mark_for_retry 8 plan "エラー"' > /dev/null
+age_retry_comments 40
+run_script watchdog.sh > /dev/null
+assert_eq "ai:plan を付け直す" "ai:plan" "$(labels_of 8)"
+assert_contains "回数が増える" "$(comments_of 8)" "count=1 kind=plan"
+
 finish

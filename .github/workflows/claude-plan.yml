@@ -154,7 +154,10 @@ jobs:
     # PIPELINE_TOKEN を使うのはこのジョブだけ（AIのジョブには渡さない）
     needs: plan
     # AIのジョブが動いたときだけ（別のラベルが付いたときなど、AIのジョブが飛ばされたら何もしない）
-    if: ${{ !cancelled() && needs.plan.result != 'skipped' }}
+    # 取り消されたとき（ai:plan が付け直されて、新しい実行に置き換わった）も何もしない。新しい実行が結果を出す。
+    # ここで動くと、実行記録が無いので「企画AIがエラーで止まりました（原因：不明）」と書いて ai:retry を付け、
+    # 先へ進んだ Issue を30分後にもう一度企画し直してしまう。時間切れで取り消されたときは、見張り役が拾う（IDLE_PLAN_MIN）
+    if: ${{ !cancelled() && needs.plan.result != 'skipped' && needs.plan.result != 'cancelled' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

@@ -363,6 +363,9 @@ PY6
 )
 assert_eq "進捗ログの呼び出し" "plan:ok,mocks:ok,implement:ok,ci:ok,review:ok,fix:ok" "$result"
 
+echo "== 企画：置き換えられて取り消された実行は、あとの工程（after-plan）を動かさない（先へ進んだ Issue に ai:retry を付けない）"
+assert_contains "after-plan の条件" "$(grep -n "needs.plan.result" "$WORKFLOWS/claude-plan.yml")" "needs.plan.result != 'cancelled'"
+
 echo "== 企画AI：他の Issue・PR の完了待ち（BLOCKED）の書き方がプロンプトにある"
 assert_contains "BLOCKED" "$(cat "$WORKFLOWS/claude-plan.yml")" '`BLOCKED`：'
 

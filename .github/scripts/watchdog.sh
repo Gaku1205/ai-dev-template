@@ -55,6 +55,19 @@ for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry"
   if [ -n "$(retry_mark_value "$body" limit-until)" ]; then
     next=$count
   fi
+  # 企画のやり直し待ちなのに、企画がもう先へ進んでいる（別の実行が結果を出した）なら、やり直さない。印だけ外す
+  # （やり直すと、順番待ち・実装中の Issue をもう一度企画し直してしまう）
+  if [ "$kind" = plan ] && ! has_label "$n" "ai:plan"; then
+    moved=""
+    for l in ai:implement ai:queue ai:question ai:mocks ai:blocked; do
+      if has_label "$n" "$l"; then moved="$l"; break; fi
+    done
+    if [ -n "$moved" ]; then
+      remove_label "$n" "ai:retry"
+      echo "#$n：企画はもう先へ進んでいる（${moved}）ので、やり直しません"
+      continue
+    fi
+  fi
   echo "#$n：${kind} をやり直します（${next}/${MAX_RETRY}回目）"
   handled="${handled}${n} "
 
