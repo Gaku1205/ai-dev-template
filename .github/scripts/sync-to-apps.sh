@@ -5,27 +5,26 @@
 # 配り先の main には直接入れず、PR（ブランチ pipeline-sync/<sha>）を作る。配り先の CI が通ったら after-ci.sh がマージする。
 # 配る先に .github/sync-keep があれば、そこに書かれたファイル名（1行1つ）は消さずに残す。
 # CLAUDE.md / AGENTS.md / docs/spec.md / docs/design.md は配らない。
+#
+# sync-to-apps.sh --local フォルダ：GitHub には触らず、手元のフォルダに「配ったあとの形」だけを作る（tests/run-as-app.sh が、
+# 配り先の形でテストが通るかを、配る前に確かめるのに使う）。
+# テスト用：SYNC_GIT_URL（clone 先の書式。%s にリポジトリ名）
 set -euo pipefail
 
 src_root="$(cd "$(dirname "$0")/../.." && pwd)"
-src_sha="$(git -C "$src_root" rev-parse --short HEAD)"
-work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
-fail=0
 
-for repo in "$@"; do
-  echo "== $repo"
-  dir="$work/${repo//\//_}"
-  if ! git clone -q --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${repo}.git" "$dir"; then
-    echo "::error::$repo を取得できません"; fail=1; continue
-  fi
+# 配る物を、配り先のフォルダに写す（配る中身の決まりは、ここ1か所）
+copy_pipeline() { # 配り先のルート
+  local dir="$1" name
   # テンプレート本体だけの物（配り先では動かない）：工場のIssueの雛形
-  excludes=(--exclude=sync-keep --exclude=sync-targets --exclude=ISSUE_TEMPLATE/new-service.yml)
+  local excludes=(--exclude=sync-keep --exclude=sync-targets --exclude=ISSUE_TEMPLATE/new-service.yml)
   if [ -f "$dir/.github/sync-keep" ]; then
-    while IFS= read -r name; do
+    while IFS= read -r name || [ -n "$name" ]; do
+      name="${name%$'\r'}"
       [ -n "$name" ] && excludes+=("--exclude=$name")
     done < "$dir/.github/sync-keep"
   fi
+  mkdir -p "$dir/.github"
   rsync -a --delete "${excludes[@]}" "$src_root/.github/" "$dir/.github/"
   mkdir -p "$dir/docs"
   cp "$src_root/docs/pipeline.md" "$dir/docs/pipeline.md"
@@ -34,6 +33,27 @@ for repo in "$@"; do
     mkdir -p "$dir/.claude/skills"
     cp -R "$src_root/.claude/skills/." "$dir/.claude/skills/"
   fi
+}
+
+if [ "${1:-}" = "--local" ]; then
+  copy_pipeline "${2:?フォルダを指定}"
+  exit 0
+fi
+
+src_sha="$(git -C "$src_root" rev-parse --short HEAD)"
+GIT_URL="${SYNC_GIT_URL:-https://x-access-token:${GH_TOKEN}@github.com/%s.git}"
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+fail=0
+
+for repo in "$@"; do
+  echo "== $repo"
+  dir="$work/${repo//\//_}"
+  # shellcheck disable=SC2059
+  if ! git clone -q --depth 1 "$(printf "$GIT_URL" "$repo")" "$dir"; then
+    echo "::error::$repo を取得できません"; fail=1; continue
+  fi
+  copy_pipeline "$dir"
 
   if [ -z "$(git -C "$dir" status --porcelain)" ]; then
     echo "変更なし"; continue
@@ -55,7 +75,11 @@ for repo in "$@"; do
         gh api -X PATCH "repos/$repo/pulls/$old_pr" -f state=closed > /dev/null && echo "古い配布のPR #$old_pr を閉じました"
         gh api -X DELETE "repos/$repo/git/refs/heads/$old_branch" > /dev/null 2>&1 || true
       done
-  if gh api "repos/$repo/pulls?state=open&head=${repo%%/*}:$branch" --jq 'length' | grep -qx 0; then
+  # PR があるかを調べられなかったときに「PRを更新した」と言わない（PR が無いまま、配ったことになってしまう）
+  if ! open=$(gh api "repos/$repo/pulls?state=open&head=${repo%%/*}:$branch" --jq 'length'); then
+    echo "::error::$repo のPRを調べられません"; fail=1; continue
+  fi
+  if [ "$open" = 0 ]; then
     gh api "repos/$repo/pulls" -f title="パイプラインの更新を取り込む（${src_sha}）" -f head="$branch" -f base=main \
       -f body="ai-dev-template の main（${src_sha}）で CI が通ったパイプラインの更新（\`.github/\` と \`docs/pipeline.md\`）です。このリポジトリの CI が通ったら、進行役が自動でマージします。<!-- pipeline-sync -->" > /dev/null \
       && echo "配った（PR）: $repo" || { echo "::error::$repo にPRを作れません"; fail=1; }

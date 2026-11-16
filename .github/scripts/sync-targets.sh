@@ -23,11 +23,16 @@ if [ -f "$file" ]; then
   done < "$file"
 fi
 
-# 候補：App の鍵なら、App を入れたリポジトリ。PIPELINE_TOKEN（個人の鍵）なら、オーナーのリポジトリ
+# 候補：App の鍵なら、App を入れたリポジトリ。PIPELINE_TOKEN（個人の鍵）なら、オーナーのリポジトリ。
+# どちらも読めないとき（鍵が無い・期限切れ・GitHub の不調）は、失敗で終わる。黙って「書いた物だけ」に配ると、
+# テンプレートから作ったアプリが古いまま残り、Actions も緑なので気づけない
 if ! candidates=$(gh api --paginate "installation/repositories?per_page=100" \
   -q '.repositories[] | select(.archived | not) | .full_name' 2> /dev/null); then
-  candidates=$(gh api --paginate "users/${self%%/*}/repos?per_page=100&type=owner" \
-    -q '.[] | select(.archived | not) | .full_name' 2> /dev/null) || candidates=""
+  if ! candidates=$(gh api --paginate "users/${self%%/*}/repos?per_page=100&type=owner" \
+    -q '.[] | select(.archived | not) | .full_name' 2> /dev/null); then
+    echo "::error::配り先の候補（リポジトリの一覧）を読めません。パイプラインの鍵（GitHub App か PIPELINE_TOKEN）を確かめてください" >&2
+    exit 1
+  fi
 fi
 
 auto=()
@@ -35,7 +40,10 @@ while IFS= read -r repo; do
   [ -z "$repo" ] && continue
   [ "${repo,,}" = "${self,,}" ] && continue
   # 一覧には「どのテンプレートから作ったか」が無いので、1つずつ見る（リポジトリの数だけ呼ぶ）
-  from=$(gh api "repos/$repo" -q '.template_repository.full_name // ""' 2> /dev/null) || continue
+  if ! from=$(gh api "repos/$repo" -q '.template_repository.full_name // ""' 2> /dev/null); then
+    echo "::warning::$repo を読めなかったので、今回は配り先に入れていません（テンプレートから作った物なら、次の配布で配ります）" >&2
+    continue
+  fi
   if [ -n "$from" ] && [ "${from,,}" = "${self,,}" ]; then
     auto+=("$repo")
     echo "自動で見つけた配り先：$repo（$self から作ったリポジトリ）" >&2

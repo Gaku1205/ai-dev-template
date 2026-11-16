@@ -29,7 +29,13 @@ main() {
   REPO="${REPO:?REPO を指定}"
   if has_label; then echo "準備ずみ（ラベルがある）。何もしません。"; return 0; fi
   echo "## 最初の準備（$REPO）"
-  REPO="$REPO" "$HERE/labels.sh" > /dev/null && echo "- ✅ ラベルを作った"
+  # ラベルを作れなかったら、ここで止める（CLAUDE.md も触らない）。目印の ai:plan は最後に作るので、次の push でもう一度やり直す
+  if REPO="$REPO" "$HERE/labels.sh" > /dev/null; then
+    echo "- ✅ ラベルを作った"
+  else
+    echo "- ❌ ラベルを全部は作れませんでした（GitHub の不調など）。次に main へ push されたときに、もう一度やり直します。急ぐときは Actions の「Bootstrap」を手で動かす"
+    return 1
+  fi
   if [ -f CLAUDE.md ] && grep -q "^## ai-dev-template 自身の作業" CLAUDE.md; then
     strip_self_edit CLAUDE.md
     echo "- ✅ CLAUDE.md から「ai-dev-template 自身の作業」の節を消した"

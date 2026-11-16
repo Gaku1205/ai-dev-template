@@ -103,7 +103,7 @@ Issue の `ai:stuck` を外したときは、付いているラベルで続き�
 - レビューAIは、確かめを弱めた変更も見る：テストを消した・飛ばした・期待する値を実装に合わせて書き換えた、`package.json` の `scripts` やリント・型チェックの設定をゆるめた、`any`・`@ts-ignore`・`eslint-disable` でエラーを消した。Issue が頼んでいなければ指摘する（合否を決めるのはCIなので、CIの中身を変えて通したPRは、通ったことにならない）。入力から出力が決まるロジックを足した・変えたのにテストが無いときも指摘する
 - レビューAIは普段 sonnet。追加＋削除が300行を超える変更と、ログイン・トークン・秘密・権限・依存（`package.json`）・ワークフローを触る変更は opus でレビューする（`claude-review.yml` の「レビューのモデルを決める」）
 - AIが動くジョブには `PIPELINE_TOKEN` を渡さない。企画・実装のあとの処理（次へ進める・PRを作る）は別のジョブで、main から取り直したスクリプトを動かす。AIが作業フォルダのスクリプトを書き換えても、強いトークンでは動かない（AIの結果は、実行記録と `plan-result.txt` をデータとして受け渡すだけ）
-- パイプラインの更新を配る（`sync.yml`）のは、テンプレートの main でCIが通った版だけ。CIが通ってから15分待ち（変数 `SYNC_DELAY_MIN` で変えられる。手で動かしたときは待たない）、その間に main がまた更新されたら新しい方だけを配る（続けてマージしても、配り先のPRは1つで済む）。配り先は、このテンプレートから作られ、パイプラインの鍵（App）が見えるリポジトリ（自動。新しいアプリを作っても書き足さなくてよい）と、`.github/sync-targets` に書いた物（テンプレートより前からあるリポジトリなど）。配りたくない物は `.github/sync-targets` に `!owner/repo` と書く（`sync-targets.sh`）。配るときは配り先の `.github/` をテンプレートの物で置き換える（テンプレートに無いファイルは消える）。配り先で自分で足したワークフローなどを残したいときは、配り先の `.github/sync-keep` に、そのファイルの名前を1行に1つ書く（例：`workflows/my-job.yml`）。配り先の main には直接入れず、`pipeline-sync/<sha>` のPRを作る。配り先のCIが通ったら、進行役がレビューなしでマージする（落ちたら `ai:stuck` で人間に回す。AIが作ったPRや、印の無いPRはこの扱いにしない）
+- パイプラインの更新を配る（`sync.yml`）のは、テンプレートの main でCIが通った版だけ。CIが通ってから15分待ち（変数 `SYNC_DELAY_MIN` で変えられる。手で動かしたときは待たない）、その間に main がまた更新されたら新しい方だけを配る（続けてマージしても、配り先のPRは1つで済む）。配り先は、このテンプレートから作られ、パイプラインの鍵（App）が見えるリポジトリ（自動。新しいアプリを作っても書き足さなくてよい）と、`.github/sync-targets` に書いた物（テンプレートより前からあるリポジトリなど）。配りたくない物は `.github/sync-targets` に `!owner/repo` と書く（`sync-targets.sh`）。リポジトリの一覧を読めないとき（鍵が無い・期限切れ）は、書いた物だけに黙って配らず、失敗で終わる。配るときは配り先の `.github/` をテンプレートの物で置き換える（テンプレートに無いファイルは消える）。配り先で自分で足したワークフローなどを残したいときは、配り先の `.github/sync-keep` に、そのファイルの名前を1行に1つ書く（例：`workflows/my-job.yml`）。配り先の main には直接入れず、`pipeline-sync/<sha>` のPRを作る。配り先のCIが通ったら、進行役がレビューなしでマージする（落ちたら `ai:stuck` で人間に回す。AIが作ったPRや、印の無いPRはこの扱いにしない）
 - `.github/`・`docs/pipeline.md`・CLAUDE.md・AGENTS.md・`pipeline.json` を変えるPRは、CIとレビューが通っても自動でマージしない（マージを人間に任せて通知する）。仕組みそのものが、AIの判断だけで書き換わらないようにするため。普通のIssueは今までどおり全自動
 - 合否を決めるのはCI。AIの「できました」は信じない
 - 進行役（pipeline.yml）は `workflow_run` で main にある版が動くので、PRの中身で判断を書き換えられない
@@ -241,11 +241,11 @@ AIのアクションは作業フォルダをPRのブランチに切り替える�
 
 AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions/` を触るPRは、どのリポジトリでも自動でマージしない（`ai:hold`）。書き間違いは、CI・公開の最初で `::error::` になり、Doctor でも ❌ で出る。
 
-公開先（`deploy.yml`。main の CI が通ったら動く。パイプラインの更新だけのコミットでは動かない）：
+公開先（`deploy.yml`。main の CI が通ったら動く。パイプラインの更新だけのコミットでは動かない。ただし、その前のアプリの変更がまだ公開されていなければ動く：公開は1つずつ順に動き、待っている古い公開は新しい公開が来ると取り消されるので、アプリの変更のすぐあとに配布のコミットが入ると、アプリの変更が公開されないまま残る。`deploy-plan.sh` が、公開の結果（`deploy/*` の success・failure・error）が付いた一番新しいコミットからの差で決め直す）：
 
 | `kind` | 公開のしかた | 要る設定 | 書く物 |
 | --- | --- | --- | --- |
-| `vercel` | `deploy-vercel.yml` が、main の CI が通ってから3分（変数 `VERCEL_DEPLOY_DELAY_MIN`）待ち、その間にまたマージされたら新しい方だけが、最新の main を1回だけ本番に公開する（Vercel の無料プランは「1日100回まで」なので、マージのたびに公開しない）。最後に公開に成功したコミットから、パイプラインの物（`.github/`・`docs/pipeline.md`）しか変わっていなければ公開しない。Secret `VERCEL_TOKEN` が無いときは何もせず、Vercel が自分で公開する（今までの形）。`pipeline.json` が無いときの既定 | Vercel でリポジトリを読み込み、`vercel.json` を `"git": { "deploymentEnabled": false }` にし、`ignoreCommand` を消す（Vercel が自分で公開するのを止める。`ignoreCommand` は直前のコミットとの差しか見ないので、まとめて公開すると間の変更を見落として公開が飛ばされる）。`VERCEL_TOKEN` は工場（新しいサービス）と配布（`sync.yml` の vercel-token。`vercel.json` があるリポジトリだけ）が入れる | `VERCEL_TOKEN`（任意）、変数 `VERCEL_TEAM_ID`（チームのとき） |
+| `vercel` | `deploy-vercel.yml` が、main の CI が通ってから3分（変数 `VERCEL_DEPLOY_DELAY_MIN`）待ち、その間にまたマージされたら新しい方だけが、最新の main を1回だけ本番に公開する（Vercel の無料プランは「1日100回まで」なので、マージのたびに公開しない）。最後に公開に成功したコミットから、パイプラインの物（`.github/`・`docs/pipeline.md`）しか変わっていなければ公開しない。Secret `VERCEL_TOKEN` が無いときは何もせず、Vercel が自分で公開する（今までの形）。`VERCEL_TOKEN` が無いのに `vercel.json` が `deploymentEnabled: false` のままだと、どこからも公開されないので、失敗としてスマホに知らせる。公開を頼めなかったとき（鍵の期限切れ・プロジェクトが見つからない など）は、スマホに知らせる（`deploy_failed`）。3時間ごとに、最新の main が公開されているかを確かめ、まだなら頼み直す（回数の上限に当たったときのため。同じコミットの公開が3回失敗していたら、頼み直しても直らないので、次のマージか手で動かすまで頼まない）。`pipeline.json` が無いときの既定 | Vercel でリポジトリを読み込み、`vercel.json` を `"git": { "deploymentEnabled": false }` にし、`ignoreCommand` を消す（Vercel が自分で公開するのを止める。`ignoreCommand` は直前のコミットとの差しか見ないので、まとめて公開すると間の変更を見落として公開が飛ばされる）。`VERCEL_TOKEN` は工場（新しいサービス）と配布（`sync.yml` の vercel-token。`vercel.json` があるリポジトリだけ）が入れる | `VERCEL_TOKEN`（任意）、変数 `VERCEL_TEAM_ID`（チームのとき） |
 | `github-pages` | 静的なサイトを作って GitHub Pages に出す（`<ユーザー名>.github.io` という名前のリポジトリなら、そのアドレスのトップに出る）。Next.js なら `next.config` で `output: "export"`・`images: { unoptimized: true }` にする（サーバーで動く機能は使えない） | Settings → Pages の Source を **GitHub Actions** にする。工場が作るサービスは、工場が `FACTORY_TOKEN` で自動で有効にする（`build_type=workflow`）。それ以外は手で1回だけ。Doctor が、有効で Source が GitHub Actions かを確かめる（無効や別の Source は ❌ と直し方、読めないときは ⚠️）。公開が失敗したときの知らせ（`deploy/pages`）には、設定のページの URL が付く | `build`（作るコマンド。既定 `npm run build`）、`dir`（出すフォルダ。既定 `out`） |
 | `aws-apprunner` | Docker のイメージを作って ECR に置き、App Runner で動かす。最初の公開でサービスを作り、2回目から差し替える。言語を選ばない（Web・API） | 下の「AWS App Runner」 | `service`（サービス名・小文字の英数字と `-` `_`。ECR の名前にも使う）、`port`（既定 8080）、`dockerfile`（既定 `Dockerfile`）、`cpu`（既定 256）、`memory`（既定 512）、`health`（HTTPのヘルスチェックのパス。省くとTCP） |
 | `github-release` | OS ごとに配布物（exe など）を作り、GitHub Releases に置く。ファイル名に OS が付く（`hello.exe` → `hello-windows.exe`）。タグは `build-<日時>-<コミット>` | なし | `build`（作るコマンド）、`files`（置くファイル。例 `dist/*`）、`os`（既定 `["windows-latest"]`。`macos-latest`・`ubuntu-latest` も） |
@@ -253,7 +253,7 @@ AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions
 | `supabase` | `supabase/migrations/*.sql` のうち、まだ流していない物を番号の順に1ファイルずつ流す（`deploy-supabase.sh`。流した印は `app_meta.migrations`。1ファイル1まとまりで、失敗したら後ろは流さない）。Vercel の公開より先に動く | Secret の `SUPABASE_DB_URL`（工場が saas を作るときに入れる） | なし |
 | `none` | 公開しない | なし | なし |
 
-結果はコミットの状態（`deploy/<kind>`）に書き、スマホに通知する（`deploy-status.sh`）。
+結果はコミットの状態（`deploy/<kind>`）に書き、スマホに通知する（`deploy-status.sh`。説明は GitHub の上限の140文字まで。通知の題は PR のタイトル：マージコミットなら3行目、まとめてマージ（squash）や直接のコミットなら1行目）。
 
 ### AWS App Runner（1つの AWS アカウントで1回だけ）
 
@@ -314,6 +314,8 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 6. `CLAUDE.md` の1行目・仕様書の「目的」・README に説明を書き、デザイン担当が作った画面とデザイン仕様と道具を入れ、Python なら見本（`examples/python`）に切り替えて（公開先は none）、ゲームなら見本（`examples/game`）に切り替えて（公開先は GitHub Releases の exe）、Web のゲームなら見本（`examples/webgame`）に切り替えて（公開先は Vercel）、saas なら会員と課金の土台を入れて（公開先は Vercel と、表の変更の supabase）、main に push する。この push で Bootstrap が動く。そのあと、新しいリポジトリの `pipeline.json` の公開先に `github-pages` があれば、`FACTORY_TOKEN` で GitHub Pages を有効にする（`POST repos/<新しいリポジトリ>/pages`、`build_type=workflow`。もう有効（409）なら成功として扱い、失敗したら結果のコメントに設定のページの URL 付きで直し方を書く。ワークフローのトークンでは有効にできないため、ここで行う）。`github-pages` が無ければ呼ばない
 7. main を守る（PRと CI の `check` を必須にする。管理者は通れる）
 8. 最初のIssueを作る（自動で企画に回る）。デザイン担当が画面を作れていれば、作りきれなかった残り（`factory-todo.md`、3つまで）だけをIssueにする（無ければ作らない）。作れていなければ、1行のメモを最初のIssueにする（最初の画面を一から作るので `size:L`＝強いモデルで実装する）。Vercel につないだときは、本番の公開アドレスを調べて報告に書き、リポジトリの Website 欄にも入れる（同じ名前がほかの人に使われていると、アドレスの後ろに文字が付く）。saas なら、公開アドレスで Stripe の通知の受け口とログインの戻り先を登録し（`factory-saas-provision.sh url`）、環境変数を効かせるため公開をやり直す。元のIssueに結果を書いて閉じる（デザイン担当が撮った画面の画像も貼るので、公開を待たずにどんな画面か見られる）
+
+途中で止まったとき（リポジトリを作れない・push できない・時間切れ・取り消し・スクリプトのエラー）は、元の Issue に、できた所までと、何が残っているかを書き、スマホに知らせる（`stuck`）。中身を push する前に止まったら「作りかけのリポジトリが残っている。要らなければ消す。消さずにもう一度作ると `-2` が付いた別のリポジトリになる」、push のあとに止まったら「リポジトリは使える。❌ の所だけ手で続きをする」と書く（工場は、作りかけのリポジトリを自分では消さない）。
 
 テンプレートの受付（intake）は、`新サービス：` のIssueを企画に回さない。工場は最初にIssueへ `factory` の印を付け、企画AI・実装AIは、題が `新サービス：` で始まるか、この印があるIssueを、テンプレート自身では受けない（題が書き換えられても止まる）。
 
@@ -459,8 +461,9 @@ AIの実行記録から、許可されず拒否された操作（`permission_den
 | 使ってみる役（`claude-try.yml`） | 毎日 21:13（日本時間）。ただし公開しているサイトの URL があり、main が直近24時間に変わった日だけ（＝公開があった日。1日1回まで） | 初めて使う利用者として、本番のサイトを本物のブラウザ（`shot.mjs`）で 390・1440 の幅で開き、`docs/spec.md` の主な使い方を試す。壊れている・迷う・崩れている所を探す（好みの問題は書かない。ログインが要るサービスでは、ログインの手前の画面だけ） | 1回に最大3件 |
 | 監査役（`claude-audit.yml`） | 毎週月曜 3:41（日本時間）。ただし進行中の作業（`ai:plan`・`ai:implement`・`ai:review`・`ai:queue` の Issue、`claude/` のPR）が無いときだけ。`docs/spec.md` が無いリポジトリでは動かない | 仕様書の中・仕様書とデザイン仕様・仕様書とコードの食い違いを探す。どちらに合わせるかと、直すときに触るファイルも書く（誤字・好み・まだ作っていない機能は書かない） | 1回に最大3件 |
 
+- 使ってみる役は、本番が main の最新に追いついているときだけ動く（main の先頭に公開のステータス（`Vercel`・`deploy/…`）が無く、それより前のコミットにある＝追いついていない。先頭の公開が公開中・失敗のときも待つ。パイプラインの物（`.github/`・`docs/pipeline.md`）しか変わっていないコミットは公開されないので、飛ばして見る）。公開はマージが落ち着いてからまとめて行うので、追いつく前に試すと、main ではもう直った不具合を Issue にしてしまうため（tochi-rirekisho #9・#11）
 - 動かすかは `found-gate.sh try|audit` が決める。公開先の URL は、GitHub Pages の公開があればその URL、無ければリポジトリの「Website」（工場が公開先を書く）。Actions の画面から手で動かすと（`force`）、日付・進行中の条件を見ずに動く
-- AIは結果を `.try/result.json`・`.audit/result.json`（`{"findings":[{"title","body"}]}`）に書くだけ。Issue は、別のジョブ（`report`）が main の版の `found-report.sh` で作る（AIのジョブにはパイプラインの鍵を渡さない）。同じ題名の `ai:found` の Issue が開いていれば作らない（空白の違いは無視）
+- AIは結果を `.try/result.json`・`.audit/result.json`（`{"findings":[{"title","body"}]}`）に書くだけ。Issue は、別のジョブ（`report`）が main の版の `found-report.sh` で作る（AIのジョブにはパイプラインの鍵を渡さない）。同じ題名の `ai:found` の Issue が開いていれば作らない（空白の違いは無視）。開いている `ai:found` の Issue が6件（`FOUND_OPEN_MAX`）以上あるときは、新しく作らない（AIは同じ問題にも毎回ちがう題名を付けるので、直る前に積み上がるのを止める。人間の返事待ちの `ai:skip` は数えない）
 - AIを動かす前に、もう報告してある問題（開いている `ai:found` の Issue と、直近14日に閉じた物）の題名を `.try/known.md`・`.audit/known.md` に書いて渡す（`found-known.sh`）。AIは同じ問題にも毎回ちがう題名を付けるので、「言い方が違っても同じ物なら書かない」と頼む
 - 撮った画像は、その実行の artifact（`try-out`・14日）に残り、Issue の本文にログの場所を書く
 - モデルは sonnet（使う量を抑えるため）。手数の上限は 使ってみる役 60・監査役 80
@@ -491,10 +494,11 @@ AIの実行記録から、許可されず拒否された操作（`permission_den
 - テンプレート本体の CI は、配り先の形でも全部のテストを動かす（`script-tests-as-app`。配る物だけを空のリポジトリに置く）。テンプレートにしか無い物に頼るテストを、配る前に見つける
 - 書き方は `tests/lib.sh` の冒頭。スクリプトを変えたら、場面に合うテストを足す
 - 変更を入れる前にテストを壊してみて（わざとバグを入れる）、テストが落ちることを確かめると確実
+- テストは `.github/` ごと全部のアプリに配られ、アプリの CI でも動く。テンプレートにしか無い物（`examples/` など）に頼るテストは、先頭で「無ければ飛ばす」と書く（`test-factory.sh` の先頭と同じ書き方。`test-sync-to-apps.sh` が書き忘れを見つける）。配り先の形で全部のテストが通るかは、`.github/scripts/tests/run-as-app.sh` で確かめられる（配る物だけを空のリポジトリに置いて `run-all.sh` を動かす）
 
 ## セットアップの診断
 
-新しいリポジトリを作ったら、Actions の「Doctor」を1回実行する。Secret・ラベル・設定・`CLAUDE.md` やスクリプトの名前を調べて、✅／⚠️／❌ で、直し方つきで Summary に出す（`.github/scripts/doctor.sh`）。❌ が無くなれば Issue を書くだけで動く。
+新しいリポジトリを作ったら、Actions の「Doctor」を1回実行する。Secret・ラベル・設定・`CLAUDE.md` やスクリプトの名前を調べて、✅／⚠️／❌ で、直し方つきで Summary に出す（`.github/scripts/doctor.sh`）。❌ が無くなれば Issue を書くだけで動く。要るラベルは `labels.sh` に書いてある物の全部（診断は別の一覧を持たない）。`labels.sh` は目印の `ai:plan` を最後に作る：Bootstrap と Setup Labels は「`ai:plan` があれば最初の準備は済んでいる」とみなすので、途中で失敗しても「準備ずみ」にならず、次の push でやり直せる。
 
 ## 必要な設定（リポジトリの Settings → Secrets and variables → Actions）
 

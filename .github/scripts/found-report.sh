@@ -6,6 +6,9 @@
 # - 同じ題名の Issue が開いていれば作らない（ai:found のもの。空白の違いは無視）
 # - ラベル ai:found と ai:plan を付ける（企画AIが清書して、いつもの流れに乗る）
 # - "kind":"shorten"（節を短くする提案）は ai:found と ai:skip（ai:plan は付けない。人間が ai:skip を外すと企画に回る）。本文の最後に <!-- ai-found-kind: shorten --> を付ける。枠（FOUND_MAX）は食い違いと合わせて数える
+# - 開いている ai:found の Issue が FOUND_OPEN_MAX（既定 6）件以上あれば、新しく作らない。同じ問題でも、AIは毎回ちがう題名を付けるので、
+#   題名の重複だけでは防げない。直る前に毎日（毎週）同じ物が積み上がり、企画・実装が何度も走るのを止める。
+#   人間の返事待ち（ai:skip。短くする提案など）は数えない
 # 環境変数：GITHUB_REPOSITORY、GH_TOKEN、RUN_URL（ログの場所。本文に書く）、GITHUB_STEP_SUMMARY
 # docs/pipeline.md「使ってみる役・監査役」
 set -uo pipefail
@@ -32,7 +35,16 @@ if [ "$(jq '.findings | length' "$file")" = 0 ]; then
   exit 0
 fi
 
-existing=$(gh api "repos/$REPO/issues?state=open&labels=ai%3Afound&per_page=100" --paginate --jq '.[].title' 2> /dev/null || true)
+# 開いている ai:found の Issue：1行に「動いているか（ai:skip が無ければ 1）<TAB>題名」
+open_found=$(gh api "repos/$REPO/issues?state=open&labels=ai%3Afound&per_page=100" --paginate \
+  --jq '.[] | select(.pull_request | not) | [(if ([.labels[].name] | index("ai:skip")) then 0 else 1 end), .title] | @tsv' 2> /dev/null || true)
+existing=$(printf '%s\n' "$open_found" | cut -f2-)
+open_max="${FOUND_OPEN_MAX:-6}"
+open_now=$(printf '%s\n' "$open_found" | grep -c '^1' || true)
+if [ "${open_now:-0}" -ge "$open_max" ]; then
+  echo "開いている ai:found の Issue が ${open_now} 件あるので、今回は新しく作りません（${open_max} 件より少なくなったら、また作ります）" | tee -a "$summary"
+  exit 0
+fi
 made=0 skipped=0
 n=$(jq '.findings | length' "$file")
 for ((i = 0; i < n && made < max; i++)); do

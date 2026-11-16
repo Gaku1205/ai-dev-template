@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # スマホ通知（ntfy）。使い方：notify.sh 種類 "タイトル" "本文" [優先度 1〜5]
 # 秘密の NTFY_TOPIC（ntfyアプリで購読するトピック名）が無ければ何もしない。
-# 通知に失敗しても、ワークフロー自体は失敗にしない。
+# 通知に失敗しても、ワークフロー自体は失敗にしない。ntfy が返事をしないときも、15秒で諦める（進行役の途中で呼ぶので、待ち続けて流れを止めない）。
 #
 # 種類（どれを鳴らすかは、リポジトリの Actions の Variable「NOTIFY_EVENTS」にカンマ区切りで書く。
 # agent-desk の設定画面から変えられる。無ければ DEFAULT_EVENTS）
@@ -41,6 +41,6 @@ jq -n \
   --arg click "$click" \
   --argjson priority "${3:-3}" \
   '{topic: $topic, title: $title, message: $message, click: $click, priority: $priority}' \
-  | curl -fsS -X POST -H "Content-Type: application/json" --data-binary @- https://ntfy.sh > /dev/null \
+  | curl -fsS --max-time 15 -X POST -H "Content-Type: application/json" --data-binary @- https://ntfy.sh > /dev/null \
   || echo "通知の送信に失敗しました（作業には影響しません）"
 exit 0
