@@ -68,7 +68,7 @@ else
     add_label "$NUMBER" "ai:plan"
     echo "#$NUMBER：企画をやり直しました"
   elif has_label "$NUMBER" "ai:implement"; then
-    pr=$(gh api "repos/$REPO/pulls?state=open&per_page=100" -q ".[] | select(.head.ref | startswith(\"claude/issue-${NUMBER}-\")) | .number" | head -1)
+    pr=$(gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate -q ".[] | select(.head.ref | startswith(\"claude/issue-${NUMBER}-\")) | .number" | head -1)
     if [ -n "$pr" ]; then
       # PRが止まると、PRと Issue の両方に ai:stuck が付く。Issue の方だけ外されたときも、PRの続きを始める
       # （パイプラインの鍵で外すので、PRの方の再開（このワークフロー）が動く）
@@ -112,7 +112,7 @@ ${RESUME_MARK}"
       fi
     done
     # この Issue を閉じるPRが開いていれば、作業はPRの側で進んでいる（PRを再開すると、紐づく Issue の ai:stuck も外れてここに来る）。企画し直さない
-    linked=$(gh api "repos/$REPO/pulls?state=open&per_page=100" | jq --arg n "$NUMBER" \
+    linked=$(api_list "repos/$REPO/pulls?state=open&per_page=100" | jq --arg n "$NUMBER" \
       '[.[] | select((.head.ref | startswith("claude/issue-" + $n + "-")) or ((.body // "") | test("(close[sd]?|fix(e[sd])?|resolve[sd]?) #" + $n + "([^0-9]|$)"; "i")))] | length')
     if [ "${linked:-0}" -gt 0 ]; then
       echo "#$NUMBER：この Issue のPRが開いているので、企画はやり直しません"

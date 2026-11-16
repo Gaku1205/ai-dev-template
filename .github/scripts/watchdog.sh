@@ -36,7 +36,9 @@ idle_min() {
   echo $(( (now - $(date -d "$1" +%s)) / 60 ))
 }
 
-open_prs=$(gh api "repos/$REPO/pulls?state=open&per_page=100")
+# 一覧は、ページをまたいで全部読む（api_list・--paginate。100件までなら API は1回のまま。per_page=100 だけだと、101件目からの
+# Issue・PR を見張れず、止まったままになる）
+open_prs=$(api_list "repos/$REPO/pulls?state=open&per_page=100")
 # 実装AIのブランチ（claude/issue-N-...）のPRがopenであるか
 has_open_pr_for_issue() {
   printf '%s' "$open_prs" | jq -e --arg p "claude/issue-$1-" 'any(.[]; .head.ref | startswith($p))' > /dev/null
@@ -44,7 +46,7 @@ has_open_pr_for_issue() {
 
 # ---- 1. ai:retry が付いた物をやり直す ----
 handled=" "   # この実行でやり直した番号（同じ実行で、すぐ次の確認に引っかからないように）
-for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry" -q '.[].number'); do
+for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry" --paginate -q '.[].number'); do
   if has_label "$n" "ai:stuck"; then
     remove_label "$n" "ai:retry"
     continue
@@ -175,7 +177,7 @@ done
 
 # ---- 2. 失敗の知らせも無いまま止まっている物 ----
 # 企画AI：ai:plan が付いたまま動きが無い
-for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aplan" -q '.[] | select(.pull_request | not) | .number'); do
+for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aplan" --paginate -q '.[] | select(.pull_request | not) | .number'); do
   case "$handled" in *" $n "*) continue ;; esac
   has_label "$n" "ai:stuck" && continue
   has_label "$n" "ai:retry" && continue
@@ -190,7 +192,7 @@ done
 # 実装AIの実行がまだ動いている間は「止まった」とみなさない（動いている物に ai:retry を付けない）
 implement_running=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/workflows/claude-implement.yml/runs?status=in_progress&per_page=30" \
   -q '[.workflow_runs[] | select(.status != "completed")] | length' 2> /dev/null) || implement_running=0
-for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aimplement" -q '.[] | select(.pull_request | not) | .number'); do
+for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aimplement" --paginate -q '.[] | select(.pull_request | not) | .number'); do
   case "$handled" in *" $n "*) continue ;; esac
   if [ "${implement_running:-0}" -gt 0 ]; then
     echo "実装AIの実行が動いている（${implement_running} 件）ので、実装の止まりは今回は見ません"
@@ -381,8 +383,10 @@ done
 # ---- 3.5 ラベルが無いまま放置されたIssueを、企画に回す（受付 intake.yml が動かなかったとき・ai:skip を外したとき） ----
 # 一覧にラベルと更新時刻があるので、ai: のラベルが無く、時間がたった物だけを詳しく見る（Issue ごとに API を呼ばない。回数制限のため）
 intake_before=$(date -u -d "${IDLE_INTAKE_MIN:-10} minutes ago" +%Y-%m-%dT%H:%M:%SZ)
-for n in $(gh api "repos/$REPO/issues?state=open&per_page=100" \
-  -q ".[] | select(.pull_request | not) | select(([.labels[].name] | any(startswith(\"ai:\"))) | not) | select(.updated_at <= \"$intake_before\") | .number"); do
+# 開いている Issue・PR の一覧は、ここで1回だけ読んで、下の 3.9（ラベルの矛盾）でも使う（同じ一覧を2回読まない）
+open_items_json=$(api_list "repos/$REPO/issues?state=open&per_page=100")
+for n in $(printf '%s' "$open_items_json" | jq -r --arg before "$intake_before" \
+  '.[] | select(.pull_request | not) | select(([.labels[].name] | any(startswith("ai:"))) | not) | select(.updated_at <= $before) | .number'); do
   case "$handled" in *" $n "*) continue ;; esac
   needs_intake "$n" || continue
   info=$(gh api "repos/$REPO/issues/$n" -q '"\(.updated_at) \(.user.login)"' 2> /dev/null) || continue
@@ -408,7 +412,7 @@ done
 # PR は issues の API で読めて、マージ・クローズで closed になる）。読めない待ち先があるときは、戻さない（間違って再開しない）。
 # 読めないまま BLOCKED_UNREADABLE_MIN 分たったら、黙って待ち続けないように、理由を書いて人間に回す
 BLOCKED_UNREADABLE_MIN="${BLOCKED_UNREADABLE_MIN:-60}"
-for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Ablocked" -q '.[] | select(.pull_request | not) | .number'); do
+for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Ablocked" --paginate -q '.[] | select(.pull_request | not) | .number'); do
   case "$handled" in *" $n "*) continue ;; esac
   has_label "$n" "ai:stuck" && continue
   marks=$(all_comments "$n" | jq -r 'map(select(.body | test("<!-- blocked-by: "))) | last | .body // ""' | grep -oE "$BLOCKED_MARK_RE" || true)
@@ -474,7 +478,8 @@ fix_labels() { # 番号 コメント 外すラベル...
   echo "#$num：${msg}"
   fixed=$(( fixed + 1 ))
 }
-open_items=$(gh api "repos/$REPO/issues?state=open&per_page=100" -q '.[] | [.number, ([.labels[].name] | join(","))] | @tsv')
+# 一覧は 3.5 で読んだ物を使う（3.5〜3.8 が付け外しするのは ai:plan・ai:skip・ai:blocked で、ここで見る組み合わせは作らない）
+open_items=$(printf '%s' "$open_items_json" | jq -r '.[] | [.number, ([.labels[].name] | join(","))] | @tsv')
 while IFS=$'\t' read -r n labels; do
   [ -z "$n" ] && continue
   [ "$fixed" -ge 20 ] && break
@@ -500,7 +505,7 @@ done <<< "$open_items"
 
 # 閉じた物（直近7日に閉じた物だけ）に、ai:stuck・ai:retry・ai:queue が残っている
 since=$(date -u -d "7 days ago" +%Y-%m-%dT%H:%M:%SZ)
-closed_items=$(gh api "repos/$REPO/issues?state=closed&since=${since}&per_page=100" \
+closed_items=$(gh api "repos/$REPO/issues?state=closed&since=${since}&per_page=100" --paginate \
   -q ".[] | select(.closed_at != null and .closed_at >= \"$since\") | [.number, ([.labels[].name] | join(\",\"))] | @tsv")
 while IFS=$'\t' read -r n labels; do
   [ -z "$n" ] && continue
@@ -524,7 +529,7 @@ set_retry_timer() {
   local earliest="" n t now_s runs
   [ "${RETRY_TIMER:-on}" = "off" ] && return 0
   now_s=$(date +%s)
-  for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry" -q '.[].number'); do
+  for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry" --paginate -q '.[].number'); do
     has_label "$n" "ai:stuck" && continue
     t=$(retry_due_at "$n")
     [ "$t" -gt "$now_s" ] || continue
