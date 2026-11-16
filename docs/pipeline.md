@@ -118,7 +118,7 @@ Issueを作る（メモ）。ラベルが無ければ自動で ai:plan が付く
 - 使い方：`bash .github/scripts/compose-prompt.sh --mode implement|mention [--visual-tests] [--docs]`。`--auto` を付けると、作業フォルダから自分で判定する（見た目のテスト＝`package.json` の `test:visual` か `pipeline.json` の `checks` にある。長い仕様書＝`docs/spec.md` が200行以上。企画AIの「短い」と同じ基準）
 - 部品の文は、元のワークフローの指示をそのまま分けたもの（意味は変えない）。出し分けは mode と、リポジトリの条件だけ（Issue の種類では出し分けない）
 - 選び方は `tests/test-compose-prompt.sh` で確かめる
-- ワークフローから呼ぶ差分は人間が入れる（AIは `.github/workflows/` を触れない）。`claude-implement.yml`（実装AI・審査後の直し役の2か所）は `--append-system-prompt \"…\"` の本文を `$(bash .github/scripts/compose-prompt.sh --mode implement --auto)` に、`claude-mention.yml` は `--mode mention --auto` に置き換える。`claude-implement.yml` の2か所（実装AI・審査後の直し役）とも、末尾の `${{ steps.shots.outputs.prompt }}${{ steps.target.outputs.prompt }}` はそのまま後ろに残す。呼ぶ前に、スクリプトを main の版から取り出して使うこと（PR の版を動かさない）
+- ワークフローは、AIを呼ぶ前の「AIへの指示を組む」の手順（`id: prompt`）でスクリプトを動かし、改行と `"` を除いた1行を `steps.prompt.outputs.text` に出して、`--append-system-prompt \"${{ steps.prompt.outputs.text }}…\"` で渡す（`claude_args` の中では `$(...)` が動かないため）。`claude-implement.yml` は Issue がきっかけで作業フォルダが main なので、そのまま `.github/scripts/compose-prompt.sh --mode implement --auto`。実装AIと審査後の直し役の2か所で同じ指示を使い、末尾の `${{ steps.shots.outputs.prompt }}${{ steps.target.outputs.prompt }}` は後ろに残す。`claude-mention.yml` は作業フォルダがPRの中身なので、`compose-prompt.sh` と `prompts/` を main の版から取ってきて（「道具を main から取ってくる」）`--mode mention --auto` で動かす（判定は作業フォルダで行う）
 
 ## AIの許可（`--allowedTools`）
 
