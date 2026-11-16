@@ -369,4 +369,10 @@ assert_contains "after-plan の条件" "$(grep -n "needs.plan.result" "$WORKFLOW
 echo "== 企画AI：他の Issue・PR の完了待ち（BLOCKED）の書き方がプロンプトにある"
 assert_contains "BLOCKED" "$(cat "$WORKFLOWS/claude-plan.yml")" '`BLOCKED`：'
 
+echo "== 読む量を減らす：企画AIが Issue に「読む所」を書き、実装AI・修正AIはそこだけを読む"
+assert_contains "企画のプロンプト" "$(cat "$WORKFLOWS/claude-plan.yml")" "### 読む所"
+for f in claude-implement.yml claude-mention.yml; do
+  assert_contains "$f の指示" "$(cat "$WORKFLOWS/$f")" "「読む所」の見出しがあれば、docs/spec.md と docs/design.md は最初から全部は読まない"
+done
+
 finish
