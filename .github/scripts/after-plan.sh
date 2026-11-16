@@ -13,6 +13,14 @@ source "$(dirname "$0")/pipeline-lib.sh"
 # 同時に実装してよい数（使用量を増やしすぎないため）
 MAX_PARALLEL="${MAX_PARALLEL:-2}"
 
+# 作業中に Issue が閉じられた（人間が別のPRで片付けた・やめた）ときは、続きを進めない（ラベルも Issue も作らない）。
+# 閉じた Issue の企画の結果で実装が始まり、同じ作業のPRがもう1つできたことがある（ai-dev-template #71・#84）
+if [ "$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE" --jq .state 2> /dev/null || echo open)" = closed ]; then
+  echo "#$ISSUE は閉じられているので、企画の結果は使いません"
+  for l in ai:plan ai:implement ai:queue ai:question ai:mocks ai:blocked; do remove_label "$ISSUE" "$l" 2> /dev/null || true; done
+  exit 0
+fi
+
 result=$(head -n 1 plan-result.txt 2> /dev/null | tr -d '\r' || true)
 # 企画AIがエラーで終わったとき（使用量の上限など）は、質問扱いにせず、自動でやり直す（watchdog.sh）
 if [ "$PLAN_OUTCOME" != "success" ]; then

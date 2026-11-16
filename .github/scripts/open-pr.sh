@@ -7,6 +7,13 @@
 source "$(dirname "$0")/pipeline-lib.sh"
 set -e
 
+# 作業中に Issue が閉じられたときは、PRを作らない（同じ作業のPRが2つになるのを防ぐ。ai-dev-template #84）
+if [ -n "${ISSUE:-}" ] && [ "$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE" --jq .state 2> /dev/null || echo open)" = closed ]; then
+  echo "#$ISSUE は閉じられているので、PRは作りません"
+  remove_label "$ISSUE" "ai:implement" 2> /dev/null || true
+  exit 0
+fi
+
 if ! has_pipeline_token; then
   # トークンが無い間は、今までどおり人間がPRを作る
   if [ "$AI_OUTCOME" = "success" ]; then
