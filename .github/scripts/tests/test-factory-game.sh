@@ -3,6 +3,8 @@
 source "$(dirname "$0")/lib.sh"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 ROOT="$(cd "$SCRIPTS_DIR/../.." && pwd)"
+# 工場はテンプレート本体の物。見本（examples/game-fonts）の無いリポジトリ（工場で作ったアプリなど。パイプラインの更新で配られる）では確かめない
+if [ ! -d "$ROOT/examples/game-fonts" ]; then echo "見本が無いので、工場のゲームのテストは飛ばします"; finish; exit $?; fi
 prep() { # テンプレートから作ったばかりのリポジトリのまね
   rm -rf "$T/app"; mkdir -p "$T/app/docs"
   cp -r "$ROOT/examples" "$T/app/"
