@@ -493,6 +493,14 @@ classify_failure() {
   fi
 }
 
+# AIの実行記録が「作業回数の上限（--max-turns）に届いて終わった」か
+hit_max_turns() {
+  local f="${1:-}" subtype
+  { [ -n "$f" ] && [ -s "$f" ]; } || return 1
+  subtype=$(jq -r 'if type == "array" then . else [.] end | map(select(type == "object" and .type == "result")) | last // {} | .subtype // ""' "$f" 2> /dev/null) || return 1
+  [ "$subtype" = "error_max_turns" ]
+}
+
 # 失敗コメントの理由に、分類（classify_failure）と、見に行けるログのURLを足す
 #   使い方：failure_reason "企画AIがエラーで止まりました" [実行記録のファイル]
 failure_reason() {
