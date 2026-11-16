@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>土地の履歴書 — 案A 地図が主役</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=BIZ+UDPMincho&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #EFE9DC; --cell: #FBF8F1; --ink: #2A241C; --shu: #B8432B; --mizu: #4F7A9A; --ta: #8C9A4E;
+    --line: #2A241C; --soft: #CFC6B4; --mute: #6E6556;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "BIZ UDPGothic", sans-serif; color: var(--ink); background: var(--paper);
+    background-image: linear-gradient(#e2dbcb 1px, transparent 1px), linear-gradient(90deg, #e2dbcb 1px, transparent 1px);
+    background-size: 24px 24px; font-size: 15px; line-height: 1.7;
+  }
+  .mono { font-family: "IBM Plex Mono", monospace; }
+
+  /* 上の帯 */
+  .bar { display: flex; align-items: center; gap: 24px; height: 56px; padding: 0 24px; border-bottom: 2px solid var(--line); background: var(--cell); }
+  .logo { font-weight: 700; font-size: 18px; letter-spacing: .02em; white-space: nowrap; }
+  .logo b { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--shu); border-radius: 50%; margin-right: 8px; vertical-align: -1px; position: relative; }
+  .bar nav { margin-left: auto; display: flex; gap: 20px; font-size: 14px; }
+  .bar nav a { color: var(--ink); text-decoration: none; }
+
+  .wrap { display: grid; grid-template-columns: 1fr 560px; height: calc(100vh - 56px); min-height: 860px; }
+
+  /* 地図 */
+  .map { position: relative; border-right: 2px solid var(--line); overflow: hidden; background: #E6D9BC; }
+  .map svg.base { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .search { position: absolute; top: 20px; left: 20px; width: 440px; display: flex; border: 2px solid var(--line); background: var(--cell); z-index: 3; }
+  .search span { flex: 1; padding: 10px 14px; font-size: 16px; }
+  .search button { border: 0; border-left: 2px solid var(--line); background: var(--ink); color: var(--cell); font: inherit; font-weight: 700; padding: 0 20px; }
+  .legend { position: absolute; top: 20px; right: 20px; background: var(--cell); border: 1px solid var(--line); font-size: 13px; z-index: 3; }
+  .legend div { display: flex; align-items: center; gap: 10px; padding: 5px 12px; border-top: 1px solid var(--soft); }
+  .legend div:first-child { border-top: 0; font-weight: 700; }
+  .legend i { width: 22px; height: 12px; display: inline-block; }
+  .sheet { position: absolute; left: 20px; bottom: 132px; background: var(--cell); border: 1px solid var(--line); padding: 8px 12px; font-size: 12px; line-height: 1.6; z-index: 3; }
+  .sheet .mono { font-size: 12px; }
+
+  .years { position: absolute; left: 20px; right: 20px; bottom: 20px; background: var(--cell); border: 2px solid var(--line); z-index: 3; }
+  .years .row { display: grid; grid-template-columns: repeat(7, 1fr); }
+  .years .y { text-align: center; padding: 10px 0 6px; border-left: 1px solid var(--soft); font-family: "IBM Plex Mono", monospace; font-size: 15px; }
+  .years .y:first-child { border-left: 0; }
+  .years .y small { display: block; font-family: "BIZ UDPGothic", sans-serif; font-size: 11px; color: var(--mute); }
+  .years .y.on { background: var(--ink); color: var(--cell); }
+  .years .y.on small { color: #D8CFBE; }
+  .years .op { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--soft); padding: 6px 14px; font-size: 12px; color: var(--mute); }
+  .years .op .track { flex: 0 0 180px; height: 4px; background: var(--soft); position: relative; }
+  .years .op .track::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 70%; background: var(--ink); }
+  .years .op .track::after { content: ""; position: absolute; left: 70%; top: -5px; width: 4px; height: 14px; background: var(--ink); }
+
+  /* 履歴書 */
+  .card { background: var(--cell); overflow: auto; }
+  .head { padding: 24px 28px 18px; border-bottom: 2px solid var(--line); }
+  .head h1 { font-size: 30px; line-height: 1.3; font-weight: 700; }
+  .head p { margin-top: 6px; font-size: 13px; color: var(--mute); }
+  .read { padding: 18px 28px 20px; border-bottom: 2px solid var(--line); }
+  .read h2 { font-size: 15px; color: var(--shu); margin-bottom: 6px; }
+  .read p { font-size: 16px; line-height: 1.85; }
+  .read .src { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--mute); }
+  .read .src span { border: 1px solid var(--soft); padding: 1px 8px; }
+  .read .src sup, .read p sup { font-family: "IBM Plex Mono", monospace; color: var(--mizu); font-size: 11px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th { text-align: left; font-weight: 400; font-size: 12px; color: var(--mute); background: #F1EBDF; padding: 6px 12px; border-bottom: 1px solid var(--line); }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--soft); vertical-align: top; }
+  td:first-child, th:first-child { padding-left: 28px; width: 92px; }
+  td:last-child, th:last-child { padding-right: 28px; color: var(--mute); font-size: 13px; text-align: right; }
+  td.n { font-family: "IBM Plex Mono", monospace; }
+  tr.on td { background: #F3E6D6; }
+  tr.on td:first-child { box-shadow: inset 4px 0 0 var(--shu); }
+  .sec { padding: 10px 28px 6px; font-size: 15px; font-weight: 700; border-top: 2px solid var(--line); }
+  .num { font-family: "IBM Plex Mono", monospace; font-weight: 500; }
+
+  .like { padding: 4px 28px 8px; }
+  .like div { display: grid; grid-template-columns: 1fr auto 56px; gap: 12px; padding: 7px 0; border-bottom: 1px dotted var(--soft); font-size: 14px; }
+  .like div span:nth-child(2) { color: var(--mute); font-size: 13px; }
+  .like div span:last-child { font-family: "IBM Plex Mono", monospace; text-align: right; }
+
+  .save { display: flex; gap: 0; margin: 14px 28px 24px; border: 2px solid var(--line); }
+  .save a { flex: 1; text-align: center; padding: 12px 0; font-weight: 700; color: var(--cell); background: var(--ink); text-decoration: none; }
+  .save a + a { background: var(--cell); color: var(--ink); border-left: 2px solid var(--line); font-weight: 400; flex: 0 0 150px; }
+
+  @media (max-width: 760px) {
+    body { font-size: 14px; }
+    .bar { height: 48px; padding: 0 14px; }
+    .bar nav { display: none; }
+    .wrap { display: block; height: auto; min-height: 0; }
+    .map { height: 470px; border-right: 0; border-bottom: 2px solid var(--line); }
+    .search { left: 12px; right: 12px; top: 12px; width: auto; }
+    .search span { font-size: 15px; padding: 8px 10px; }
+    .search button { padding: 0 14px; }
+    .legend { display: none; }
+    .sheet { left: 12px; bottom: 96px; font-size: 11px; padding: 4px 8px; }
+    .years { left: 12px; right: 12px; bottom: 12px; }
+    .years .y { font-size: 12px; padding: 7px 0 4px; }
+    .years .y small { display: none; }
+    .years .op { padding: 4px 10px; font-size: 11px; }
+    .years .op .track { flex-basis: 110px; }
+    .head { padding: 16px 16px 12px; }
+    .head h1 { font-size: 23px; }
+    .read { padding: 14px 16px 16px; }
+    .read p { font-size: 15px; }
+    td:first-child, th:first-child { padding-left: 16px; width: 64px; }
+    td:last-child, th:last-child { padding-right: 16px; font-size: 12px; }
+    td { padding: 9px 8px; }
+    .sec { padding: 10px 16px 6px; }
+    .like { padding: 4px 16px 8px; }
+    .like div { grid-template-columns: 1fr 48px; }
+    .like div span:nth-child(2) { display: none; }
+    .save { margin: 14px 16px 24px; }
+    .save a + a { flex-basis: 110px; }
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <pattern id="ta" width="16" height="14" patternUnits="userSpaceOnUse">
+      <path d="M5 4v6M9 4v6" stroke="#7d6f4c" stroke-width="1.1"/>
+    </pattern>
+    <pattern id="hatake" width="18" height="16" patternUnits="userSpaceOnUse">
+      <path d="M5 8l3-4 3 4" fill="none" stroke="#7d6f4c" stroke-width="1"/>
+    </pattern>
+    <pattern id="kuwa" width="20" height="18" patternUnits="userSpaceOnUse">
+      <circle cx="8" cy="9" r="2.2" fill="none" stroke="#7d6f4c" stroke-width="1"/>
+    </pattern>
+  </defs>
+</svg>
+
+<header class="bar">
+  <div class="logo"><b></b>土地の履歴書</div>
+  <nav><a href="#">使い方</a><a href="#">データの出どころ</a><a href="#">似た土地をさがす</a></nav>
+</header>
+
+<main class="wrap">
+  <section class="map" aria-label="地図">
+    <!-- 実物では、地理院の旧版地形図の画像（1936年 測図）をここに重ねる。下は見た目の代わりに描いた物 -->
+    <svg class="base" viewBox="0 0 900 900" preserveAspectRatio="xMidYMid slice">
+      <rect width="900" height="900" fill="#E6D9BC"/>
+      <rect width="900" height="900" fill="url(#ta)"/>
+      <!-- 畑と桑畑 -->
+      <path d="M640 0h260v330c-60 20-150 10-210-30-40-30-60-120-50-300z" fill="#E6D9BC"/>
+      <path d="M640 0h260v330c-60 20-150 10-210-30-40-30-60-120-50-300z" fill="url(#hatake)"/>
+      <path d="M0 640c90-30 150 10 190 80 30 50 20 120 10 180H0z" fill="#E6D9BC"/>
+      <path d="M0 640c90-30 150 10 190 80 30 50 20 120 10 180H0z" fill="url(#kuwa)"/>
+      <!-- 等高線 -->
+      <g fill="none" stroke="#9a7a52" stroke-width="1" opacity=".75">
+        <path d="M700 0c-10 80 10 170 70 220s110 60 130 60"/>
+        <path d="M740 0c0 60 20 130 70 170s70 50 90 50"/>
+        <path d="M790 0c10 50 30 100 70 120s40 30 40 30"/>
+      </g>
+      <!-- 川 -->
+      <path d="M470 -20c-30 120 30 200 0 320s-80 190-40 300 60 200 30 330" fill="none" stroke="#5c6f7c" stroke-width="46"/>
+      <path d="M470 -20c-30 120 30 200 0 320s-80 190-40 300 60 200 30 330" fill="none" stroke="#B9C6CB" stroke-width="42"/>
+      <!-- ため池 -->
+      <ellipse cx="300" cy="380" rx="92" ry="54" fill="#B9C6CB" stroke="#5c6f7c" stroke-width="2"/>
+      <!-- 道（二重線） -->
+      <g fill="none">
+        <path d="M0 230c150 10 300 30 440 20s300-40 460-30" stroke="#2A241C" stroke-width="7"/>
+        <path d="M0 230c150 10 300 30 440 20s300-40 460-30" stroke="#E6D9BC" stroke-width="4"/>
+        <path d="M130 0c20 200 60 420 40 620s-20 200-30 280" stroke="#2A241C" stroke-width="6"/>
+        <path d="M130 0c20 200 60 420 40 620s-20 200-30 280" stroke="#E6D9BC" stroke-width="3"/>
+      </g>
+      <!-- 鉄道 -->
+      <path d="M560 900c40-200 100-420 120-600s20-200 40-300" fill="none" stroke="#2A241C" stroke-width="6"/>
+      <path d="M560 900c40-200 100-420 120-600s20-200 40-300" fill="none" stroke="#F4EEDF" stroke-width="3" stroke-dasharray="14 14"/>
+      <!-- 集落 -->
+      <g fill="#2A241C">
+        <rect x="150" y="190" width="12" height="9"/><rect x="168" y="184" width="9" height="12"/><rect x="186" y="196" width="14" height="8"/>
+        <rect x="150" y="252" width="10" height="10"/><rect x="176" y="256" width="13" height="9"/><rect x="120" y="262" width="9" height="8"/>
+        <rect x="600" y="248" width="12" height="10"/><rect x="620" y="236" width="10" height="12"/><rect x="636" y="252" width="14" height="9"/>
+        <rect x="610" y="270" width="9" height="9"/><rect x="590" y="226" width="11" height="8"/>
+        <rect x="700" y="560" width="12" height="9"/><rect x="718" y="574" width="10" height="11"/>
+      </g>
+      <!-- 地名（古い地図の書き文字） -->
+      <g font-family="BIZ UDPMincho, serif" fill="#2A241C">
+        <text x="200" y="176" font-size="22">大橋村</text>
+        <text x="575" y="214" font-size="20">井尻</text>
+        <text x="500" y="640" font-size="19" writing-mode="tb">那珂川</text>
+        <text x="760" y="120" font-size="17">桑原</text>
+        <text x="40" y="560" font-size="17">塩原</text>
+      </g>
+      <!-- 今の道（重ね） -->
+      <g fill="none" stroke="#B8432B" stroke-width="2" stroke-dasharray="6 5" opacity=".75">
+        <path d="M0 470h900"/><path d="M360 0v900"/><path d="M0 760l900-120"/>
+      </g>
+      <!-- 調べた地点 -->
+      <g stroke="#B8432B" stroke-width="3" fill="none">
+        <circle cx="340" cy="458" r="18"/><path d="M340 428v60M310 458h60"/>
+      </g>
+      <!-- 枠の目盛り -->
+      <g font-family="IBM Plex Mono, monospace" font-size="12" fill="#2A241C">
+        <text x="8" y="318">33°34′</text><text x="8" y="618">33°33′</text>
+        <text x="236" y="896">130°25′</text><text x="636" y="896">130°26′</text>
+      </g>
+      <g stroke="#2A241C" stroke-width="2"><path d="M0 300h16M0 600h16M300 900v-14M700 900v-14"/></g>
+    </svg>
+
+    <div class="search"><span>福岡市南区大橋2丁目</span><button>調べる</button></div>
+
+    <div class="legend">
+      <div>1936年の記号</div>
+      <div><i style="background:#E6D9BC url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22><path d=%22M4 2v8M8 2v8%22 stroke=%22%237d6f4c%22/></svg>')"></i>水田</div>
+      <div><i style="background:#B9C6CB;border:1px solid #5c6f7c"></i>池・川</div>
+      <div><i style="background:#2A241C;height:6px"></i>集落</div>
+      <div><i style="border-top:2px dashed #B8432B;height:0"></i>今の道</div>
+    </div>
+
+    <div class="sheet">旧版地形図「福岡」1:25,000　<span class="mono">1936</span> 測図<br>国土地理院</div>
+
+    <div class="years">
+      <div class="row">
+        <div class="y">1900<small>旧版地形図</small></div>
+        <div class="y on">1936<small>旧版地形図</small></div>
+        <div class="y">1950<small>旧版地形図</small></div>
+        <div class="y">1967<small>空中写真</small></div>
+        <div class="y">1990<small>地形図</small></div>
+        <div class="y">2010<small>地形図</small></div>
+        <div class="y">2025<small>いまの地図</small></div>
+      </div>
+      <div class="op">今の地図との重ね<span class="track"></span><span class="mono">70%</span></div>
+    </div>
+  </section>
+
+  <section class="card" aria-label="土地の履歴書">
+    <div class="head">
+      <h1>福岡市南区大橋2丁目</h1>
+      <p class="mono">33.5728° N　130.4182° E　標高 6.2 m</p>
+    </div>
+
+    <div class="read">
+      <h2>読み解き</h2>
+      <p>もとは那珂川の西に広がる水田と、ため池の低い土地です。1967年ごろ盛り土をして住宅地になりました。いまは大雨のとき0.5〜3.0m つかる想定の区域に入っています。</p>
+      <div class="src"><span>出典 3件から要約<sup> 1,2,3</sup></span><span>地図と表で確かめられます</span></div>
+    </div>
+
+    <table>
+      <thead><tr><th>年</th><th>この土地は</th><th>出どころ</th></tr></thead>
+      <tbody>
+        <tr><td class="n">1900</td><td>水田</td><td>旧版地形図<sup class="mono">1</sup></td></tr>
+        <tr class="on"><td class="n">1936</td><td>水田・北にため池</td><td>旧版地形図<sup class="mono">1</sup></td></tr>
+        <tr><td class="n">1950</td><td>水田</td><td>旧版地形図</td></tr>
+        <tr><td class="n">1967</td><td>宅地造成（盛り土）</td><td>空中写真<sup class="mono">2</sup></td></tr>
+        <tr><td class="n">1990</td><td>住宅地</td><td>地形図</td></tr>
+        <tr><td class="n">2025</td><td>住宅地</td><td>地図</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sec">いまの記録</div>
+    <table>
+      <tbody>
+        <tr><td>浸水</td><td><span class="num">0.5–3.0 m</span>（那珂川の想定最大）</td><td>浸水想定<sup class="mono">3</sup></td></tr>
+        <tr><td>地盤</td><td>盛り土・液状化 やや起きやすい</td><td>地盤情報</td></tr>
+        <tr><td>地価</td><td><span class="num">¥398,000/㎡</span>（前年 +4.2%）</td><td>地価公示</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sec">似た土地</div>
+    <div class="like">
+      <div><span>福岡市博多区那珂3丁目</span><span>水田 → 1970 造成</span><span>0.91</span></div>
+      <div><span>春日市春日原北町</span><span>ため池 → 1974 造成</span><span>0.87</span></div>
+      <div><span>福岡市南区塩原1丁目</span><span>水田 → 1965 造成</span><span>0.84</span></div>
+    </div>
+
+    <div class="save"><a href="#">1枚の画像で保存</a><a href="#">住所を変える</a></div>
+  </section>
+</main>
+</body>
+</html>
