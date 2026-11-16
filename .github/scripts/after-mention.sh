@@ -4,7 +4,7 @@
 # コミットは増えていなくても、PRの説明だけを直した（指摘がPRの説明のとき）なら、もう一度レビューに回す。
 #
 # コミットが増えず、PRの説明も変わっていなければ、理由を分けて動く（classify_no_change）：
-#   基準の画像の撮り直しが要る → visual:update を付ける（1つのPRで2回まで）
+#   基準の画像の撮り直しが要る → visual:update を付ける（main を最後に取り込んだ後で2回まで）
 #   ツールの許可が拒否された   → 拒否された操作を書いて、1回だけ同じ依頼を出し直す（2回目は人間に回す）
 #   指摘は誤りと返した         → もう一度レビューに回す（直す回数の上限に数える）
 #   撮り直しを頼まれたが、main とのコンフリクトが残っている → 撮り直しは動かないので付けない。拒否された操作があれば出し直し、無ければ人間に回す
@@ -79,12 +79,12 @@ for pr in $(gh api "repos/$REPO/pulls?state=open&per_page=100" -q '.[].number');
         visual)
           # 人間のラベル作業が要る（基準の画像の撮り直し）：パイプラインが visual:update を付ける。
           # CIが通っていても（レビューだけが指摘した）撮り直す。見た目のテスト以外も落ちているときは、撮り直しでは直らないので人間に回す
-          updated=$(printf '%s' "$comments" | jq --arg m "$VISUAL_MARK" '[.[] | select(.body | contains($m))] | length')
+          updated=$(visual_update_count "$pr" "$comments")
           others=$(printf '%s' "$failed" | jq -r '[.[] | select(. != "見た目のテスト")] | join("、")')
           if [ -n "$others" ]; then
             stop_for_human "$pr" "AIに直すよう頼みましたが、変更が入りませんでした。基準の画像の撮り直しを頼まれていますが、見た目のテスト以外のチェック（${others}）も落ちているので、撮り直しでは直りません（AIのコメントを確認してください）${denied_note}"
           elif [ "$updated" -ge 2 ]; then
-            stop_for_human "$pr" "基準の画像を${updated}回撮り直しても、まだ「基準の画像の撮り直し」を頼まれています（撮り直しは1つのPRで2回まで）。見た目の差が意図した物か確かめてください${denied_note}"
+            stop_for_human "$pr" "基準の画像を${updated}回撮り直しても、まだ「基準の画像の撮り直し」を頼まれています（撮り直しは、main を取り込んだ後で2回まで）。見た目の差が意図した物か確かめてください${denied_note}"
           else
             comment "$pr" "修正AIは変更を入れずに終わりましたが、AIの返事・レビューの指摘・PRの説明に「基準の画像の撮り直し」の依頼があるので、基準の画像をCIの環境で撮り直します（自動、$((updated + 1))/2回目）。撮り直しのコミットが入ると、CIとレビューを最初からやり直します。${denied_note}
 
