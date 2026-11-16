@@ -474,6 +474,57 @@ PY6
 )
 assert_eq "進捗ログの呼び出し" "plan:ok,mocks:ok,implement:ok,ci:ok,review:ok,fix:ok" "$result"
 
+echo "== 企画：作業回数の上限に届いて結果が無いときだけ、その場で1回だけ、上限を増やしてやり直す（いつもの上限は増やさない）"
+result=$(python3 - "$WORKFLOWS/claude-plan.yml" <<'PYT'
+import re, sys, yaml
+d = yaml.safe_load(open(sys.argv[1]))
+job = d["jobs"]["plan"]
+steps = job["steps"]
+ids = [st.get("id") for st in steps]
+ai = [st for st in steps if str(st.get("uses", "")).startswith("anthropics/claude-code-action")]
+first = next(st for st in steps if st.get("id") == "claude")
+more = next(st for st in steps if st.get("id") == "claude_more")
+turns = lambda st: int(re.search(r"--max-turns (\d+)", st["with"]["claude_args"]).group(1))
+tools = lambda st: re.search(r'--allowedTools "([^"]*)"', st["with"]["claude_args"]).group(1)
+out = []
+# AIが動くのは2回まで（3回目は無い）。順番は、1回目 → 上限に届いたかの確認 → やり直し
+out.append("twice:" + ("ok" if len(ai) == 2 and ids.index("claude") < ids.index("turns") < ids.index("claude_more") else "ng"))
+# やり直しは、上限に届いたと分かったときだけ動く。1回目には条件が無い（いつも動く）
+out.append("only-when-hit:" + ("ok" if "steps.turns.outputs.more == 'true'" in str(more.get("if", "")) and "if" not in first else "ng"))
+# いつもの上限は 30 のまま。やり直しは増やすが、2倍まで
+out.append("turns:" + ("ok" if turns(first) == 30 and turns(first) < turns(more) <= 60 else "ng"))
+# 指示と許可は同じ（やり直しには、2回目であることの注意が足してあるだけ）
+out.append("same:" + ("ok" if more["with"]["prompt"].startswith(first["with"]["prompt"].rstrip()) and "これは2回目です" in more["with"]["prompt"] and "これは2回目です" not in first["with"]["prompt"] and tools(first) == tools(more) and more.get("continue-on-error") else "ng"))
+# 次のジョブへ：やり直したならその結果・実行記録を渡し、やり直したことも伝える
+env_after = next(st for st in d["jobs"]["after-plan"]["steps"] if st.get("run") == ".github/scripts/after-plan.sh")["env"]
+keep = next(st for st in steps if st.get("name") == "AIの結果を取っておく")["env"]["EXECUTION_FILE"]
+out.append("handoff:" + ("ok" if "steps.claude_more.outcome != 'skipped' && steps.claude_more.outcome || steps.claude.outcome" in job["outputs"]["outcome"]
+    and job["outputs"]["raised"] == "${{ steps.turns.outputs.more }}" and env_after.get("PLAN_TURNS_RAISED") == "${{ needs.plan.outputs.raised }}"
+    and keep.startswith("${{ steps.claude_more.outputs.execution_file ||") else "ng"))
+# 見張り役が「企画が止まった」とみなす30分より、ジョブの時間の上限を短くする
+out.append("timeout:" + ("ok" if job["timeout-minutes"] < 30 else "ng"))
+print(",".join(out))
+PYT
+)
+assert_eq "企画のやり直しの形" "twice:ok,only-when-hit:ok,turns:ok,same:ok,handoff:ok,timeout:ok" "$result"
+# 「上限に届いたか」の中身を、そのまま動かして確かめる
+turns_run=$(python3 -c "
+import sys, yaml
+print(next(st['run'] for st in yaml.safe_load(open(sys.argv[1]))['jobs']['plan']['steps'] if st.get('id') == 'turns'))" "$WORKFLOWS/claude-plan.yml")
+plan_more() { # 実行記録の中身（空なら、ファイル無し） plan-result.txt の中身（空なら、無し）
+  local d; d=$(mktemp -d)
+  if [ -n "$1" ]; then printf '%s' "$1" > "$d/exec.json"; fi
+  if [ -n "${2:-}" ]; then printf '%s\n' "$2" > "$d/plan-result.txt"; fi
+  (cd "$d" && EXECUTION_FILE="$d/exec.json" GITHUB_OUTPUT="$d/out" bash -c "$turns_run" > /dev/null 2>&1; cat "$d/out")
+  rm -rf "$d"
+}
+assert_eq "上限に届いて、結果が無い：やり直す" "more=true" "$(plan_more '[{"type":"system"},{"type":"result","subtype":"error_max_turns","result":""}]')"
+assert_eq "上限に届いたが、結果は書けている：やり直さない" "more=false" "$(plan_more '[{"type":"result","subtype":"error_max_turns","result":""}]' "READY")"
+assert_eq "正常に終わった：やり直さない" "more=false" "$(plan_more '[{"type":"result","subtype":"success","result":"ok"}]')"
+assert_eq "別のエラー：やり直さない" "more=false" "$(plan_more '[{"type":"result","subtype":"error_during_execution","result":""}]')"
+assert_eq "実行記録が無い：やり直さない" "more=false" "$(plan_more '')"
+assert_eq "実行記録が壊れている：やり直さない" "more=false" "$(plan_more 'こわれた')"
+
 echo "== 企画：置き換えられて取り消された実行は、あとの工程（after-plan）を動かさない（先へ進んだ Issue に ai:retry を付けない）"
 assert_contains "after-plan の条件" "$(grep -n "needs.plan.result" "$WORKFLOWS/claude-plan.yml")" "needs.plan.result != 'cancelled'"
 

@@ -8,7 +8,8 @@
 #   BLOCKED               → ai:blocked を付けて、他の Issue・PR が終わるのを待つ（2行目から下が待ち先。1行に1つ：owner/repo#N か #N か URL）。
 #                            待ち先が全部閉じたら、見張り役（watchdog.sh）が ai:plan に戻す。人間は何もしなくてよい
 #
-# 環境変数：ISSUE、PLAN_OUTCOME、GITHUB_TOKEN_FOR_LABELS（ワークフローのトークン）、EXECUTION_FILE（AIの実行記録。失敗の原因の分類に使う）
+# 環境変数：ISSUE、PLAN_OUTCOME、GITHUB_TOKEN_FOR_LABELS（ワークフローのトークン）、EXECUTION_FILE（AIの実行記録。失敗の原因の分類に使う）、
+#           PLAN_TURNS_RAISED（true：作業回数の上限に届いたので、ワークフローが上限を増やしてもう1回動かした）
 source "$(dirname "$0")/pipeline-lib.sh"
 # 同時に実装してよい数（使用量を増やしすぎないため）
 MAX_PARALLEL="${MAX_PARALLEL:-2}"
@@ -35,6 +36,13 @@ result=$(head -n 1 plan-result.txt 2> /dev/null | tr -d '\r' || true)
 # 企画AIがエラーで終わったとき（使用量の上限など）は、質問扱いにせず、自動でやり直す（watchdog.sh）
 if [ "$PLAN_OUTCOME" != "success" ]; then
   export GH_TOKEN="$GITHUB_TOKEN_FOR_LABELS"
+  # 作業回数の上限に届いたので、上限を増やしてその場でやり直した（claude-plan.yml）のに、また上限に届いた：
+  # 同じことを30分後にやり直しても同じ所で止まり、そのたびに上限いっぱいまでAIを使う。やり直さず、すぐ人間に回す
+  if [ "${PLAN_TURNS_RAISED:-}" = true ] && hit_max_turns "${EXECUTION_FILE:-}" && [ -z "$(limit_signal "${EXECUTION_FILE:-}")" ]; then
+    remove_label "$ISSUE" "ai:plan"
+    stop_issue_for_human "$ISSUE" "$(failure_reason "企画AIが、作業回数の上限を増やしてやり直しても、また上限に届きました" "${EXECUTION_FILE:-}")。作業が大きすぎるか、読む物が多すぎます。Issue を小さく分けるか、触る場所（ファイルや画面の名前）を Issue に書いてください"
+    exit 0
+  fi
   handle_ai_failure "$ISSUE" plan "企画AIがエラーで止まりました" "${EXECUTION_FILE:-}"
   exit 0
 fi

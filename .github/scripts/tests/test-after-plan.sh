@@ -68,4 +68,39 @@ init_state '{"labels":{"3":["ai:plan"],"8":["ai:implement"]},"issues_meta":{"3":
 run_plan "READY" > /dev/null
 assert_eq "進行中の物に印が無ければ、今までどおり企画AIの判断" "ai:implement" "$(labels_of 3)"
 
+echo "== 作業回数の上限に届いた企画：ワークフローが上限を増やしてやり直しても、また届いたら、やり直さず人間に回す"
+turns_file="$MOCK_DIR/turns.json"; printf '%s' '[{"type":"result","subtype":"error_max_turns","result":""}]' > "$turns_file"
+other_file="$MOCK_DIR/other.json"; printf '%s' '[{"type":"result","subtype":"error_during_execution","result":""}]' > "$other_file"
+limit_file="$MOCK_DIR/limit.json"; printf '%s' '[{"type":"result","subtype":"error_max_turns","result":"Claude usage limit reached|1900000000"}]' > "$limit_file"
+run_failed() { # 上限を増やしてやり直したか（true／false／空） 実行記録
+  (cd "$work" && rm -f plan-result.txt && ISSUE=3 PLAN_OUTCOME=failure PLAN_TURNS_RAISED="$1" EXECUTION_FILE="$2" GITHUB_TOKEN_FOR_LABELS=x bash "$SCRIPTS_DIR/after-plan.sh" 2>&1)
+}
+init_state '{"labels":{"3":["ai:plan"]}}'
+run_failed true "$turns_file" > /dev/null
+assert_eq "人間に回す（ai:plan は外す。やり直し待ちにしない）" "ai:stuck" "$(labels_of 3)"
+assert_contains "理由を書く" "$(comments_of 3)" "作業回数の上限を増やしてやり直しても、また上限に届きました"
+assert_contains "次にすることを書く" "$(comments_of 3)" "Issue を小さく分けるか"
+assert_not_contains "やり直しの記録は作らない" "$(comments_of 3)" "auto-retry"
+
+echo "== 上限を増やしたやり直しをしていない（古いワークフロー・結果ファイルがあった）ときは、今までどおり1回やり直す"
+for raised in false ""; do
+  init_state '{"labels":{"3":["ai:plan"]}}'
+  run_failed "$raised" "$turns_file" > /dev/null
+  assert_eq "やり直し待ち（raised=${raised:-空}）" "ai:plan,ai:retry" "$(labels_of 3)"
+done
+
+echo "== 上限を増やしたやり直しが、別の理由（エラー・使用量の上限）で終わったときは、今までどおりやり直す"
+init_state '{"labels":{"3":["ai:plan"]}}'
+run_failed true "$other_file" > /dev/null
+assert_eq "エラー：やり直し待ち" "ai:plan,ai:retry" "$(labels_of 3)"
+init_state '{"labels":{"3":["ai:plan"]}}'
+run_failed true "$limit_file" > /dev/null
+assert_eq "使用量の上限：待つ（人間に回さない）" "ai:plan,ai:retry" "$(labels_of 3)"
+assert_contains "上限の待ちとして記録する" "$(comments_of 3)" "limit-until=1900000000"
+
+echo "== 上限を増やしたやり直しで清書できたら、いつもどおり実装へ"
+init_state '{"labels":{"3":["ai:plan"]}}'
+(cd "$work" && printf '%s\n%s\n' "READY" PARALLEL > plan-result.txt && ISSUE=3 PLAN_OUTCOME=success PLAN_TURNS_RAISED=true EXECUTION_FILE="$turns_file" GITHUB_TOKEN_FOR_LABELS=x bash "$SCRIPTS_DIR/after-plan.sh" > /dev/null 2>&1)
+assert_eq "ai:implement" "ai:implement" "$(labels_of 3)"
+
 finish
