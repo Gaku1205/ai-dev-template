@@ -13,7 +13,11 @@ cat > "$MOCK_DIR/bin/gh" <<'GH'
 #!/usr/bin/env bash
 echo "gh $*" >> "$LOG"
 case "$*" in
-  *"commits/"*"-q .commit.message"*) printf 'Merge pull request #9\n\nあいさつを足す\n' ;;
+  *"commits/"*"-q .commit.message"*) printf '%b' "${COMMIT_MSG:-Merge pull request #9\\n\\nあいさつを足す\\n}" ;;
+  # さかのぼって調べる（deploy-plan.sh）：HIST は「sha:結果の付いた公開の数」を新しい順に並べた物、SINCE は最後の公開から変わったファイル
+  *"commits?sha="*) [ -n "${HIST_FAIL:-}" ] && exit 1; for h in ${HIST:-}; do echo "${h%%:*}"; done ;;
+  *"commits/"*"/statuses"*) sha="${2#repos/o/app/commits/}"; sha="${sha%%/*}"; for h in ${HIST:-}; do [ "${h%%:*}" = "$sha" ] && echo "${h##*:}"; done ;;
+  *"compare/"*) printf '%s\n' "${SINCE:-}" ;;
   "release create"*) [ -n "${RELEASE_FAIL:-}" ] && exit 1 ;;
 esac
 exit 0
@@ -82,6 +86,32 @@ assert_contains "手で動かしたときは、パイプラインだけの更新
 out=$(plan "$(printf '.github/workflows/ci.yml\napp/main.py')")
 assert_contains "アプリも変わっていれば公開する" "$out" "apprunner=true"
 
+echo "== 計画：配布のコミットの前に、まだ公開されていないアプリの変更があれば、ここで公開する（待っていた公開が取り消されて残るのを防ぐ）"
+pipeline_only="$(printf '.github/workflows/ci.yml\ndocs/pipeline.md')"
+look() { GH_TOKEN=x SHA=h3 HIST="${HIST-h3:0 h2:0 h1:1}" SINCE="$1" plan "$pipeline_only"; }
+: > "$LOG"
+out=$(look "$(printf 'app/main.py\n.github/workflows/ci.yml')")
+assert_contains "前のアプリの変更が残っていれば公開する" "$out" "apprunner=true"
+assert_contains "最後に公開の結果が付いたコミットから比べる" "$(cat "$LOG")" "compare/h1...h3"
+out=$(look "$pipeline_only")
+assert_contains "最後の公開からもパイプラインの更新だけなら公開しない" "$out" "apprunner=false"
+out=$(HIST="h3:0 h2:0" look "app/main.py")
+assert_contains "公開の結果がどこにも無ければ、今までどおり公開しない" "$out" "apprunner=false"
+out=$(HIST_FAIL=1 look "app/main.py")
+assert_contains "調べられなければ、今までどおり公開しない" "$out" "apprunner=false"
+: > "$LOG"
+out=$(unset GH_TOKEN; SHA=h3 HIST="h3:0 h2:0 h1:1" SINCE="app/main.py" plan "$pipeline_only")
+assert_contains "GH_TOKEN が無ければ（古いワークフロー）、今までどおり公開しない" "$out" "apprunner=false"
+assert_eq "GH_TOKEN が無ければ調べない" "" "$(cat "$LOG")"
+echo '{"checks":[{"run":"npm run lint"}],"deploy":[{"kind":"vercel"}]}' > pipeline.json
+: > "$LOG"
+look "app/main.py" > /dev/null
+assert_eq "ここで動かす公開先が無ければ（Vercel だけ）調べない" "" "$(cat "$LOG")"
+echo '{"checks":[{"run":"pytest"}],"deploy":[{"kind":"aws-apprunner","service":"hello-api","port":8000},{"kind":"github-release","os":["windows-latest","macos-latest"],"build":"make","files":"dist/*"}]}' > pipeline.json
+: > "$LOG"
+GH_TOKEN=x SHA=h3 HIST="h3:0 h2:0 h1:1" SINCE="app/main.py" plan "app/x.py" > /dev/null
+assert_eq "アプリの変更のコミットでは調べない（どうせ公開する）" "" "$(cat "$LOG")"
+
 echo "== 計画：pipeline.json が壊れていれば失敗"
 echo '{"deploy":[{"kind":"heroku"}],"checks":[{"run":"x"}]}' > pipeline.json
 CHANGED_FILES=x GITHUB_OUTPUT=/dev/null bash "$SCRIPTS_DIR/deploy-plan.sh" > "$work/err" 2>&1; rc=$?
@@ -97,6 +127,10 @@ bash "$SCRIPTS_DIR/deploy-status.sh" aws-apprunner success "公開しました" 
 assert_contains "URL を付ける" "$(cat "$LOG")" "target_url=https://x.example"
 assert_contains "成功の通知" "$(cat "$MOCK_DIR/curl.log")" "公開されました（aws-apprunner）"
 assert_contains "通知にPRのタイトル" "$(cat "$MOCK_DIR/curl.log")" "あいさつを足す"
+: > "$MOCK_DIR/curl.log"
+COMMIT_MSG='見出しを直す (#12)\n\nCloses #12\n' bash "$SCRIPTS_DIR/deploy-status.sh" aws-apprunner success "公開しました" > /dev/null 2>&1
+assert_contains "まとめてマージ（squash）・直接のコミットでは、1行目を題にする" "$(cat "$MOCK_DIR/curl.log")" "見出しを直す (#12)"
+assert_not_contains "本文の続き（3行目）は題にしない" "$(cat "$MOCK_DIR/curl.log")" "Closes #12"
 bash "$SCRIPTS_DIR/deploy-status.sh" github-release failure "$(printf 'x%.0s' $(seq 1 200))" > /dev/null 2>&1
 assert_contains "失敗の通知" "$(cat "$MOCK_DIR/curl.log")" "公開に失敗しました（github-release）"
 desc=$(grep "context=deploy/github-release" "$LOG" | tail -1 | sed -E 's/.*description=([x]*).*/\1/')
@@ -109,7 +143,19 @@ assert_contains "URL が付く" "$(grep context=deploy/pages "$LOG")" "https://g
 bash "$SCRIPTS_DIR/deploy-status.sh" pages failure "$(printf 'x%.0s' $(seq 1 200))" > /dev/null 2>&1
 desc=$(grep context=deploy/pages "$LOG" | tail -1 | sed -E 's/.*description=//')
 assert_contains "長くても URL は残る" "$desc" "https://github.com/o/app/settings/pages"
-assert_eq "長くても説明は140文字まで" "140" "$(printf '%s' "$desc" | wc -m | tr -d ' ')"
+assert_eq "長くても説明は140文字まで" "140" "$(printf '%s' "$desc" | LC_ALL=C.UTF-8 wc -m | tr -d ' ')"
+# 日本語の説明：文字で数える（バイトで切ると約46文字で切れ、URL も途中で切れる）。呼ぶ側の文字コードの設定に頼らない
+ja="GitHub Pages への公開が失敗しました（Settings → Pages の Source が「GitHub Actions」か確かめる）"
+for loc in C C.UTF-8; do
+  : > "$LOG"
+  LC_ALL=$loc bash "$SCRIPTS_DIR/deploy-status.sh" pages failure "$ja" > /dev/null 2>&1
+  desc=$(grep context=deploy/pages "$LOG" | tail -1 | sed -E 's/.*description=//')
+  assert_eq "日本語の説明でも URL まで全部残る（LC_ALL=$loc）" "$ja 設定：https://github.com/o/app/settings/pages" "$desc"
+  : > "$LOG"
+  LC_ALL=$loc bash "$SCRIPTS_DIR/deploy-status.sh" expo failure "$(printf 'あ%.0s' $(seq 1 200))" > /dev/null 2>&1
+  desc=$(grep context=deploy/expo "$LOG" | tail -1 | sed -E 's/.*description=//')
+  assert_eq "日本語は140文字で切る（LC_ALL=$loc）" "140" "$(printf '%s' "$desc" | LC_ALL=C.UTF-8 wc -m | tr -d ' ')"
+done
 : > "$LOG"
 bash "$SCRIPTS_DIR/deploy-status.sh" pages success "公開しました" > /dev/null 2>&1
 assert_not_contains "成功には付けない" "$(cat "$LOG")" "settings/pages"
