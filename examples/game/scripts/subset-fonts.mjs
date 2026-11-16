@@ -4,13 +4,15 @@
 //   先：public/fonts/mplus1.woff2（太さ 100〜900 を全部持つ）・OFL.txt・chars.txt（入れた文字の一覧）
 // 抜き出す文字：src/ と index.html に出てくる ASCII 以外の文字と、ASCII・ひらがな・カタカナ・全角の英数字・よく使う記号。
 // 大きすぎたら（既定 300KB）失敗させる。
+import { existsSync } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import subsetFont from "subset-font";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SRC_DIR = join(root, "assets", "fonts");
+// 書体の元：ゲームのリポジトリでは assets/fonts/。テンプレートの見本（examples/）では、共用の examples/game-fonts/
+const SRC_DIR = existsSync(join(root, "assets", "fonts")) ? join(root, "assets", "fonts") : join(root, "..", "game-fonts");
 const OUT_DIR = join(root, "public", "fonts");
 const MAX_KB = Number(process.env.FONT_MAX_KB ?? 300);
 
