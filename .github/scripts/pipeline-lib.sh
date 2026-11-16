@@ -275,15 +275,18 @@ repo_has_visual_tests() {
 # 進行中の作業が触っているファイル。1行目に「unknown」が出たら、分からない物がある（並列にしない）
 # 実装中の Issue は本文の印、open のPRは変えたファイル（AI以外のPR＝配布・依存の更新なども含む）
 inflight_touches() {
-  local n body t pr files
-  for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aimplement" -q '.[] | select(.pull_request | not) | .number'); do
+  local n body t pr files impl pulls
+  # 一覧を読めなかったら、分からない物があるとして待つ（空の一覧とみなさない）
+  impl=$(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aimplement" -q '.[] | select(.pull_request | not) | .number' 2> /dev/null) || { echo unknown; return 0; }
+  pulls=$(gh api "repos/$REPO/pulls?state=open&per_page=100" -q '.[] | "\(.number) \(.head.ref)"' 2> /dev/null) || { echo unknown; return 0; }
+  for n in $impl; do
     # PRがもうあれば、PRの変えたファイルで数える（下）
-    if gh api "repos/$REPO/pulls?state=open&per_page=100" -q ".[] | select(.head.ref | startswith(\"claude/issue-$n-\")) | .number" | grep -q .; then continue; fi
-    body=$(gh api "repos/$REPO/issues/$n" -q '.body // ""')
+    if printf '%s\n' "$pulls" | grep -q " claude/issue-$n-"; then continue; fi
+    body=$(gh api "repos/$REPO/issues/$n" -q '.body // ""' 2> /dev/null) || { echo unknown; continue; }
     t=$(touches_from_body "$body")
     if [ -z "$t" ]; then echo unknown; else printf '%s\n' "$t"; fi
   done
-  for pr in $(gh api "repos/$REPO/pulls?state=open&per_page=100" -q '.[].number'); do
+  for pr in $(printf '%s\n' "$pulls" | cut -d' ' -f1); do
     files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" -q '.[].filename' 2> /dev/null) || { echo unknown; continue; }
     printf '%s\n' "$files"
   done
@@ -295,7 +298,7 @@ inflight_touches() {
 #   （触るファイルが分からない物・進行中の物に分からない物があるときは、今までどおり待つ。見た目のテストがあれば画面どうしも待つ）
 # 止まっている物（ai:stuck）は数えない（企画で止まった物はコードに触れていない）
 start_next_in_queue() {
-  local busy stuck prs inflight queue n body t started=0 screen=0
+  local busy stuck prs inflight queue n body t rc started=0 screen=0
   busy=$(count_open_issues_with_label "ai:implement") || return 1
   stuck=$(count_open_issues_with_label "ai:stuck") || return 1
   prs=$(count_open_prs) || return 1
@@ -307,8 +310,9 @@ start_next_in_queue() {
     return 0
   fi
   if [ "$busy" -eq 0 ] && [ "$prs" -eq 0 ]; then
-    start_queued_issue "$(printf '%s\n' "$queue" | head -1)"
-    return $?
+    # 2＝ほかの処理が先に始めた（競合は正常なので、失敗にしない）
+    start_queued_issue "$(printf '%s\n' "$queue" | head -1)" || [ $? -eq 2 ] || return 1
+    return 0
   fi
   inflight=$(inflight_touches) || return 1
   if printf '%s\n' "$inflight" | grep -qx unknown; then
@@ -331,7 +335,10 @@ start_next_in_queue() {
       echo "#$n：進行中の作業と触るファイルが重なるので、待ちます"
       continue
     fi
-    if start_queued_issue "$n" "（進行中の作業と触るファイルが重ならないので、並べて始めます）"; then
+    rc=0
+    start_queued_issue "$n" "（進行中の作業と触るファイルが重ならないので、並べて始めます）" || rc=$?
+    # 0＝始めた、2＝ほかの処理が先に始めた。どちらも進行中が1つ増えたので、数えて続きの判断に入れる
+    if [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ]; then
       started=$((started + 1))
       inflight="$inflight
 $t"
@@ -346,7 +353,7 @@ start_queued_issue() {
   local next="$1" why="${2:-（前の作業は全部終わっています）}"
   if ! take_label "$next" "ai:queue"; then
     echo "#$next はほかの処理がもう始めたので、何もしません"
-    return 1
+    return 2
   fi
   # 企画AIの「待ち」のコメントを読んだ実装AIが、前の作業が終わったか確かめられずに止まらないよう、先に伝えておく
   comment "$next" "▶ 順番が来たので実装を始めます${why}。" || true
