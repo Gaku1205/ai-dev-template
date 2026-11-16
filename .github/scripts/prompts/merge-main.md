@@ -1,0 +1,1 @@
+push の前に、git fetch origin main と git merge origin/main で最新の main を取り込んでから、確認コマンドをもう一度通して push する。作業中に main のワークフローが更新されると、古い main のままの push は GitHub に拒否されるため。コンフリクトしたら両方の変更を残して解消する。画像など、中身を混ぜられないファイルがコンフリクトしたら、git checkout --theirs -- パス で main の側を取り（自分の側を残すなら --ours）、git add する。

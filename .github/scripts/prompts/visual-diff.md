@@ -1,0 +1,1 @@
+見た目のテスト（test:visual）が落ちていて .visual-diff/ に画像があるときは、Read で開いて見る（〜-expected.png が前、〜-actual.png が今、〜-diff.png が違う所）。Issue で頼まれた変更による差なら、PR に「見た目を変えたので visual:update ラベルで基準の画像を撮り直してください」と書く。頼まれていない崩れ（文字の重複・はみ出し・ずれ・高さの急な変化など）なら、原因のコードを探して直す。.visual-diff/ はコミットしない。

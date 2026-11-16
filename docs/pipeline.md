@@ -102,6 +102,24 @@ Issueを作る（メモ）。ラベルが無ければ自動で ai:plan が付く
 - レビューAIは変えない（必要な所を自分で読む）
 - 効いているかは、`ai-report.sh` が実行ごとに出す「使った量」（入力・キャッシュから・出力のトークン）で比べる
 
+## 指示を部品で組む（`compose-prompt.sh`）
+
+実装AI・修正AI（mention）に渡す指示（`--append-system-prompt`）は、部品に分けて `.github/scripts/prompts/` に1ファイル1部品で置く。`.github/scripts/compose-prompt.sh` が、要る部品だけを順に連結して標準出力に出す。見た目のテストが無いリポジトリに基準画像の注意を読ませない、などで読む量とぶれを減らす。企画AI・レビューAIの指示は対象外。
+
+| 部品 | 中身 | 入れるとき |
+|---|---|---|
+| `base.md` | コマンドは1つずつ・Read/Grep/Glob を使う・`.github/` は変えない | いつも |
+| `read-sections.md` | Issue の「読む所」の節だけ読む | `--docs`（`docs/spec.md` が200行以上） |
+| `merge-main.md` | push の前に main を取り込む・コンフリクトの解消 | いつも |
+| `visual-tests.md` | 基準画像の扱い・`visual:update` ラベル・`test:visual` の動かし方 | `--visual-tests` |
+| `visual-diff.md` | `.visual-diff/` の見方 | mention かつ `--visual-tests` |
+| `pr-body.md` | PR の本文の直し方（`.pr-body.md`） | mention |
+
+- 使い方：`bash .github/scripts/compose-prompt.sh --mode implement|mention [--visual-tests] [--docs]`。`--auto` を付けると、作業フォルダから自分で判定する（見た目のテスト＝`package.json` の `test:visual` か `pipeline.json` の `checks` にある。長い仕様書＝`docs/spec.md` が200行以上。企画AIの「短い」と同じ基準）
+- 部品の文は、元のワークフローの指示をそのまま分けたもの（意味は変えない）。出し分けは mode と、リポジトリの条件だけ（Issue の種類では出し分けない）
+- 選び方は `tests/test-compose-prompt.sh` で確かめる
+- ワークフローから呼ぶ差分は人間が入れる（AIは `.github/workflows/` を触れない）。`claude-implement.yml`（実装AI・審査後の直し役の2か所）は `--append-system-prompt \"…\"` の本文を `$(bash .github/scripts/compose-prompt.sh --mode implement --auto)` に、`claude-mention.yml` は `--mode mention --auto` に置き換える。`claude-implement.yml` の2か所（実装AI・審査後の直し役）とも、末尾の `${{ steps.shots.outputs.prompt }}${{ steps.target.outputs.prompt }}` はそのまま後ろに残す。呼ぶ前に、スクリプトを main の版から取り出して使うこと（PR の版を動かさない）
+
 ## AIの許可（`--allowedTools`）
 
 各AIが使ってよい操作は、ワークフローの `--allowedTools` に書いてある。AIは、ここに無い操作をしようとすると拒否されて止まる。次の表が一覧（`.github/scripts/tests/test-permissions.sh` が、ワークフローと表が食い違っていないか確かめる）。
