@@ -25,6 +25,13 @@ fetch_main_protected() {
   [ -n "$b" ] || return 0
   gh api "repos/$REPO/branches/$b" --jq '.protected' 2> /dev/null || true
 }
+# GitHub Pages の Source：workflow（GitHub Actions）/ legacy（ブランチ）/ none（無効＝404）/ 空（読めない）
+fetch_pages() {
+  local o
+  if o=$(gh api "repos/$REPO/pages" --jq '.build_type // "legacy"' 2>&1); then echo "$o"
+  elif printf '%s' "$o" | grep -q '404'; then echo none
+  fi
+}
 is_template_repo()    { [ "$(gh api "repos/$REPO" --jq '.is_template' 2> /dev/null)" = true ]; }
 # Fine-grained トークンの期限（GitHub が返事のヘッダーで教えてくれる。期限なしなら空）
 token_expiration()    { GH_TOKEN="${PIPELINE_TOKEN:-}" gh api -i "repos/$REPO" 2> /dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="github-authentication-token-expiration"{print $2; exit}'; }
@@ -149,6 +156,13 @@ check_deploy() {
       vercel) echo "- ➖ 公開先：Vercel（Vercel の画面でこのリポジトリを読み込む。ここからは確かめられない）" ;;
       none) ok "公開先：なし" ;;
       github-release) ok "公開先：GitHub Releases（追加の設定は要らない）" ;;
+      github-pages)
+        case "$(fetch_pages)" in
+          workflow) ok "公開先：GitHub Pages（Source が GitHub Actions）" ;;
+          none) ng "公開先 GitHub Pages が有効になっていない（公開が 404 で失敗する）" "https://github.com/$REPO/settings/pages を開いて、Source を GitHub Actions にする" ;;
+          legacy) ng "公開先 GitHub Pages の Source が GitHub Actions ではない" "https://github.com/$REPO/settings/pages を開いて、Source を GitHub Actions にする" ;;
+          *) warn "公開先 GitHub Pages の状態を読めなかった（権限が足りないかもしれない）" "https://github.com/$REPO/settings/pages で、Source が GitHub Actions か確かめる" ;;
+        esac ;;
       aws-apprunner)
         if [ "${HAS_AWS_ROLE:-0}" = 1 ] && [ "${HAS_AWS_REGION:-0}" = 1 ] && [ "${HAS_APPRUNNER_ACCESS:-0}" = 1 ]; then
           ok "公開先：AWS App Runner（Variable の AWS_ROLE_ARN・AWS_REGION・AWS_APPRUNNER_ACCESS_ROLE_ARN がある）"

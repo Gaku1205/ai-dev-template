@@ -263,6 +263,17 @@ PY3
   git push -q origin HEAD:main
 ) || fail "最初の準備を push できませんでした"
 note "✅ CLAUDE.md・仕様書・README に説明を書いて push した（Bootstrap が動く）"
+# 公開先に github-pages があるときは、Pages を有効にする（Source を GitHub Actions に）。
+# ワークフローのトークンでは有効にできない（管理の権限が要る）ので、リポジトリを作った鍵（FACTORY_TOKEN）でここで行う
+if STACK_FILE="$work/app/pipeline.json" bash -c 'source "$1/stack.sh"; stack_deploy_kinds' _ "$HERE" | grep -qx github-pages; then
+  if pages_out=$(gh api -X POST "repos/$NEW/pages" -f build_type=workflow 2>&1); then
+    note "✅ GitHub Pages を有効にした（Source は GitHub Actions）"
+  elif printf '%s' "$pages_out" | grep -qE '409|already'; then
+    note "✅ GitHub Pages はもう有効になっている"
+  else
+    note "⚠️ GitHub Pages を有効にできませんでした（https://github.com/$NEW/settings/pages を開いて、Source を GitHub Actions にする）"
+  fi
+fi
 # Vercel が自分で公開しない形（上の deploymentEnabled: false）にしたので、最初の公開はここで頼む（あとは deploy-vercel.yml）
 if [ -n "$vercel_note" ] && [ -n "${S_VERCEL_TOKEN:-}" ]; then
   if dout=$(GITHUB_REPOSITORY="$NEW" VERCEL_TOKEN="$S_VERCEL_TOKEN" VERCEL_TEAM_ID="${VERCEL_TEAM_ID:-}" "$HERE/deploy-vercel.sh" 2>&1); then
