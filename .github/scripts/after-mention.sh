@@ -20,7 +20,7 @@ has_pipeline_token || { echo "PIPELINE_TOKEN が無いので何もしません";
 
 started=$(date -d "$RUN_STARTED" +%s)
 
-for pr in $(gh api "repos/$REPO/pulls?state=open&per_page=100" -q '.[].number'); do
+for pr in $(gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate -q '.[].number'); do
   has_label "$pr" "ai:stuck" && continue
   # やり直しの依頼（auto-fix-retry）も含めて、いちばん新しい依頼を見る
   last=$(all_comments "$pr" | jq -c 'map(select(.body | test("<!-- auto-fix(-retry)? -->"))) | last // empty')

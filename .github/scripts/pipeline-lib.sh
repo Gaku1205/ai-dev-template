@@ -83,6 +83,13 @@ all_comments() {
   gh api "repos/$REPO/issues/$1/comments?per_page=100" --paginate --slurp | jq 'add // []'
 }
 
+# 一覧（配列を返す API）を全部、ページをまたいで1つの配列で出す。使い方：api_list "repos/$REPO/issues?state=open&per_page=100"
+# 100件までなら API は今までどおり1回（2ページ目からは、続きがあるときだけ読む）。per_page=100 だけだと、101件目からが黙って見えなくなる。
+# 全体の件数・並べ替えが要るときは、これを使う（gh api --paginate -q は、ページごとに jq を当てるので、件数や並べ替えがページごとになる）
+api_list() {
+  gh api "$1" --paginate --slurp | jq -c 'add // []'
+}
+
 # 基準の画像を自動で撮り直した回数（上限の数え方）。
 # 数えるのは、PRに main を最後に取り込んだ後（と、人間が ai:stuck を外して続きを頼んだ後）の撮り直しだけ。
 # main を取り込むとき、基準の画像のコンフリクトは main の側を取る決まりなので、それより前の撮り直しは消えている。
@@ -103,12 +110,12 @@ issue_title() {
 
 # ラベルが付いたopenのIssue（PRを除く）の数
 count_open_issues_with_label() {
-  gh api "repos/$REPO/issues?state=open&per_page=100&labels=$(urlencode "$1")" \
-    -q '[.[] | select(.pull_request | not)] | length'
+  api_list "repos/$REPO/issues?state=open&per_page=100&labels=$(urlencode "$1")" \
+    | jq '[.[] | select(.pull_request | not)] | length'
 }
 
 count_open_prs() {
-  gh api "repos/$REPO/pulls?state=open&per_page=100" -q 'length'
+  api_list "repos/$REPO/pulls?state=open&per_page=100" | jq 'length'
 }
 
 # ブランチ名からopenのPRを1つ探す。見つかれば「番号 先頭コミット」を出す
@@ -313,8 +320,8 @@ repo_has_visual_tests() {
 inflight_touches() {
   local n body t pr files impl pulls
   # 一覧を読めなかったら、分からない物があるとして待つ（空の一覧とみなさない）
-  impl=$(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aimplement" -q '.[] | select(.pull_request | not) | .number' 2> /dev/null) || { echo unknown; return 0; }
-  pulls=$(gh api "repos/$REPO/pulls?state=open&per_page=100" -q '.[] | "\(.number) \(.head.ref)"' 2> /dev/null) || { echo unknown; return 0; }
+  impl=$(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aimplement" --paginate -q '.[] | select(.pull_request | not) | .number' 2> /dev/null) || { echo unknown; return 0; }
+  pulls=$(gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate -q '.[] | "\(.number) \(.head.ref)"' 2> /dev/null) || { echo unknown; return 0; }
   for n in $impl; do
     # PRがもうあれば、PRの変えたファイルで数える（下）
     if printf '%s\n' "$pulls" | grep -q " claude/issue-$n-"; then continue; fi
@@ -323,7 +330,7 @@ inflight_touches() {
     if [ -z "$t" ]; then echo unknown; else printf '%s\n' "$t"; fi
   done
   for pr in $(printf '%s\n' "$pulls" | cut -d' ' -f1); do
-    files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" -q '.[].filename' 2> /dev/null) || { echo unknown; continue; }
+    files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null) || { echo unknown; continue; }
     printf '%s\n' "$files"
   done
 }
@@ -339,8 +346,9 @@ start_next_in_queue() {
   stuck=$(count_open_issues_with_label "ai:stuck") || return 1
   prs=$(count_open_prs) || return 1
   echo "実装中 ${busy} / 停止中 ${stuck}（数えない） / openのPR ${prs}（並列の上限 ${MAX_PARALLEL}）"
-  queue=$(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aqueue" \
-    -q '[.[] | select(.pull_request | not) | {n: .number, p: ([.labels[].name] | index("priority:high") != null)}] | sort_by((if .p then 0 else 1 end), .n) | .[].n') || return 1
+  # 並べ替えは全体でする（ページごとに並べると、2ページ目の急ぎ・番号の小さい物が後ろに回る）
+  queue=$(api_list "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aqueue" \
+    | jq -r '[.[] | select(.pull_request | not) | {n: .number, p: ([.labels[].name] | index("priority:high") != null)}] | sort_by((if .p then 0 else 1 end), .n) | .[].n') || return 1
   if [ -z "$queue" ]; then
     echo "順番待ちはありません"
     return 0
@@ -727,7 +735,7 @@ REPEAT_ALERT_AT="${REPEAT_ALERT_AT:-2}"
 alert_if_repeated_failures() {
   local num="$1" reason="$2" now n c body updated recent=0 list=""
   now=$(date +%s)
-  for n in $(gh api "repos/$REPO/issues?state=open&labels=ai%3Aretry&per_page=100" -q '.[].number' 2> /dev/null); do
+  for n in $(gh api "repos/$REPO/issues?state=open&labels=ai%3Aretry&per_page=100" --paginate -q '.[].number' 2> /dev/null); do
     c=$(retry_comment "$n")
     [ -z "$c" ] && continue
     body=$(printf '%s' "$c" | jq -r '.body // ""')

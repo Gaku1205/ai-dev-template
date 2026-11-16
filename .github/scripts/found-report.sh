@@ -32,7 +32,7 @@ if [ "$(jq '.findings | length' "$file")" = 0 ]; then
   exit 0
 fi
 
-existing=$(gh api "repos/$REPO/issues?state=open&labels=ai%3Afound&per_page=100" --jq '.[].title' 2> /dev/null || true)
+existing=$(gh api "repos/$REPO/issues?state=open&labels=ai%3Afound&per_page=100" --paginate --jq '.[].title' 2> /dev/null || true)
 made=0 skipped=0
 n=$(jq '.findings | length' "$file")
 for ((i = 0; i < n && made < max; i++)); do

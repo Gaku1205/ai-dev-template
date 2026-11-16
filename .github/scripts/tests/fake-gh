@@ -7,7 +7,7 @@ st=json.load(open(ST))
 args=sys.argv[1:]
 assert args[0]=='api'
 args=args[1:]
-method='GET'; q=None; fields={}; flist=[]; path=None; slurp=False
+method='GET'; q=None; fields={}; flist=[]; path=None; slurp=False; paginate=False
 i=0
 while i<len(args):
     a=args[i]
@@ -24,7 +24,7 @@ while i<len(args):
             if isinstance(_v,list): flist.extend(_v)
             else: fields[_k]=_v if isinstance(_v,str) else json.dumps(_v)
         i+=2
-    elif a=='--paginate': i+=1
+    elif a=='--paginate': paginate=True; i+=1
     elif a=='-H': i+=2
     elif a=='--slurp': slurp=True; i+=1
     elif a.startswith('-'): i+=1
@@ -50,6 +50,18 @@ def out(obj):
     else:
         print(json.dumps(obj))
 def save(): json.dump(st,open(ST,'w'))
+# 一覧（配列）を、本物と同じくページに分けて返す。1ページは per_page 件（既定 30）。
+#   --paginate が無ければ、1ページ目だけ（101件目からは見えない）
+#   --paginate と -q：ページごとに jq を当てる（本物の gh と同じ。全体の件数・並べ替えを -q だけでは出せない）
+#   --paginate と --slurp：ページの配列（[[…],[…]]）
+# 読んだページの数を api_pages に足す（API の回数を確かめるテスト用）
+def paged(lst):
+    pm=re.search(r'per_page=(\d+)',path); per=int(pm.group(1)) if pm else 30
+    pages=[lst[i:i+per] for i in range(0,len(lst),per)] or [[]]
+    if not paginate: pages=pages[:1]
+    st['api_pages']=st.get('api_pages',0)+len(pages); save()
+    if slurp: out(pages); return
+    for pg in pages: out(pg)
 base=path.split('?')[0]
 if re.match(r'repos/[^/]+/[^/]+$',base): out({'is_template':st.get('is_template',False),'homepage':st.get('homepage')}); sys.exit(0)
 # 公開（deployments）：st['deployments'] = [{'id':1,'environment':'github-pages','url':'https://…'}]
@@ -69,7 +81,7 @@ if m:
         c={'id':st['next_id'],'body':fields['body'],'user':{'login':'github-actions[bot]'},'created_at':now,'updated_at':now,'issue':n}
         st['comments'].append(c); save(); print('{}'); sys.exit(0)
     cs=[c for c in st['comments'] if c['issue']==n]
-    out([cs] if slurp else cs); sys.exit(0)
+    paged(cs); sys.exit(0)
 m=re.match(r'issues/comments/(\d+)$',base)
 if m and method=='PATCH':
     for c in st['comments']:
@@ -109,18 +121,18 @@ if base=='issues':
     stm=re.search(r'state=([a-z]+)',path); want=stm.group(1) if stm else 'open'
     meta=st.get('issues_meta',{})
     res=[{'number':int(n),'title':meta.get(n,{}).get('title','t'),'state':meta.get(n,{}).get('state','open'),'updated_at':st['issue_updated'].get(n,now),'labels':[{'name':x} for x in L],'closed_at':meta.get(n,{}).get('closed_at')} for n,L in st['labels'].items() if (lab is None or lab in L) and (want=='all' or meta.get(n,{}).get('state','open')==want)]
-    out(res); sys.exit(0)
+    paged(res); sys.exit(0)
 m=re.match(r'pulls/(\d+)/comments$',base)
 if m:
     rc=st.get('review_comments',[])
-    out([rc] if slurp else rc); sys.exit(0)
+    paged(rc); sys.exit(0)
 m=re.match(r'pulls/(\d+)/commits$',base)
 if m:
     pc=st.get('pr_commits',{}).get(m.group(1),[])
-    out([pc] if slurp else pc); sys.exit(0)
+    paged(pc); sys.exit(0)
 m=re.match(r'pulls/(\d+)/files$',base)
 # 文字列は普通の（文字の差分がある）ファイル。dict はそのまま（画像など patch の無いファイルを表すのに使う）
-if m: out([f if isinstance(f,dict) else {'filename':f,'patch':'@@ -1 +1 @@','changes':1} for f in st.get('files',[])]); sys.exit(0)
+if m: paged([f if isinstance(f,dict) else {'filename':f,'patch':'@@ -1 +1 @@','changes':1} for f in st.get('files',[])]); sys.exit(0)
 m=re.match(r'contents/(.+)$',base)
 if m and method=='GET':
     from urllib.parse import unquote
@@ -160,9 +172,9 @@ if base=='actions/runs': out({'workflow_runs':st.get('runs',[])}); sys.exit(0)
 if base.startswith('compare/'): out({'ahead_by':0}); sys.exit(0)
 if re.match(r'commits/[^/]+$',base): out({'commit':{'committer':{'date':'2026-01-01T00:00:00Z'}}}); sys.exit(0)
 if base=='pulls':
-    out(st.get('pulls',[])); sys.exit(0)
+    paged(st.get('pulls',[])); sys.exit(0)
 if base=='branches':
-    out([{'name':b['name']} for b in st.get('branches',[])]); sys.exit(0)
+    paged([{'name':b['name']} for b in st.get('branches',[])]); sys.exit(0)
 m=re.match(r'branches/(.+)$',base)
 if m:
     for b in st.get('branches',[]):
