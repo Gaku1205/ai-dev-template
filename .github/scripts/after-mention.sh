@@ -43,7 +43,9 @@ for pr in $(gh api "repos/$REPO/pulls?state=open&per_page=100" -q '.[].number');
       echo "PR #$pr：PRの説明が直ったので、もう一度レビューを依頼しました"
     elif [ "${CONCLUSION:-success}" != "success" ]; then
       # AIがエラーで終わったとき（使用量の上限など）は、自動でやり直す（watchdog.sh）
-      mark_for_retry "$pr" mention "$(failure_reason "AIに直すよう頼みましたが、AIがエラーで終わりました（ログは、Claude Mention の実行の方を見てください）")"
+      # 実行記録（EXECUTION_FILE）があれば、原因に合わせる：使用量の上限ならリセットまで待ち（回数を使わない）、
+      # 作業回数の上限が続くなら、やり直さず人間に回す（retry_ai_failure）
+      retry_ai_failure "$pr" mention "AIに直すよう頼みましたが、AIがエラーで終わりました（ログは、Claude Mention の実行の方を見てください）" "${EXECUTION_FILE:-}"
     else
       # 変更が入らなかった。AIの返事・レビューの指摘・PRの説明・実行記録から理由を分け（classify_no_change）、
       # 人間の手が要らない物は先へ進める。分類できないときだけ人間に回す

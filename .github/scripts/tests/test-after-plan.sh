@@ -44,4 +44,28 @@ init_state '{"labels":{"3":["ai:plan"]}}'
 (cd "$work" && printf 'MOCKS\nPARALLEL\n' > plan-result.txt && ISSUE=3 PLAN_OUTCOME=success GH_TOKEN=pipe GITHUB_TOKEN_FOR_LABELS=x bash "$SCRIPTS_DIR/after-plan.sh" > /dev/null 2>&1)
 assert_eq "画面案の印" "ai:mocks" "$(labels_of 3)"
 
+
+echo "== ai:skip が付いた Issue（オーナー以外が作った物）は、失敗してもやり直しに回さず、結果も使わない"
+init_state '{"labels":{"3":["ai:plan","ai:skip"]}}'
+(cd "$work" && rm -f plan-result.txt && ISSUE=3 PLAN_OUTCOME=failure GITHUB_TOKEN_FOR_LABELS=x bash "$SCRIPTS_DIR/after-plan.sh" > /dev/null 2>&1)
+assert_eq "ai:retry を付けず、ai:plan を外す" "ai:skip" "$(labels_of 3)"
+init_state '{"labels":{"3":["ai:plan","ai:skip"]}}'
+run_plan "READY" > /dev/null
+assert_eq "清書できていても、実装に回さない" "ai:skip" "$(labels_of 3)"
+
+echo "== 企画AIが PARALLEL と言っても、企画の間に始まった作業と触るファイルが重なるなら、順番待ちにする"
+touch_state() { # この Issue の印 進行中の Issue の印
+  init_state '{"labels":{"3":["ai:plan"],"8":["ai:implement"]},"issues_meta":{"3":{"body":"本文\n<!-- ai-touches: '"$1"' -->"},"8":{"body":"本文\n<!-- ai-touches: '"$2"' -->"}}}'
+}
+touch_state "src/lib/a.ts, docs/spec.md" "src/lib/a.ts"
+out=$(run_plan "READY")
+assert_eq "重なるので順番待ち" "ai:queue" "$(labels_of 3)"
+assert_contains "理由をログに出す" "$out" "触るファイルが重なるので、待ちます"
+touch_state "src/lib/a.ts" "src/lib/b.ts"
+run_plan "READY" > /dev/null
+assert_eq "重ならなければ、今までどおり並列で実装へ" "ai:implement" "$(labels_of 3)"
+init_state '{"labels":{"3":["ai:plan"],"8":["ai:implement"]},"issues_meta":{"3":{"body":"本文\n<!-- ai-touches: src/lib/a.ts -->"}}}'
+run_plan "READY" > /dev/null
+assert_eq "進行中の物に印が無ければ、今までどおり企画AIの判断" "ai:implement" "$(labels_of 3)"
+
 finish

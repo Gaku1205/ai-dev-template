@@ -83,4 +83,16 @@ run_script watchdog.sh > /dev/null
 assert_eq "ai:plan を付け直す" "ai:plan" "$(labels_of 8)"
 assert_contains "回数が増える" "$(comments_of 8)" "count=1 kind=plan"
 
+
+echo "== 実装AIの知らせが無いまま45分以上：止まったとみなして、やり直し待ちにする。実装AIの実行がまだ動いていれば、待つ"
+init_state '{"labels":{"9":["ai:implement"]}}'
+state_py "s['issue_updated']['9']='$(ago 50)'"
+run_script watchdog.sh > /dev/null
+assert_eq "動いていなければ、やり直し待ち" "ai:implement,ai:retry" "$(labels_of 9)"
+init_state '{"labels":{"9":["ai:implement"]},"wf_runs":{"claude-implement.yml":[{"status":"in_progress"},{"status":"completed"}]}}'
+state_py "s['issue_updated']['9']='$(ago 50)'"
+out=$(run_script watchdog.sh)
+assert_eq "動いている間は、印を付けない（審査役と直しで75分まで動く）" "ai:implement" "$(labels_of 9)"
+assert_contains "理由をログに出す" "$out" "実装AIの実行が動いている"
+
 finish
