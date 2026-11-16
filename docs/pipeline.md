@@ -30,6 +30,7 @@ Issueを作る（メモ）。ラベルが無ければ自動で ai:plan が付く
 | `size:S` / `size:L` | 人間か企画AI | 実装AIのモデルと作業回数の上限を変える（S：haiku・40回、無印：sonnet・60回、L：opus・100回） |
 | `ai:review` | パイプライン（人間も可） | レビューAIが確認する |
 | `ai:queue` | 企画AI（進行中の作業とぶつかると判断したとき）か人間 | 順番待ち。前のPRが自動でマージされ、実装中の物・openのPRが無くなったら（企画の段階で止まった物は待たない）、番号の小さい順に実装が始まる。まとめて頼んで寝ておける |
+| `ai:blocked` | 企画AI（`BLOCKED`） | 他の Issue・PR の完了待ち（その結果や決まりを使う作業。別のリポジトリの作業でもよい）。待ち先はコメントの印 `<!-- blocked-by: owner/repo#N -->`（待ち先ごとに1つ）。見張り役が待ち先を見て、全部閉じたら（マージ・クローズ）`ai:blocked` を外して `ai:plan` に戻す。人間は何もしなくてよい（下の「他の Issue・PR の完了待ち」） |
 | `ai:hold` | 人間か進行役 | 最後のマージだけ人間が押す（大事な変更用）。`.github/`・`docs/pipeline.md`・`CLAUDE.md`・`AGENTS.md` を触るPRには、進行役が自動で付ける（ただし ai-dev-template 自身は、スクリプト・テスト・`docs/pipeline.md` だけの変更なら付けず、自動でマージする。下の「安全のしくみ」） |
 | `ai:retry` | パイプライン | AIが一時的に止まった（使用量の上限など）。見張り役が30分以上あけて自動でやり直す（失敗のコメントに、原因の分類とログのURLが付く）。人間は何もしなくてよい |
 | `ai:stuck` | パイプライン | 自動で進められず止まった。人間が確認して、続けるなら外す（外すと自動で再開） |
@@ -37,12 +38,13 @@ Issueを作る（メモ）。ラベルが無ければ自動で ai:plan が付く
 | `ai:mocks` | 企画AI | 見た目の大きい作り直し・新しい画面の作業。作る前に `claude-mocks.yml` が、今の画面とデザイン仕様を見てざっくり画面を2案作り（1枚の HTML。画像と HTML は `ai-mocks` ブランチ）、選択肢と質問を書いて `ai:question` で待つ。答えると、企画AIが選んだ画面を「目標の画面」（本文の印 `<!-- ai-mock: … -->`）として清書し、実装AIはそれを `.shots/target/` に受け取って合わせて作る |
 | `visual:update` | 進行役（見た目のテストだけが落ち、PRに「見た目を変えた」と書いてあるとき。修正AIが変更なしで終わり、AIの返事・レビューの指摘・PRの説明に撮り直しの依頼があるとき）か人間 | 見た目のテストの基準の画像を、CIの環境で全部撮り直してPRにコミットする（差が閾値の中で通っていた画像も撮り直すので、古い見た目の画像が残らない。終わると外れる） |
 
-見張り役は、ありえないラベルの組み合わせ（`ai:queue` と `ai:implement`、`ai:plan` と `ai:implement`、記録の無い `ai:retry`、直近7日に閉じた物に残った `ai:stuck`・`ai:retry`・`ai:queue`）を直し、その Issue・PR に1行コメントする（1回に20件まで）。
+見張り役は、ありえないラベルの組み合わせ（`ai:queue` と `ai:implement`、`ai:plan` と `ai:implement`、記録の無い `ai:retry`、直近7日に閉じた物に残った `ai:stuck`・`ai:retry`・`ai:queue`・`ai:blocked`）を直し、その Issue・PR に1行コメントする（1回に20件まで）。
 
 ## 人間に回る（止まる）とき
 
 - 企画AIが「人間にしかできない作業」が要ると判断した（依存パッケージの追加、`.github/`・`docs/pipeline.md`・CLAUDE.md の変更、秘密情報の登録、外部サービスの設定。Issueに、してほしいことが書かれる。そのコメントの1行目は `<!-- human-request -->`、2行目が要点の1文で、agent-desk の「あなたの番」にはこの1文が出る）。意図が読み取れないだけなら止まらず、AIが無難に仮決めして「### 仮定」に書く。大きすぎるときは、最初の分だけをこのIssueにして、残りは新しいIssueとして自動で作る
-- 実装AIが変更を作れなかった
+- 実装AIが正常に終わったのに、変更を残さなかった（拒否された操作が無いとき。コメントに、AIが最後に言ったことが書かれる。拒否があったときは、下の「自動でやり直す」）
+- `ai:blocked` の待ち先を、60分たっても読めない（別のリポジトリが非公開で、パイプラインの鍵では読めない、など）
 - CIの失敗とレビューの指摘を合わせて、AIが3回直しても解決しない（2回は普通のモデル、最後の1回はいちばん強いモデル opus で直す）
 - 直すよう頼んだのに、AIが変更を入れなかった（指摘が誤りだと判断した、など）
 - レビューAIがエラーで止まった
@@ -56,7 +58,9 @@ Issueを作る（メモ）。ラベルが無ければ自動で ai:plan が付く
 
 使用量の上限が原因と分かったとき（企画AI・実装AIの実行記録に「usage limit」などが出ているとき）は、回数を使わずに待つ。リセット時刻が読めれば、その1分後にやり直す。読めなければ60分あけてやり直す。待ちに入った最初の1回だけ、スマホに「使用量の上限で待っています」と通知する（通知の種類 `limit`）。上限が24時間以上続いたら、本物のエラーと同じに数えて、10回で `ai:stuck` にする。レビューAI・修正AIは、実行記録をこの段階では読めないので、これまでどおり30分あけて、回数に数える。
 
-- 企画AI・実装AI・レビューAI・修正AIが、エラーで終わった（使用量の上限に当たったときなど。リセットされるまで待ちながらやり直す）
+- 実装AIが正常に終わったのに変更を残さず、実行記録に「拒否された操作」がある：拒否された操作と、AIが最後に言ったことをコメントに書き（これが、やり直す実装AIへの手がかりになる）、`ai:implement` を付け直して1回だけやり直す（`<!-- auto-perm-retry -->`。`open-pr.sh`）。やり直しても同じなら、足りない許可を書いて人間に回す。人間が `ai:stuck` を外して再開すると、また1回やり直せる
+- 企画AIが「他の Issue・PR が終わらないと始められない」と判断した（`BLOCKED`）：人間に頼まず `ai:blocked` で待ち、待ち先が全部閉じたら見張り役が `ai:plan` に戻す
+- 企画AI・実装AI・レビューAI・修正AIが、エラーで終わった。ただし、`ai:plan` が付け直されて新しい実行に置き換わった（取り消された）企画は、失敗として扱わない。企画のやり直し待ち（`ai:retry`）の Issue が、もう先へ進んでいれば（`ai:implement`・`ai:queue`・`ai:question`・`ai:mocks`・`ai:blocked`）、見張り役は印を外すだけでやり直さない（使用量の上限に当たったときなど。リセットされるまで待ちながらやり直す）
 - 実装AIが時間切れなどで終わり、失敗の知らせも無いまま45分以上動きが無い
 - レビューAIの結果が出ないまま30分以上たった
 - パイプライン自体の確認（スクリプトのテスト・shellcheck）だけが落ちて、PRが `.github/` を触っていない：原因はPRの変更ではなく、AIは `.github/` を直せないので、AIに頼まない。落ちたジョブを1回だけやり直し（実行環境の入れ替わりなどの一時的な揺れ）、それでも落ちたら人間に回す（`ai:stuck`。テンプレートの側で確かめる）
@@ -100,9 +104,19 @@ Issueを作る（メモ）。ラベルが無ければ自動で ai:plan が付く
 | レビューAI（`claude-review.yml`） | `Bash(gh pr view:*)`、`Bash(gh pr diff:*)`、`Bash(gh issue view:*)`、`Bash(gh pr comment:*)`、`Read`、`Glob`、`Grep`、`Write`、`mcp__github_inline_comment__create_inline_comment` | コードの変更・git操作・npm（レビューは読むだけ。コードは直さない） |
 | 修正AI（`claude-mention.yml`） | `Bash(gh pr view:*)`、`Bash(gh pr edit:*)`、`Bash(gh issue view:*)`、`Bash(gh pr comment:*)`、`Bash(git fetch:*)`、`Bash(git merge:*)`、`Bash(git status:*)`、`Bash(git diff:*)`、`Bash(git add:*)`、`Bash(git commit:*)`、`Bash(git push:*)`、pipeline.json の checks のコマンド（無ければ npm run typecheck・lint・test・build）、`Bash(.github/scripts/tests/run-all.sh)`、`Bash(bash .github/scripts/tests/run-all.sh)`、`Bash(shellcheck:*)`、見た目のテストがあるアプリでは `Bash(npm run test:visual)`・`Bash(npm run test:visual -- -g:*)`・`Bash(npx playwright test:*)`（基準の画像の撮り直しは許さない）、`Skill` | `git rebase`・`git push --force`（履歴を書き換えない）、`gh pr merge`（マージは進行役だけ）。`gh pr edit` はPRの説明の直し（本文はファイルに書いて `--body-file` で渡す）、`gh issue view` はIssueを読むため、`git merge` はコンフリクトの解消のために許可している |
 
+**ボットが作ったPRでは、許可していても拒否されるコマンドがある**（`claude-code-action` の `restrict_untrusted_prs`。既定で有効）。PRの作者に書き込み権限が確認できないとき、パッケージマネージャー・テスト・インタプリタ・シェルなど「PRのコードを動かすコマンド」（`npm`・`npx`・`node`・`bash` など）は、`--allowedTools` に入っていても拒否される。ボットは、`allowed_bots` に入っていても必ずこの扱いになる。このパイプラインのPRは、パイプラインの App（ボット）が作るので、何もしないと修正AIは確認コマンドを1つも動かせない（「npm が許可されなかった」と報告して、確かめないまま push する）。
+
+そこで `claude-mention.yml` は、AIの前に `.github/scripts/pr-trust.sh` で次を全部確かめ、満たすときだけ `restrict_untrusted_prs: false` にする。それ以外のPR（fork・`claude/` ではないブランチ・閉じたPR・読めないとき）は、既定のまま拒否させる。
+
+- PRのブランチが、このリポジトリの中にある（fork ではない。このリポジトリに push できるのは、書き込み権限のある人と App だけ）
+- ブランチ名が `claude/` で始まる（実装AIが、このリポジトリのワークフローの中で作ったブランチ）
+- PRが開いている
+
+AIのアクションは作業フォルダをPRのブランチに切り替えるので、AIのあとの工程は、作業フォルダのスクリプトを動かさない（AIの前に、main の版を API で `$RUNNER_TEMP/pipeline-tools/` に取ってきて、それを動かす。`pr-trust.sh` も同じ（PRが書き換えた版に判断させない）。`tests/test-workflows.sh` が確かめる）。実装AI・企画AIは Issue で動くので、この拒否は掛からない。レビューAIは `gh` と読むだけなので影響しない。
+
 許可が足りなくて止まったときは、次のようになる。
 
-- 企画AI・実装AIは、実行記録から拒否された操作を読み取り、「足りない許可：`Bash(git merge:*)`」のように、通知とコメントに書いて人間に回す（やり直しても直らないので、自動のやり直しはしない）
+- 企画AI・実装AIがエラーで終わったときは、実行記録から拒否された操作を読み取り、「足りない許可：`Bash(git merge:*)`」のように、通知とコメントに書いて人間に回す（やり直しても直らないので、自動のやり直しはしない）。実装AIが正常に終わったのに変更が無いときは、拒否された操作を手がかりに書いて1回だけやり直す（上の「自動でやり直す」）
 - 修正AIは、AIのコメントに「許可されていない」などと書かれていれば、その行と、出てくるコマンドから足りない許可の候補を書いて人間に回す
 - 同じ許可の不足が2回起きたら、直すためのIssue（`AIの許可が足りない：…`）を自動で作る（`ai:skip` 付き。マネージャーが `--allowedTools` と上の表を直す）。回数の記録は、閉じたままの「AIの許可の不足（自動の記録）」Issueのコメントに残る
 
@@ -261,6 +275,20 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 | `result` | `running`（進行中） / `success` / `failure` |
 | `attempt`・`max_attempts` | 修正（`fix`）のときだけ。何回目 / 最大3回 |
 
+### どこで残すか
+
+| 工程 | 残す所 | 進行中（`running`）も残すか |
+| --- | --- | --- |
+| `plan` | `claude-plan.yml`（AIの前に開始、`after-plan` で終了） | 残す |
+| `mocks` | `claude-mocks.yml` の `publish`（終了だけ。開始時刻は `work` から渡す） | 残さない |
+| `implement` | `claude-implement.yml`（AIの前に開始、`open-pr` で終了） | 残す |
+| `ci` | `pipeline.yml` の `after-ci`（終了だけ。開始時刻はCIの実行の開始時刻） | 残さない |
+| `review` | `pipeline.yml` の `after-review`（終了だけ。モデルと開始時刻は、`claude-review.yml` が成果物 `ai-result` の `meta.json` で渡す） | 残さない |
+| `fix` | `claude-mention.yml`（自動の修正依頼 `auto-fix` のときだけ。何回目かは依頼の「自動の依頼 n/3」から読む） | 残す |
+| `deploy` | 残さない。公開の状態は、コミットの状態（`deploy/<種類>`・Vercel）に出るので、agent-desk はそちらを読む | - |
+
+進捗ログのコメントは、どこでもワークフローのトークン（`github.token`）で書く。パイプラインの鍵が `PIPELINE_TOKEN`（オーナーのトークン）のリポジトリで、オーナーの名義のコメントが「質問への答え」（`answer.yml`）と間違われないようにするため。進行中を残さない工程が動いているかは、ラベルと Actions の実行で分かる。
+
 ### 更新のしかた
 
 工程の開始前に `--result running`、終了後に `--result success` か `failure` で呼ぶ。同じ工程の行は上書きされる（`running` の行があれば `started` を引き継ぐ。修正は回数が進むので `--attempt` を更新する）。
@@ -273,18 +301,35 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 - `--model` には、そのワークフローが AI に渡している値をそのまま渡す。使わない工程は `null`
 - 記録に失敗しても（gh のエラー・権限など）終了コードは 0。警告を1行出すだけで、パイプラインは止まらない
 
-## 画面案が作れないとき・AIの拒否の見える化
+## 画面案が作れないとき・AIの結果の見える化
 
-見た目の大きい Issue では、作る前に画面案（`ai:mocks`、`.github/scripts/mocks-publish.sh`）を作る。AIが画面案を1つも書かずに終わったとき（`mocks.json` が無い・形が不正）は、止まらずに次の順で進む。
+見た目の大きい Issue では、作る前に画面案（`ai:mocks`、`claude-mocks.yml`）を作る。AIは専用の手順書 `.github/factory/mocks.md`（置き場は `mocks/` だけ）を読んで作る。AIが画面案を書かずに終わったとき（`mocks/mocks.json` が無い）は、止まらずに次の順で進む。
 
-0. **`MOCKS_RETRY` が無いとき**（やり直しに対応していない古い workflow）：以前どおり、コメントと `ai:stuck` と通知を残して止まる
-1. **1回目**（`MOCKS_RETRY=0`）：`ai:stuck` を付けず、`ai:mocks` も残したまま、`GITHUB_OUTPUT` に `retry=true` を出す。workflow が、もう一度AIの工程を動かす
-2. **やり直し**：workflow が `MOCKS_RETRY=1` を渡して publish を動かす。ここでも作れなければ、`ai:mocks` を外して `ai:plan`（画面案なし）を付け、「画面案は作れなかったので、案なしで進めます」とコメントする（拒否されたツール名も入る）
+1. **その場で1回やり直す**：`work` ジョブの中で、拒否されたツールの名前を手がかりに付けて、もう一度AIを動かす（3回目は無い）
+2. **それでも無ければ、案なしで企画へ**：`publish` が `MOCKS_RETRY=1` で `mocks-publish.sh` を動かす。画面案が無い・形が不正なら、`ai:mocks` を外して `ai:plan` を付け、「画面案は作れなかったので、案なしで進めます」とコメントする（拒否されたツール名も入る）。`ai:stuck` にはしない
 3. 画面案が作れたときの動き（`ai:question` で選んでもらう）は変わらない
+
+`mocks-publish.sh` は、`MOCKS_RETRY` が無いとき（古い workflow）は以前どおり `ai:stuck` で止まり、`0` のときは `retry=true` を出すだけで何もしない（別のジョブでやり直す作りのための形。今の workflow は使っていない）。
+
+`publish` の鍵は、ほかの workflow と同じく GitHub App の鍵 → `PIPELINE_TOKEN` → `github.token` の順に使う（`github.token` で付けた `ai:plan` では企画が動かないので、そのときは見張り役が拾うまで待つ）。
+
+### ai-report.sh（AIの工程のあと、何が起きたかを残す）
+
+AIが「正常に終わったのに何も残さなかった」とき、あとから理由を追えるように、どのAIの工程のあとにも `.github/scripts/ai-report.sh` が、実行記録から次をジョブのログと実行の Summary の両方に出す。
+
+- 結果の種類（`success`・`error_max_turns` など）・手数・拒否の数
+- 拒否された操作（そのままの形で最大5件）
+- AIが最後に言ったこと（最大1,200文字）
+
+```
+.github/scripts/ai-report.sh --title "実装AI" FILE
+```
+
+ファイルが無い・壊れていても、いつも終了コード 0。企画は `after-plan`、実装は `open-pr`（どちらも main の版を動かす別のジョブ）、画面案と修正AIは同じジョブの中（画面案は `.github/` を読み取り専用にしてある。修正AIは API で取ってきた main の版）で動かす。レビューは作業フォルダがPRのコードなのでスクリプトを動かさず、同じ要点を `jq` で出す。
 
 ### denials.sh（拒否の中身を取り出す）
 
-AIの実行記録 `claude-execution-output.json` から、許可されず拒否された操作（`permission_denials`）の `tool_name` と引数（1件あたり約200文字で切り詰め）を取り出す（`.github/scripts/denials.sh`）。
+AIの実行記録から、許可されず拒否された操作（`permission_denials`）の `tool_name` と引数（1件あたり約200文字で切り詰め）を取り出す（`.github/scripts/denials.sh`）。
 
 ```
 .github/scripts/denials.sh FILE            # 件数と一覧（テキスト）
@@ -293,23 +338,31 @@ AIの実行記録 `claude-execution-output.json` から、許可されず拒否�
 .github/scripts/denials.sh --check FILE    # 拒否が1以上なら終了コード 0、無ければ 1
 ```
 
-`--check` 以外は、ファイルが無い・壊れている・拒否が無いときは何も出さず、終了コード 0。`--check` は、企画・実装・レビューの工程が成果を出さずに終わったとき、拒否が原因かを見て1回だけやり直すかを決めるのに使う。
+`--check` 以外は、ファイルが無い・壊れている・拒否が無いときは何も出さず、終了コード 0。
 
-### 企画・実装・レビューの1回だけのやり直し
+### 成果が無いまま終わったときの動き（まとめ）
 
-`claude-plan.yml`・`claude-implement.yml`・`claude-review.yml` は、AIの工程のあとに `denials.sh --summary` で拒否を Summary に残す。そのうえで、**成果が無く、かつ `denials.sh --check` が拒否ありと言ったときだけ**、同じAIの工程を1回だけもう一度動かす（2回目も同じく Summary に残す。3回目は無い）。成果は次のとおり見る。
-
-| workflow | 成果があるとみなすとき |
+| AI | 成果が無いとき |
 | --- | --- |
-| `claude-plan.yml` | `plan-result.txt` がある |
-| `claude-implement.yml` | 作業ブランチに main より先のコミットがあるか、まだコミットしていない変更がある |
-| `claude-review.yml` | この実行が始まったあとに、`## Code review` で始まるコメントがPRに付いている |
+| 企画AI | `plan-result.txt` が無ければ、2回まで自動でやり直し（`ai:retry`）、続くなら理由を書いて人間に回す（`after-plan.sh`） |
+| 画面案 | その場で1回やり直し、それでも無ければ案なしで企画へ（上） |
+| 実装AI | 拒否があれば、手がかりを書いて1回だけやり直す。拒否が無ければ、AIが最後に言ったことを書いて人間に回す（`open-pr.sh`） |
+| レビューAI | まとめのコメントが無ければ、2回まで自動でやり直し、続くなら人間に回す（`after-review.sh`・見張り役） |
+| 修正AI | 理由を分けて動く（上の `classify_no_change`）。実行記録は `claude-mention.yml` が成果物 `ai-result` で `after-mention` に渡す |
 
-成果が無くても拒否が無ければ（回数の上限・ネットワークなど）、やり直さず今までどおり次の工程に任せる。ジョブの結果（`outcome`）と次のジョブに渡す実行記録は、やり直したときはやり直しの方を使う。
+## 他の Issue・PR の完了待ち（`ai:blocked`）
 
-AIが書き換えたかもしれない `denials.sh` は動かさない。企画・実装では AI の工程の前に `denials.sh` と `pipeline-lib.sh` を `$RUNNER_TEMP` に写しておき、それを動かす。レビューでは作業フォルダがPRのコードなので、PRの元（`base.sha`）の版を API で取ってきて動かす（取れなければ、Summary は出さず、やり直さない）。
+「別の作業の結果や決まりが無いと、清書も実装も始められない」Issue を、人間が回し直さなくても進める仕組み（例：ai-dev-template で形式が決まり、アプリのリポジトリに配られてから始める作業）。
 
-画面案の publish の鍵は、ほかの workflow と同じく GitHub App の鍵 → `PIPELINE_TOKEN` → `github.token` の順に使う（`github.token` で付けた `ai:plan` では企画が動かないので、そのときは見張り役が拾うまで待つ）。
+1. 企画AIが `plan-result.txt` の1行目に `BLOCKED`、2行目から下に待ち先を1行に1つ書く（`owner/repo#番号`。このリポジトリなら `#番号`。Issue・PR の URL でもよい。最大10件）。あわせて、何を待っているかを Issue にコメントする
+2. `after-plan.sh` が `ai:blocked` を付け、待ち先の印 `<!-- blocked-by: owner/repo#N -->`（待ち先ごとに1つ）をコメントに書く。待ち先が1つも読み取れなければ、理由を書いて人間に回す
+3. 見張り役（`watchdog.sh`。30分ごとと、ほかの作業が終わるたび）が、いちばん新しい待ち先のコメントの印を読み、待ち先の状態を見る（Issue も PR も `issues` の API で読める。PR はマージ・クローズで `closed`）
+   - 全部 `closed`：`ai:blocked` を外して `ai:plan` を付ける（企画AIが、待ち先の結果を読んで清書する）
+   - 1つでも開いている：待つ
+   - 読めない待ち先がある：戻さない（間違って再開しない）。読めないまま60分（`BLOCKED_UNREADABLE_MIN`）たったら、理由を書いて人間に回す
+4. 別のリポジトリの待ち先は、公開リポジトリならパイプラインの鍵で読める。非公開のリポジトリは、鍵がそのリポジトリも読めるときだけ
+
+進行中の作業と同じ場所を触るだけ（結果を使うわけではない）なら、`ai:blocked` ではなく順番待ち（`ai:queue`）を使う。
 
 ## スクリプトのテスト
 

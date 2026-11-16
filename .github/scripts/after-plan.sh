@@ -5,6 +5,8 @@
 #   QUESTION              → ai:stuck を付けて人間に回す（人間にしかできない作業。頼みごとはIssueのコメントにある）
 #   ASK                   → ai:question を付けて答えを待つ（選択式の質問はIssueのコメントにある。答えると answer.yml が ai:plan に戻す）
 #   MOCKS                 → ai:mocks を付ける（claude-mocks.yml がざっくり画面を2案作って、ai:question で答えを待つ）
+#   BLOCKED               → ai:blocked を付けて、他の Issue・PR が終わるのを待つ（2行目から下が待ち先。1行に1つ：owner/repo#N か #N か URL）。
+#                            待ち先が全部閉じたら、見張り役（watchdog.sh）が ai:plan に戻す。人間は何もしなくてよい
 #
 # 環境変数：ISSUE、PLAN_OUTCOME、GITHUB_TOKEN_FOR_LABELS（ワークフローのトークン）、EXECUTION_FILE（AIの実行記録。失敗の原因の分類に使う）
 source "$(dirname "$0")/pipeline-lib.sh"
@@ -72,6 +74,27 @@ case "$result" in
       echo "#$ISSUE：作る前に画面案を作ります"
     else
       notify manual "画面案を作る前に止まりました" "#${ISSUE} ${title}：ai:mocks を付けると画面案を作ります" 3
+    fi
+    ;;
+  BLOCKED*)
+    # 待ち先を owner/repo#N の形にそろえる（#N はこのリポジトリ。Issue・PR の URL も読む）。自分自身と、読めない行は捨てる。最大10件
+    targets=$(tail -n +2 plan-result.txt 2> /dev/null | tr -d '\r' | head -n 30 | while IFS= read -r line; do
+      t=$(printf '%s' "$line" | sed -E 's#https?://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/(issues|pull)/([0-9]+).*#\1\#\3#' | grep -oE '([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+' | head -1 || true)
+      [ -z "$t" ] && continue
+      case "$t" in \#*) t="${REPO}${t}" ;; esac
+      [ "$(printf '%s' "$t" | tr '[:upper:]' '[:lower:]')" = "$(printf '%s' "${REPO}#${ISSUE}" | tr '[:upper:]' '[:lower:]')" ] && continue
+      printf '%s\n' "$t"
+    done | awk '!seen[$0]++' | head -n 10 || true)
+    if [ -z "$targets" ]; then
+      stop_issue_for_human "$ISSUE" "企画AIが「他の Issue・PR が終わるのを待つ（BLOCKED）」と判断しましたが、待ち先が読み取れませんでした。Issue のコメントを確かめて、待つ必要が無ければ ai:plan を付け直してください"
+    else
+      marks=$(printf '%s\n' "$targets" | sed -E 's/^(.*)$/<!-- blocked-by: \1 -->/')
+      list=$(printf '%s\n' "$targets" | sed -E "s#^${REPO}(\#[0-9]+)\$#\1#" | paste -sd, - | sed 's/,/、/g')
+      comment "$ISSUE" "⏳ 他の作業が終わるのを待っています（待ち先：${list}）。待ち先が全部閉じる（マージされる）と、自動で企画に戻ります。人間は何もしなくて大丈夫です。
+
+${marks}" || true
+      add_label "$ISSUE" "ai:blocked" || true
+      echo "#$ISSUE：待ち先（${list}）が終わるまで待ちます"
     fi
     ;;
   ASK*)

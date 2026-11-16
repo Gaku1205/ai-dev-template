@@ -59,6 +59,13 @@ jobs:
             list="${SENDER},${SENDER%\[bot\]}"
           fi
           echo "list=$list" >> "$GITHUB_OUTPUT"
+      # 進捗ログ：AIが動く前（作業フォルダはまだ main のまま）に「進行中」を残す。終わりは after-plan が残す
+      - name: 進捗ログ（企画・開始）
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: bash .github/scripts/step-log.sh --issue "$ISSUE" --step plan --model sonnet --result running
       - uses: anthropics/claude-code-action@v1
         id: claude
         continue-on-error: true
@@ -80,12 +87,13 @@ jobs:
                - 同じファイルを書き換えそう、同じ機能や画面の同じ場所を触る、前の作業の結果を使う → 待つ（WAIT）
                - 触る場所がはっきり別で、どちらが先にマージされても困らない → 並列（PARALLEL）
                - 迷ったら待つ
-            5. 最後に、作業フォルダ直下のファイル `plan-result.txt` に2行だけを書く
+            5. 最後に、作業フォルダ直下のファイル `plan-result.txt` に2行だけを書く（`BLOCKED` のときだけ、2行目から下が待ち先）
                1行目は次のどれか
                - `READY size:S`：文言や見た目の小さい修正
                - `READY`：普通の大きさ
                - `READY size:L`：設計が絡む大きい作業
                - `QUESTION`：**人間にしかできない作業が必須のときだけ**（依存パッケージの追加、`.github/`・`docs/`・CLAUDE.md の変更、秘密情報の登録、外部サービスの契約や設定）。ただし、CLAUDE.md が「触ってよい」と書いている場所（例：ai-dev-template 自身の `.github/scripts/` と `docs/pipeline.md`）の変更は、人間の作業ではない。そのときは `READY` にする。このときは本文を書き直さず、`gh issue comment` で、人間に何をしてほしいかを書く。コメントの1行目は `<!-- human-request -->` だけにし（ダッシュボードがこの印で見つけて「あなたの番」に出す）、2行目に、してほしいことを1文で書く（例：「`zod` を依存に足してください。入力の検証に使います」）。詳しい説明はその下に書く
+               - `BLOCKED`：**ほかの Issue・PR が終わらないと、清書も実装も始められないとき**（その作業の結果や決まりを使う。別のリポジトリの作業でもよい。例：ai-dev-template で形式が決まってから、このリポジトリに配られるのを待つ）。人間に頼まない（`QUESTION` にしない）。このときは本文を書き直さず、`plan-result.txt` の2行目から下に、待ち先を1行に1つ書く（`owner/repo#番号`。このリポジトリなら `#番号` でもよい。Issue でも PR でもよい。配布を待つなら、配布の PR）。あわせて `gh issue comment` で、何を待っているかを1〜2文で書く（書き出しは「待っている理由：」）。待ち先が全部閉じる（マージされる）と、仕組みが自動でもう一度あなたを呼ぶ。待ち先がもう閉じているなら、`BLOCKED` にせず、その結果を読んで清書する。いま進行中の作業と同じ場所を触るだけ（結果を使うわけではない）なら、`BLOCKED` ではなく `READY` と `WAIT`（下）
                - `ASK`：**結果が大きく変わる迷いがあるとき**（見た目の方向・画面の構成・挙動・お金・データの扱い・どこまでやるか）。オーナーは、勝手に決められるより聞かれたいと言っている。迷ったら聞く。
                  このときは本文を書き直さず、`gh issue comment` で質問を書く。コメントの1行目は `<!-- ai-question -->` だけにする（ダッシュボードと、答えを受け取る仕組みがこの印で見つける）。
                  2行目から、質問を1〜5個、選択式で書く（1つの質問に選択肢2〜4個。いちばん良いと思う物に「（おすすめ）」。選択肢は短く具体的に）：
@@ -100,7 +108,7 @@ jobs:
                - `MOCKS`：**見た目の大きい作り直し・新しい画面を作る作業**で、オーナーがまだ画面案を選んでいないとき（コメントに `<!-- ai-mocks: … -->` の画面案が無い、または前の画面案に「両方ちがう」「出し直して」と言われた）。作る前に、別のAIがざっくり画面を2案作ってオーナーに選んでもらう。このときは本文を書き直さず、コメントも書かない（画面案のコメントは別の仕組みが書く）
                  - 画面案にオーナーが答えていれば（`<!-- ai-mocks: issue-N/rR -->` のコメントのあとのオーナーのコメント）、選んだ方（A なら `mock-a`、B なら `mock-b`）を「目標の画面」として清書し `READY` にする。本文の最後に、1行で `<!-- ai-mock: issue-N/rR/mock-a -->` を書き（実装の前に、仕組みがこの画面を実装AIに渡す）、「### 目標の画面」の節に、選んだ案の名前とオーナーの注文（「A の配置で B の色」など）を書く
                - 小さい迷い（文言・余白・並び順など、あとで直しやすい物）は聞かない。いちばん無難な解釈で `READY` にして、本文に「### 仮定」を書く（下）
-               2行目は `PARALLEL` か `WAIT`（進行中の作業が無ければ `PARALLEL`）。WAIT のときは、どの作業とぶつかるかを Issue に `gh issue comment` で1行書く。書き出しは「順番待ちの理由：」にし、「前の作業が終わると自動で始まります」で終える（実装AIへの指示にならないようにする）
+               2行目は（`BLOCKED` 以外）`PARALLEL` か `WAIT`（進行中の作業が無ければ `PARALLEL`）。WAIT のときは、どの作業とぶつかるかを Issue に `gh issue comment` で1行書く。書き出しは「順番待ちの理由：」にし、「前の作業が終わると自動で始まります」で終える（実装AIへの指示にならないようにする）
 
             本文の形（日本語）：
             ### 背景
@@ -146,7 +154,10 @@ jobs:
     # PIPELINE_TOKEN を使うのはこのジョブだけ（AIのジョブには渡さない）
     needs: plan
     # AIのジョブが動いたときだけ（別のラベルが付いたときなど、AIのジョブが飛ばされたら何もしない）
-    if: ${{ !cancelled() && needs.plan.result != 'skipped' }}
+    # 取り消されたとき（ai:plan が付け直されて、新しい実行に置き換わった）も何もしない。新しい実行が結果を出す。
+    # ここで動くと、実行記録が無いので「企画AIがエラーで止まりました（原因：不明）」と書いて ai:retry を付け、
+    # 先へ進んだ Issue を30分後にもう一度企画し直してしまう。時間切れで取り消されたときは、見張り役が拾う（IDLE_PLAN_MIN）
+    if: ${{ !cancelled() && needs.plan.result != 'skipped' && needs.plan.result != 'cancelled' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -193,6 +204,16 @@ jobs:
         with:
           name: ai-result
           path: ${{ runner.temp }}/ai-result
+      # 何が起きたかを、ログと Summary に残す（拒否された操作と、AIが最後に言ったこと）。ここは main の版のスクリプト
+      - name: AIの結果を残す
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          RESULT: ${{ needs.plan.outputs.outcome == 'success' && 'success' || 'failure' }}
+        run: |
+          bash .github/scripts/ai-report.sh --title "企画AI" "$RUNNER_TEMP/ai-result/execution.json" || true
+          bash .github/scripts/step-log.sh --issue "$ISSUE" --step plan --model sonnet --result "$RESULT"
       - name: plan-result.txt を作業フォルダに置く（中身はデータとしてだけ読む）
         run: if [ -f "$RUNNER_TEMP/ai-result/plan-result.txt" ]; then cp "$RUNNER_TEMP/ai-result/plan-result.txt" plan-result.txt; fi
       - name: 次へ進める（実装を依頼する／質問で止まる）

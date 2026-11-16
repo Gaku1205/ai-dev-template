@@ -1,5 +1,6 @@
 # 画面案：見た目の大きい作り直し・新しい画面の Issue は、作る前にざっくり画面を2案作って、オーナーに選んでもらう（企画AIが MOCKS と決めると ai:mocks が付く）。
 # AIは今の画面とデザイン仕様を見て、1枚の HTML を2案（PC とスマホ）作るだけ。画像は ai-mocks ブランチに置き、Issue に選択肢と質問を書いて ai:question で待つ。
+# 画面案が書かれなかったら、その場で1回だけやり直し、それでも無ければ止まらずに案なしで企画へ進む（mocks-publish.sh）。
 # オーナーが答えると answer.yml が企画に戻し、企画AIが選んだ画面を「目標の画面」として Issue に書く（実装AIはそれに合わせて作る）
 name: Claude Mocks
 
@@ -15,11 +16,17 @@ jobs:
     concurrency:
       group: mocks-${{ github.event.issue.number }}
       cancel-in-progress: false
+    outputs:
+      started: ${{ steps.started.outputs.at }}
+      outcome: ${{ steps.claude_retry.outcome != 'skipped' && steps.claude_retry.outcome || steps.claude.outcome }}
     permissions:
       contents: read
       issues: read
       id-token: write
     steps:
+      - name: 始めた時刻（進捗ログ用）
+        id: started
+        run: echo "at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
@@ -59,18 +66,64 @@ jobs:
       - name: 手順書とスクリプトを読み取り専用にする
         run: chmod -R a-w .github .claude CLAUDE.md AGENTS.md 2> /dev/null || true
       - uses: anthropics/claude-code-action@v1
+        id: claude
         continue-on-error: true
         with:
           allowed_bots: ${{ steps.bots.outputs.list }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             このリポジトリ（${{ github.repository }}）の Issue #${{ github.event.issue.number }} は、見た目の大きい作り直しか新しい画面です。作る前に、オーナーに選んでもらうざっくり画面を2案作ってください。
-            - Issue とコメントは `mocks/issue.txt`（前に出した画面案への注文があれば、それに合わせて出し直す）。今の画面は `mocks/now/`（あれば）
-            - `docs/spec.md`・`docs/design.md`・`docs/design-ref/` を読む。Issue が変えろと言っていない色・文字・決まりは、今のまま使う
-            - `.github/factory/talk.md` の「3. ざっくり画面（mocks）」のとおりに作る。ただし、ファイルの置き場は `talk/` ではなく `mocks/`（`mocks/mock-a.html`・`mocks/mock-b.html`、`mocks/mocks.json`）、撮るのは `node .github/scripts/shot.mjs --out mocks --widths 1440,390 mocks/mock-a.html mocks/mock-b.html`
+            - 手順は `.github/factory/mocks.md`。最初に Read で読み、そのとおりに作る（置き場は `mocks/` だけ。最後に必ず `mocks/mocks.json` を書く）
+            - Issue とコメントは `mocks/issue.txt`。今の画面は `mocks/now/`（あれば）
             - `.github/factory/design-department.md` の「AIっぽさの型（使わない）」を守る
-            - 書いてよい場所は `mocks/` だけ
+            - 使える道具は Read・Write・Edit・Glob・Grep と、撮るコマンド `node .github/scripts/shot.mjs ...` だけ。ほかのコマンド（ls・cat・mkdir など）は断られるので使わない
+            - 質問して止まらない。オーナーはこの場にいない。迷ったら無難な解釈で作り、迷った所は `mocks.json` の `questions` に入れる
           claude_args: '--model opus --max-turns 120 --allowedTools "Read,Write,Edit,Glob,Grep,Bash(node .github/scripts/shot.mjs:*)"'
+      # 何が起きたかを、ログと Summary に残す（拒否された操作と、AIが最後に言ったこと）。
+      # 画面案（mocks/mocks.json）が無ければ、拒否された操作を手がかりに付けて、この場で1回だけやり直す
+      - name: 結果を残して、やり直すか決める
+        id: retry
+        if: ${{ !cancelled() }}
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: |
+          bash .github/scripts/ai-report.sh --title "画面案（1回目）" "$EXECUTION_FILE" || true
+          redo=false
+          if [ ! -f mocks/mocks.json ]; then redo=true; fi
+          # やり直すAIへの手がかり（1行。拒否された操作の名前だけ）
+          hint=$(bash .github/scripts/denials.sh --comment "$EXECUTION_FILE" 2> /dev/null | tr '\n' ' ' | cut -c1-300 || true)
+          echo "画面案がある：$([ -f mocks/mocks.json ] && echo yes || echo no)・やり直す：$redo"
+          echo "redo=$redo" >> "$GITHUB_OUTPUT"
+          echo "hint=${hint//$'\n'/ }" >> "$GITHUB_OUTPUT"
+      - uses: anthropics/claude-code-action@v1
+        id: claude_retry
+        if: ${{ !cancelled() && steps.retry.outputs.redo == 'true' }}
+        continue-on-error: true
+        with:
+          allowed_bots: ${{ steps.bots.outputs.list }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            このリポジトリ（${{ github.repository }}）の Issue #${{ github.event.issue.number }} は、見た目の大きい作り直しか新しい画面です。作る前に、オーナーに選んでもらうざっくり画面を2案作ってください。
+            - 手順は `.github/factory/mocks.md`。最初に Read で読み、そのとおりに作る（置き場は `mocks/` だけ。最後に必ず `mocks/mocks.json` を書く）
+            - Issue とコメントは `mocks/issue.txt`。今の画面は `mocks/now/`（あれば）
+            - `.github/factory/design-department.md` の「AIっぽさの型（使わない）」を守る
+            - 使える道具は Read・Write・Edit・Glob・Grep と、撮るコマンド `node .github/scripts/shot.mjs ...` だけ。ほかのコマンド（ls・cat・mkdir など）は断られるので使わない
+            - 質問して止まらない。オーナーはこの場にいない。迷ったら無難な解釈で作り、迷った所は `mocks.json` の `questions` に入れる
+            - これは2回目です。前回は `mocks/mocks.json` が書かれずに終わりました。${{ steps.retry.outputs.hint }}（断られた操作は使わない）。`mocks/` に書きかけのファイルがあれば、それを使って仕上げる
+          claude_args: '--model opus --max-turns 120 --allowedTools "Read,Write,Edit,Glob,Grep,Bash(node .github/scripts/shot.mjs:*)"'
+      - name: やり直しの結果も残す
+        if: ${{ !cancelled() && steps.claude_retry.outcome != 'skipped' }}
+        env:
+          EXECUTION_FILE: ${{ steps.claude_retry.outputs.execution_file }}
+        run: bash .github/scripts/ai-report.sh --title "画面案（やり直し）" "$EXECUTION_FILE" || true
+      # 実行記録も渡す（publish が、拒否された操作をコメントに書くのに使う）
+      - name: 実行記録を置く
+        if: ${{ !cancelled() }}
+        env:
+          EXECUTION_FILE: ${{ steps.claude_retry.outputs.execution_file || steps.claude.outputs.execution_file }}
+        run: |
+          mkdir -p mocks
+          if [ -n "$EXECUTION_FILE" ] && [ -f "$EXECUTION_FILE" ]; then cp "$EXECUTION_FILE" mocks/claude-execution-output.json; fi
       - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with:
@@ -80,6 +133,7 @@ jobs:
             mocks/mock-*.html
             mocks/mock-*-1440.png
             mocks/mock-*-390.png
+            mocks/claude-execution-output.json
           retention-days: 3
 
   publish:
@@ -91,6 +145,35 @@ jobs:
       contents: write
       issues: write
     steps:
+      # 秘密鍵を PKCS#8 にそろえる（create-github-app-token は Node 24 だと「BEGIN RSA PRIVATE KEY」の形式を読めず Invalid keyData になる）
+      - name: パイプラインの鍵の秘密鍵をそろえる
+        id: app-key
+        if: vars.PIPELINE_APP_ID != ''
+        continue-on-error: true
+        env:
+          KEY: ${{ secrets.PIPELINE_APP_PRIVATE_KEY }}
+        run: |
+          # 貼るときに改行が消えて1行になっていても、頭と終わりの行と中身から組み立て直す
+          k=$(printf '%s' "$KEY" | tr -d '\r'); k=${k//\\n/$'\n'}
+          type=$(printf '%s' "$k" | grep -oE 'BEGIN [A-Z ]*PRIVATE KEY' | head -1 | sed 's/^BEGIN //')
+          # 頭と終わりの行が抜けていたら、GitHub App の鍵の形式（RSA）とみなす
+          [ -n "$type" ] || type="RSA PRIVATE KEY"
+          body=$(printf '%s' "$k" | sed -e 's/-----BEGIN [A-Z ]*PRIVATE KEY-----//' -e 's/-----END [A-Z ]*PRIVATE KEY-----//' | tr -d ' \n\t"')
+          pem=$(printf -- '-----BEGIN %s-----\n%s\n-----END %s-----\n' "$type" "$(printf '%s' "$body" | fold -w 64)" "$type" | openssl pkey 2> /dev/null) \
+            || { b=no; e=no; case "$k" in *"-----BEGIN"*) b=yes;; esac; case "$k" in *"-----END"*) e=yes;; esac
+                 echo "::error::PIPELINE_APP_PRIVATE_KEY を秘密鍵として読めません（.pem の中身を -----BEGIN から -----END まで全部貼る）。手がかり：全体 ${#KEY} 文字・$(printf '%s\n' "$KEY" | wc -l) 行・BEGIN の行 $b・END の行 $e・中身 ${#body} 文字（2048ビットの鍵なら中身は約1,600文字）"; exit 1; }
+          while IFS= read -r line; do [ -n "$line" ] && echo "::add-mask::$line"; done <<< "$pem"
+          { echo 'pem<<PEM_END'; echo "$pem"; echo 'PEM_END'; } >> "$GITHUB_OUTPUT"
+      # パイプラインの鍵：GitHub App があれば、その1時間だけの鍵を使う（回数制限がオーナーと別・期限切れなし）。無ければ PIPELINE_TOKEN
+      - name: パイプラインの鍵を作る
+        id: app-token
+        if: steps.app-key.outputs.pem != ''
+        # 鍵が作れなくても（秘密鍵の貼り間違いなど）止めずに PIPELINE_TOKEN で続ける。Doctor が ❌ で知らせる
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.PIPELINE_APP_ID }}
+          private-key: ${{ steps.app-key.outputs.pem }}
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
@@ -100,10 +183,23 @@ jobs:
         with:
           name: mocks-out
           path: out
+      # MOCKS_RETRY=1：やり直しは work の中でもう済んでいる。ここでも画面案が無ければ、止まらずに案なしで企画（ai:plan）へ進む。
+      # ai:plan で企画のワークフローを動かすので、パイプラインの鍵で付ける（github.token で付けたラベルは次のワークフローを動かさない。
+      # そのときは見張り役が拾うまで待つ）
       - env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN || github.token }}
+          MOCKS_RETRY: "1"
+          CLAUDE_EXECUTION_FILE: out/claude-execution-output.json
           ISSUE: ${{ github.event.issue.number }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
         run: .github/scripts/mocks-publish.sh
+      - name: 進捗ログ（画面案）
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          STARTED: ${{ needs.work.outputs.started }}
+          RESULT: ${{ needs.work.result == 'success' && needs.work.outputs.outcome == 'success' && 'success' || 'failure' }}
+        run: bash .github/scripts/step-log.sh --issue "$ISSUE" --step mocks --model opus --result "$RESULT" ${STARTED:+--started "$STARTED"}

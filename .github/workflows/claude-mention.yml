@@ -35,6 +35,21 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      # あとで使う道具（PRのコードを動かしてよいかの判断・結果の記録）は、main の版を API で取ってくる。
+      # 作業フォルダの版は使わない：行へのコメント（pull_request_review_comment）で起きたときは、作業フォルダが最初からPRのコードで、
+      # AIのアクションもあとでPRのブランチに切り替える。PR（AI）が書き換えたスクリプトに、判断や記録をさせない
+      - name: 道具を main から取ってくる
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.repository.default_branch }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/pipeline-tools"
+          for f in pipeline-lib ai-report denials step-log pr-trust notify; do
+            gh api -H "Accept: application/vnd.github.raw" "repos/$GITHUB_REPOSITORY/contents/.github/scripts/$f.sh?ref=$BASE" \
+              > "$RUNNER_TEMP/pipeline-tools/$f.sh" 2> /dev/null || rm -f "$RUNNER_TEMP/pipeline-tools/$f.sh"
+          done
+          chmod +x "$RUNNER_TEMP/pipeline-tools/"*.sh 2> /dev/null || true
       # 言語の実行環境と依存を入れる（pipeline.json に合わせる。無ければ今までの Node 22・npm ci）
       - name: 実行環境をそろえる
         id: stack
@@ -73,8 +88,67 @@ jobs:
             list="${SENDER},${SENDER%\[bot\]}"
           fi
           echo "list=$list" >> "$GITHUB_OUTPUT"
+      # AIのアクションは、PRの作者に書き込み権限が確認できないとき（ボットは必ずこの扱い）、npm・npx などのコマンドを、
+      # --allowedTools に入っていても拒否する（restrict_untrusted_prs）。パイプラインのPRは App（ボット）が作るので、
+      # そのままだと修正AIは確認コマンドを1つも動かせない。このリポジトリの claude/ ブランチのPRのときだけ、拒否を外す（pr-trust.sh）
+      - name: PRのコードを動かしてよいか決める
+        id: trust
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.issue.number || github.event.pull_request.number }}
+        run: bash "$RUNNER_TEMP/pipeline-tools/pr-trust.sh"
+      # 進捗ログ：自動の修正依頼（auto-fix）のときだけ、何回目かを残す
+      - name: 進捗ログ（修正・開始）
+        id: fixlog
+        if: ${{ contains(github.event.comment.body, '<!-- auto-fix') }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.issue.number || github.event.pull_request.number }}
+          BODY: ${{ github.event.comment.body }}
+        run: |
+          pair=$(printf '%s' "$BODY" | grep -oE '自動の依頼 [0-9]+/[0-9]+' | tail -1 | grep -oE '[0-9]+/[0-9]+' || true)
+          n="${pair%%/*}"; max="${pair##*/}"
+          echo "attempt=${n:-1}" >> "$GITHUB_OUTPUT"
+          echo "max=${max:-3}" >> "$GITHUB_OUTPUT"
+          bash "$RUNNER_TEMP/pipeline-tools/step-log.sh" --pr "$PR" --step fix --model "$MODEL" --result running --attempt "${n:-1}" --max-attempts "${max:-3}"
       - uses: anthropics/claude-code-action@v1
+        id: claude
         with:
           allowed_bots: ${{ steps.bots.outputs.list }}
+          restrict_untrusted_prs: ${{ steps.trust.outputs.restrict != 'false' }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: "--model ${{ env.MODEL }} --max-turns ${{ env.MAX_TURNS }} --allowedTools \"Bash(gh pr view:*),Bash(gh pr edit:*),Bash(gh issue view:*),Bash(gh pr comment:*),Bash(git fetch:*),Bash(git merge:*),Bash(git status:*),Bash(git diff:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),${{ steps.stack.outputs.allowed }},${{ steps.visual.outputs.allowed }},Bash(.github/scripts/tests/run-all.sh),Bash(bash .github/scripts/tests/run-all.sh),Bash(shellcheck:*),Skill\" --disallowedTools \"Bash(npm run test:visual -- --update-snapshots:*),Bash(npm run test:visual -- -u:*),Bash(npx playwright test --update-snapshots:*),Bash(npx playwright test -u:*),Bash(git push --force:*),Bash(git push -f:*),Bash(git push --force-with-lease:*),Bash(git rebase:*)\" --append-system-prompt \"コマンドは1つずつ動かす（; や && や | でつなぐ・cd で移る・2>&1 を付けると、許可されずに手数だけ減る）。ファイルを読むのは sed・cat・head ではなく Read、探すのは grep・find ではなく Grep・Glob を使う。push の前に、git fetch origin main と git merge origin/main で最新の main を取り込んでから、確認コマンドをもう一度通して push する。作業中に main のワークフローが更新されると、古い main のままの push は GitHub に拒否されるため。コンフリクトしたら両方の変更を残して解消する。.github/ のファイルは自分では変えない。見た目のテスト（test:visual）がある所では、npm run test:visual -- -g テスト名（または npx playwright test -g テスト名）で、自分で動かして位置や数値を確かめられる（基準の画像の撮り直しはしない）。見た目のテスト（test:visual）が落ちていて .visual-diff/ に画像があるときは、Read で開いて見る（〜-expected.png が前、〜-actual.png が今、〜-diff.png が違う所）。Issue で頼まれた変更による差なら、PR に「見た目を変えたので visual:update ラベルで基準の画像を撮り直してください」と書く。頼まれていない崩れ（文字の重複・はみ出し・ずれ・高さの急な変化など）なら、原因のコードを探して直す。.visual-diff/ はコミットしない。PR の説明（本文）を直すときは、新しい本文を Write で .pr-body.md に書いてから gh pr edit 番号 --body-file .pr-body.md を1つだけ動かす（$(...)・&&・| でつながない。つなぐと許可されない）。.pr-body.md はコミットしない。Issue は gh issue view 番号 で読める。\""
+      # 何が起きたかを、ログと Summary に残す（拒否された操作と、AIが最後に言ったこと）。写しておいた main の版を動かす
+      - name: AIの結果を残す
+        if: ${{ !cancelled() }}
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: bash "$RUNNER_TEMP/pipeline-tools/ai-report.sh" --title "修正AI" "$EXECUTION_FILE" || true
+      - name: 進捗ログ（修正・終了）
+        if: ${{ !cancelled() && steps.fixlog.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.issue.number || github.event.pull_request.number }}
+          RESULT: ${{ steps.claude.outcome == 'success' && 'success' || 'failure' }}
+          ATTEMPT: ${{ steps.fixlog.outputs.attempt }}
+          MAX: ${{ steps.fixlog.outputs.max }}
+        run: bash "$RUNNER_TEMP/pipeline-tools/step-log.sh" --pr "$PR" --step fix --model "$MODEL" --result "$RESULT" --attempt "$ATTEMPT" --max-attempts "$MAX"
+      # AIの実行記録を、データとして進行役（pipeline.yml の after-mention）に渡す。拒否された操作を読んで、次の動きを決めるのに使う
+      - name: AIの結果を取っておく
+        if: ${{ !cancelled() }}
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/ai-result"
+          if [ -n "$EXECUTION_FILE" ] && [ -f "$EXECUTION_FILE" ]; then cp "$EXECUTION_FILE" "$RUNNER_TEMP/ai-result/execution.json"; fi
+          touch "$RUNNER_TEMP/ai-result/.keep"
+      - uses: actions/upload-artifact@v6
+        if: ${{ !cancelled() }}
+        with:
+          name: ai-result
+          path: ${{ runner.temp }}/ai-result
+          include-hidden-files: true
+          retention-days: 3
