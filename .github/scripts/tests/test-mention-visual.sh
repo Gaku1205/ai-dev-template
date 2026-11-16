@@ -52,6 +52,33 @@ setup_case 'うまくいきませんでした。' "$all_ok" success '見た目�
 run_after > /dev/null
 assert_contains "visual:update が付く" "$(labels_of 58)" "visual:update"
 
+echo "== 2回撮り直したあとに main を取り込んだ（基準の画像は main の側に戻った）：もう一度撮り直す（agent-desk #316）"
+setup_case '`visual:update` で撮り直してください。' "$visual_only"
+state_py "
+for i in (60, 61): s['comments'].append({'id':i,'issue':'58','body':'撮り直します\\n<!-- auto-visual-update -->','user':{'login':'p'},'created_at':'$(ago 30)','updated_at':'$(ago 30)'})
+s['pr_commits']={'58':[{'sha':'a1','parents':[{'sha':'p'}],'commit':{'committer':{'date':'$(ago 40)'}}},{'sha':'m1','parents':[{'sha':'a1'},{'sha':'main'}],'commit':{'committer':{'date':'$(ago 10)'}}}]}"
+run_after > /dev/null
+assert_contains "visual:update が付く" "$(labels_of 58)" "visual:update"
+assert_not_contains "人間に回さない" "$(labels_of 58)" "ai:stuck"
+assert_contains "取り込み後の1回目として数える" "$(comments_of 58)" "1/2回目"
+
+echo "== main を取り込んだ後に2回撮り直した：人間に回す"
+setup_case '`visual:update` で撮り直してください。' "$visual_only"
+state_py "
+for i in (60, 61): s['comments'].append({'id':i,'issue':'58','body':'撮り直します\\n<!-- auto-visual-update -->','user':{'login':'p'},'created_at':'$(ago 5)','updated_at':'$(ago 5)'})
+s['pr_commits']={'58':[{'sha':'m1','parents':[{'sha':'a1'},{'sha':'main'}],'commit':{'committer':{'date':'$(ago 10)'}}}]}"
+run_after > /dev/null
+assert_contains "ai:stuck" "$(labels_of 58)" "ai:stuck"
+
+echo "== 人間が ai:stuck を外して続きを頼んだ後は、数え直す"
+setup_case '`visual:update` で撮り直してください。' "$visual_only"
+state_py "
+for i in (60, 61): s['comments'].append({'id':i,'issue':'58','body':'撮り直します\\n<!-- auto-visual-update -->','user':{'login':'p'},'created_at':'$(ago 30)','updated_at':'$(ago 30)'})
+s['comments'].append({'id':62,'issue':'58','body':'続きから\\n<!-- auto-resume -->','user':{'login':'p'},'created_at':'$(ago 20)','updated_at':'$(ago 20)'})"
+run_after > /dev/null
+assert_contains "visual:update が付く" "$(labels_of 58)" "visual:update"
+assert_not_contains "人間に回さない" "$(labels_of 58)" "ai:stuck"
+
 echo "== 2回撮り直したあと、3回目の同じ依頼は人間に回す"
 setup_case '`visual:update` で撮り直してください。' "$visual_only"
 state_py "

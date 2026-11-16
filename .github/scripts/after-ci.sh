@@ -85,13 +85,13 @@ case "$CONCLUSION" in
   failure)
     # 見た目のテストだけが落ちていて、PRに「見た目を変えた」（visual:update）と書いてあるなら、
     # 意図した変更なので、AIに直させず基準の画像を撮り直す（visual-update.yml が動き、終わるとCIがもう一度走る）。
-    # 意図していない見た目の崩れは、今まで通りAIに直させる。撮り直しは1つのPRで2回まで
+    # 意図していない見た目の崩れは、今まで通りAIに直させる。撮り直しは、main を最後に取り込んだ後で2回まで（visual_update_count）
     if [ -n "${RUN_ID:-}" ] && [ -n "${READ_TOKEN:-}" ]; then
       failed_steps=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=50" \
         -q '[.jobs[].steps[] | select(.conclusion == "failure") | .name]' 2> /dev/null || echo '[]')
       only_visual=$(printf '%s' "$failed_steps" | jq 'length > 0 and all(.[]; . == "見た目のテスト")')
       pr_body=$(gh api "repos/$REPO/pulls/$pr" -q '.body // ""')
-      updated=$(all_comments "$pr" | jq --arg m "$VISUAL_MARK" '[.[] | select(.body | contains($m))] | length')
+      updated=$(visual_update_count "$pr")
       if [ "$only_visual" = "true" ] && printf '%s' "$pr_body" | grep -q 'visual:update' && [ "$updated" -lt 2 ]; then
         comment "$pr" "見た目のテストだけが落ちていて、見た目を変えたPRなので、基準の画像をCIの環境で撮り直します（自動、$((updated + 1))回目）。
 

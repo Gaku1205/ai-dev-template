@@ -77,6 +77,20 @@ all_comments() {
   gh api "repos/$REPO/issues/$1/comments?per_page=100" --paginate --slurp | jq 'add // []'
 }
 
+# 基準の画像を自動で撮り直した回数（上限の数え方）。
+# 数えるのは、PRに main を最後に取り込んだ後（と、人間が ai:stuck を外して続きを頼んだ後）の撮り直しだけ。
+# main を取り込むとき、基準の画像のコンフリクトは main の側を取る決まりなので、それより前の撮り直しは消えている。
+# 前の撮り直しまで数えると、消えた分で上限に届き、一度も撮り直していない画像のまま人間に回してしまう（agent-desk #316）
+visual_update_count() { # PR番号 [コメントのJSON（無ければ取る）]
+  local pr=$1 comments=${2:-} since
+  [ -z "$comments" ] && comments=$(all_comments "$pr")
+  since=$(gh api "repos/$REPO/pulls/$pr/commits?per_page=100" --paginate --slurp 2> /dev/null \
+    | jq -r 'add // [] | map(select((.parents // [] | length) > 1) | .commit.committer.date) | max // ""' 2> /dev/null) || since=""
+  printf '%s' "$comments" | jq --arg m "$VISUAL_MARK" --arg resume "$RESUME_MARK" --arg since "$since" '
+    ((map(select(.body | contains($resume)) | .created_at) + [$since]) | max) as $from
+    | [.[] | select((.body | contains($m)) and .created_at > $from)] | length'
+}
+
 issue_title() {
   gh api "repos/$REPO/issues/$1" -q .title
 }
