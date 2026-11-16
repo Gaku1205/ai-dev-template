@@ -96,7 +96,7 @@ if m:
     n=m.group(1); meta=st.setdefault('issues_meta',{}).setdefault(n,{})
     if method=='PATCH':
         meta.update({k:v for k,v in fields.items() if k in('state','title')}); save(); print('{}'); sys.exit(0)
-    out({'title':meta.get('title','タイトル'+n),'state':meta.get('state','open'),'user':{'login':st.get('authors',{}).get(n,'o')},'updated_at':st['issue_updated'].get(n,now)}); sys.exit(0)
+    out({'title':meta.get('title','タイトル'+n),'state':meta.get('state','open'),'body':meta.get('body',''),'labels':[{'name':x} for x in st['labels'].get(n,[])],'user':{'login':st.get('authors',{}).get(n,'o')},'updated_at':st['issue_updated'].get(n,now)}); sys.exit(0)
 if base=='issues' and method=='POST':
     meta=st.setdefault('issues_meta',{})
     num=str(max([int(k) for k in list(st['labels'])+list(meta)]+[100])+1)

@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# 順番待ち：触るファイルが進行中の作業と重ならない物は並べて始める・priority:high を先に（ai-dev-template #72）
+source "$(dirname "$0")/lib.sh"
+setup_mock
+next() { run_script queue-next.sh; }
+body() { printf '本文\n<!-- ai-touches: %s -->' "$1"; }
+state_with() { # JSON（labels・issues_meta・pulls・files・contents）
+  init_state "$1"
+}
+
+echo "== 部品：触るファイルの読み取りと重なり"
+source "$SCRIPTS_DIR/pipeline-lib.sh"; trap - ERR; set +e
+assert_eq "印から読む" "$(printf 'src/a.ts\nsrc/b/')" "$(touches_from_body "$(body ' src/a.ts , ./src/b/ ')")"
+assert_eq "印が無ければ空" "" "$(touches_from_body "本文だけ")"
+paths_overlap "src/a.ts" "src/a.ts"; assert_eq "同じファイル" "0" "$?"
+paths_overlap "src/lib/" "src/lib/x.ts"; assert_eq "フォルダの中" "0" "$?"
+paths_overlap "src/lib/x.ts" "src/lib/"; assert_eq "逆向きも" "0" "$?"
+paths_overlap "src/lib/a.ts" "src/lib/b.ts"; assert_eq "別のファイルは重ならない" "1" "$?"
+paths_overlap "src/components/A.tsx" "src/app/page.tsx" 0; assert_eq "見た目のテストが無ければ画面どうしも並べる" "1" "$?"
+paths_overlap "src/components/A.tsx" "src/app/page.tsx" 1; assert_eq "見た目のテストがあれば画面どうしは重なり" "0" "$?"
+
+echo "== 進行中の物が無い：priority:high を先に始める（番号が大きくても）"
+state_with '{"labels":{"3":["ai:queue"],"9":["ai:queue","priority:high"]}}'
+next > /dev/null
+assert_contains "#9 が実装へ" "$(labels_of 9)" "ai:implement"
+assert_eq "#3 は待ち" "ai:queue" "$(labels_of 3)"
+
+echo "== 実装中の物と触るファイルが重ならない：並べて始める（上限 2）"
+state_with "$(python3 -c "
+import json
+print(json.dumps({'labels':{'1':['ai:implement'],'3':['ai:queue'],'4':['ai:queue']},
+ 'issues_meta':{'1':{'title':'a','body':'''$(body src/lib/a.ts)'''},'3':{'title':'b','body':'''$(body src/lib/b.ts)'''},'4':{'title':'c','body':'''$(body src/lib/c.ts)'''}}}))")"
+out=$(next)
+assert_contains "#3 を始める" "$(labels_of 3)" "ai:implement"
+assert_eq "上限なので #4 は待つ" "ai:queue" "$(labels_of 4)"
+assert_contains "理由" "$(comments_of 3)" "重ならないので、並べて始めます"
+
+echo "== 重なる物は待ち、重ならない次の物を始める"
+state_with "$(python3 -c "
+import json
+print(json.dumps({'labels':{'1':['ai:implement'],'3':['ai:queue'],'4':['ai:queue']},
+ 'issues_meta':{'1':{'title':'a','body':'''$(body src/lib/)'''},'3':{'title':'b','body':'''$(body src/lib/b.ts)'''},'4':{'title':'c','body':'''$(body docs/x.md)'''}}}))")"
+out=$(next)
+assert_eq "#3 は重なるので待つ" "ai:queue" "$(labels_of 3)"
+assert_contains "#4 を始める" "$(labels_of 4)" "ai:implement"
+assert_contains "待つ理由を出す" "$out" "#3：進行中の作業と触るファイルが重なる"
+
+echo "== 印の無い物は、進行中の物があれば待つ（今までどおり）"
+state_with "$(python3 -c "
+import json
+print(json.dumps({'labels':{'1':['ai:implement'],'3':['ai:queue']},
+ 'issues_meta':{'1':{'title':'a','body':'''$(body src/lib/a.ts)'''},'3':{'title':'b','body':'本文'}}}))")"
+next > /dev/null
+assert_eq "#3 は待つ" "ai:queue" "$(labels_of 3)"
+
+echo "== 進行中の物の触るファイルが分からない：並べない"
+state_with "$(python3 -c "
+import json
+print(json.dumps({'labels':{'1':['ai:implement'],'3':['ai:queue']},
+ 'issues_meta':{'1':{'title':'a','body':'本文'},'3':{'title':'b','body':'''$(body src/lib/b.ts)'''}}}))")"
+out=$(next)
+assert_eq "#3 は待つ" "ai:queue" "$(labels_of 3)"
+assert_contains "理由" "$out" "分からない物がある"
+
+echo "== open のPRは、変えたファイルで比べる（配布のPRなど、AI以外のPRも）"
+state_with "$(python3 -c "
+import json
+print(json.dumps({'labels':{'3':['ai:queue'],'4':['ai:queue']},
+ 'pulls':[{'number':20,'state':'open','head':{'ref':'pipeline-sync/abc','sha':'s'},'labels':[]}],'files':['.github/workflows/ci.yml'],
+ 'issues_meta':{'3':{'title':'b','body':'''$(body .github/workflows/)'''},'4':{'title':'c','body':'''$(body src/lib/c.ts)'''}}}))")"
+next > /dev/null
+assert_eq "#3 は配布と重なるので待つ" "ai:queue" "$(labels_of 3)"
+assert_contains "#4 を始める" "$(labels_of 4)" "ai:implement"
+
+echo "== 見た目のテストがあるリポジトリ：画面どうしは並べない"
+state_with "$(python3 -c "
+import json
+print(json.dumps({'labels':{'1':['ai:implement'],'3':['ai:queue']},'contents':{'main':{'tests/visual':'[]'}},
+ 'issues_meta':{'1':{'title':'a','body':'''$(body src/components/A.tsx)'''},'3':{'title':'b','body':'''$(body src/app/page.tsx)'''}}}))")"
+next > /dev/null
+assert_eq "#3 は待つ" "ai:queue" "$(labels_of 3)"
+finish
