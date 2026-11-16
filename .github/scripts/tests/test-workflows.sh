@@ -231,11 +231,47 @@ keep = [st for st in steps if st.get("name") == "作った物を取っておく"
 out.append("ship:" + ("ok" if "steps.final.outputs.ok" in str(keep["env"]) and ".checks-ok" in keep["run"] else "ng"))
 env = [st for st in j["build"]["steps"] if st.get("name") == "新しいサービスを作る"][0]["env"]
 out.append("env:" + ("ok" if all(k in env for k in ("SITE_DIR", "TODO_FILE", "DESIGN_REF_DIR")) else "ng"))
-out.append("no-critic" if not any("critic" in str(i) or "hide" in str(i) for i in ids) else "critic-left")
 print(",".join(out))
 PY2
 )
-assert_eq "デザイン担当の画面" "checks:ok,fixer:ok,recheck:ok,final:ok,ship:ok,env:ok,no-critic" "$result"
+assert_eq "デザイン担当の画面" "checks:ok,fixer:ok,recheck:ok,final:ok,ship:ok,env:ok" "$result"
+
+echo "== デザインの審査：作ったAIとは別のAI（審査役）が画像だけを見る（読む・書くだけ）。合格はスクリプトが決め、届かなければ1回だけ直させて、もう一度審査する"
+result=$(python3 - "$WORKFLOWS" <<'PY2'
+import sys, yaml
+w = sys.argv[1]
+out = []
+for f, job in (("factory-talk.yml", "work"), ("factory.yml", "design"), ("claude-mocks.yml", "work")):
+    steps = yaml.safe_load(open(f"{w}/{f}"))["jobs"][job]["steps"]
+    ids = [st.get("id") for st in steps]
+    ok = True
+    order = [ids.index(i) for i in ("review1", "judge1", "verdict1", "review2", "judge2", "verdict2")]
+    ok &= order == sorted(order)
+    fix = "jfix" if f == "factory.yml" else "fix"
+    ok &= ids.index("verdict1") < ids.index(fix) < ids.index("review2")
+    for n in ("1", "2"):
+        j = steps[ids.index("judge" + n)]
+        # 審査役は、読む・探す・書くだけ（コマンドもネットも無し）。関門と合格の判定はスクリプト
+        ok &= '--allowedTools "Read,Glob,Write"' in j["with"]["claude_args"] and ".github/factory/judge.md" in j["with"]["prompt"] and j.get("continue-on-error") is True
+        ok &= steps[ids.index("review" + n)]["run"].startswith(".github/scripts/design-review.sh prepare")
+        ok &= steps[ids.index("verdict" + n)]["run"].startswith(".github/scripts/design-review.sh verdict")
+    # 直すのは、合格に届かなかったときだけ（審査できなかった none では直させない）
+    cond = steps[ids.index(fix)].get("if", "") if f != "factory.yml" else steps[ids.index("snapshot")].get("if", "")
+    ok &= "steps.verdict1.outputs.pass == 'false'" in cond
+    out.append(f"{f}:" + ("ok" if ok else "ng"))
+# 工場：直して確認コマンドが通らなくなったら、直す前の物に戻す。2回目の審査は、通ったときだけ
+steps = yaml.safe_load(open(f"{w}/factory.yml"))["jobs"]["design"]["steps"]
+ids = [st.get("id") for st in steps]
+names = [st.get("name") for st in steps]
+c3 = steps[ids.index("check3")]; back = steps[names.index("通らなければ、直す前の物に戻す")]
+out.append("restore:" + ("ok" if c3["run"] == ".github/scripts/factory-checks.sh" and "steps.check3.outputs.ok != 'true'" in back["if"] and "before-judge-fix" in back["run"]
+                         and "steps.check3.outputs.ok == 'true'" in steps[ids.index("review2")]["if"] and ids.index("review2") < ids.index("final") else "ng"))
+# ゲームは審査しない（写真や欄の問いが合わない）
+out.append("no-game:" + ("ok" if "!= 'game'" in steps[ids.index("review1")]["if"] and "!= 'webgame'" in steps[ids.index("review1")]["if"] else "ng"))
+print(",".join(out))
+PY2
+)
+assert_eq "デザインの審査" "factory-talk.yml:ok,factory.yml:ok,claude-mocks.yml:ok,restore:ok,no-game:ok" "$result"
 
 echo "== 実装の審査役：画像だけを見る（読む・書くだけ。コマンドは動かせない）"
 result=$(python3 - "$WORKFLOWS" <<'PY2'
@@ -244,7 +280,10 @@ w = sys.argv[1]
 j = yaml.safe_load(open(f"{w}/claude-implement.yml"))["jobs"]["implement"]["steps"]
 jid = [st.get("id") for st in j]
 c = j[jid.index("critic")]
-print("implement-critic:" + ("ok" if '--allowedTools "Read,Glob,Write"' in c["with"]["claude_args"] and jid.index("review_shots") < jid.index("critic") < jid.index("review_judge") < jid.index("fix") else "ng"))
+rj = j[jid.index("review_judge")]
+print("implement-critic:" + ("ok" if '--allowedTools "Read,Glob,Write"' in c["with"]["claude_args"] and ".github/factory/judge.md" in c["with"]["prompt"]
+                             and "design-judge.py verdict --mode change" in rj["run"] and "--critique .review/critique.md" in rj["run"]
+                             and jid.index("review_shots") < jid.index("critic") < jid.index("review_judge") < jid.index("fix") else "ng"))
 PY2
 )
 assert_eq "実装の審査役" "implement-critic:ok" "$result"
@@ -348,7 +387,7 @@ import os, sys, yaml
 w = sys.argv[1]
 d = yaml.safe_load(open(f"{w}/claude-mocks.yml"))["jobs"]
 work = d["work"]["steps"]; pub = d["publish"]["steps"]
-ai = [st for st in work if str(st.get("uses", "")).startswith("anthropics/claude-code-action")]
+ai = [st for st in work if str(st.get("uses", "")).startswith("anthropics/claude-code-action") and st.get("id") in ("claude", "claude_retry")]
 out = []
 out.append("doc:" + ("ok" if len(ai) == 2 and all(".github/factory/mocks.md" in st["with"]["prompt"] and "talk/" not in st["with"]["prompt"] for st in ai) and os.path.exists(f"{w}/../factory/mocks.md") else "ng"))
 out.append("retry:" + ("ok" if len(ai) == 2 and ai[1].get("if") and "steps.retry.outputs.redo == 'true'" in ai[1]["if"] else "ng"))

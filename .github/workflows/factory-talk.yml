@@ -130,10 +130,15 @@ jobs:
     needs: route
     if: contains(fromJSON('["ideas","looks","mocks","confirm"]'), needs.route.outputs.next)
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # 作る（最大 150 手）＋ 審査 ＋ 直し ＋ もう一度審査、まで入る長さ
+    timeout-minutes: 120
     permissions:
       contents: read
       id-token: write
+    env:
+      NEXT: ${{ needs.route.outputs.next }}
+      # 作る役と直す役が使ってよい操作（同じ物）
+      MAKER_TOOLS: 'Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Bash(node .github/scripts/shot.mjs:*),Bash(node .claude/skills/taste-skill/scripts/draw.mjs:*),Bash(node .claude/skills/taste-skill/scripts/lint.mjs:*),Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*),Bash(node .claude/skills/taste-skill/scripts/assets.mjs:*)'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -151,6 +156,9 @@ jobs:
         run: |
           path=$(jq -r '.assets.looks // ""' talk/state.json); n=$(jq -r '.look // ""' talk/state.json)
           git fetch -q --depth 1 origin factory-talk && git show "FETCH_HEAD:$path/look-$n-1440.png" > talk/chosen-look.png || echo "::warning::選んだ方向の板を取れませんでした"
+          # 見た目の方向の段階で書いた設計メモ（持ち物・考えの候補）と、使った絵の出どころも引き継ぐ（無くても続ける）
+          git show "FETCH_HEAD:$path/concept.md" > talk/concept.md 2> /dev/null || rm -f talk/concept.md
+          git show "FETCH_HEAD:$path/credits.json" > talk/chosen-credits.json 2> /dev/null || rm -f talk/chosen-credits.json
       - name: 撮影の準備
         if: needs.route.outputs.next == 'looks' || needs.route.outputs.next == 'mocks'
         run: |
@@ -169,7 +177,74 @@ jobs:
             今までに決まった事は `talk/state.json` です（memo・detail＝オーナーの1行と詳しいメモ、ideas と idea＝出した案と選んだ案、looks と look、mocks と mock、
             answers＝質問の答え、notes＝オーナーの注文。notes に今の段階の注文があれば、前に出した物をそのとおりに直して出し直す）。
             書いてよい場所は `talk/` だけです。
-          claude_args: '--model ${{ needs.route.outputs.next == ''confirm'' && ''sonnet'' || ''opus'' }} --max-turns 150 --allowedTools "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Bash(node .github/scripts/shot.mjs:*),Bash(node .claude/skills/taste-skill/scripts/draw.mjs:*),Bash(node .claude/skills/taste-skill/scripts/lint.mjs:*),Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*),Bash(node .claude/skills/taste-skill/scripts/assets.mjs:*)"'
+          claude_args: '--model ${{ needs.route.outputs.next == ''confirm'' && ''sonnet'' || ''opus'' }} --max-turns 150 --allowedTools "${{ env.MAKER_TOOLS }}"'
+      # ---- 関門と審査（見た目を作る段階だけ。docs/pipeline.md「デザインの仕組み」） ----
+      # 機械で測れる事（設計メモの形・本物の絵の枚数・lint の FAIL）はスクリプトが測り、絵を見ないと分からない事は別のAI（審査役）が画像だけを見て答える。
+      # 合格かどうかはスクリプトが決める。届かなければ、指摘の紙（.judge/fix.md）を渡して1回だけ直させ、もう一度審査する。それでも届かなければ、点と残った指摘を付けてオーナーに見せる（止めない）
+      - name: 関門と審査の準備（1 回目）
+        id: review1
+        if: ${{ !cancelled() && (env.NEXT == 'looks' || env.NEXT == 'mocks') }}
+        run: .github/scripts/design-review.sh prepare talk "$NEXT"
+      - uses: anthropics/claude-code-action@v1
+        id: judge1
+        if: ${{ !cancelled() && steps.review1.outputs.ok == 'true' }}
+        continue-on-error: true
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            あなたは審査役です（作ったAIとは別のAI）。`.github/factory/judge.md` を全部読み、そのとおりに、画像だけを見て審査してください。
+            - 種類：${{ steps.review1.outputs.mode }}（この種類の問いに全部答える）
+            - 審査する物（`items` の `name`）：${{ steps.review1.outputs.items }}。画像は `.judge/made/` にある（名前の頭が物の名前）。look-1〜3 は見本の板で、いちばん上の「最初の1画面」を審査する（下の色見本・実例の欄は審査しない）
+            - 比べる実在のサイトは `.judge/refs/`、何のサービスか・オーナーが決めた事は `.judge/brief.md`
+            - 書くのは `.judge/verdict.json` だけ。コード・HTML は開かない
+          claude_args: '--model opus --max-turns 40 --allowedTools "Read,Glob,Write"'
+      - name: 審査の結果（1 回目）
+        id: verdict1
+        if: ${{ !cancelled() && steps.review1.outputs.ok == 'true' }}
+        run: .github/scripts/design-review.sh verdict "${{ steps.review1.outputs.mode }}" 1
+      - uses: anthropics/claude-code-action@v1
+        id: fix
+        if: ${{ !cancelled() && steps.verdict1.outputs.pass == 'false' }}
+        continue-on-error: true
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            あなたは工場の相談役です。「${{ needs.route.outputs.next }}」の段階（looks＝2. 見た目の方向、mocks＝3. ざっくり画面）で作った物を、別のAI（審査役）と関門が審査し、合格に届きませんでした。審査の結果を直してください。
+            `.github/factory/talk.md` の「審査の後の直し（fix）」と、その段階の節、`.github/factory/concept.md` を読み、`.judge/fix.md`（直すこと）と `.judge/made/`（審査に使った画像）を見て、今ある `talk/` の物を直す（新しく作り直さない。合格している物は触らない）。
+            直したら、その段階の「撮る」「測る」をもう一度やる。書いてよい場所は `talk/` だけです。
+          claude_args: '--model opus --max-turns 80 --allowedTools "${{ env.MAKER_TOOLS }}"'
+      - name: 関門と審査の準備（2 回目）
+        id: review2
+        if: ${{ !cancelled() && (env.NEXT == 'looks' || env.NEXT == 'mocks') && steps.fix.outcome != 'skipped' }}
+        run: .github/scripts/design-review.sh prepare talk "$NEXT"
+      - uses: anthropics/claude-code-action@v1
+        id: judge2
+        if: ${{ !cancelled() && steps.review2.outputs.ok == 'true' }}
+        continue-on-error: true
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            あなたは審査役です（作ったAIとは別のAI）。`.github/factory/judge.md` を全部読み、そのとおりに、画像だけを見て審査してください。
+            - 種類：${{ steps.review2.outputs.mode }}（この種類の問いに全部答える）
+            - 審査する物（`items` の `name`）：${{ steps.review2.outputs.items }}。画像は `.judge/made/` にある（名前の頭が物の名前）。look-1〜3 は見本の板で、いちばん上の「最初の1画面」を審査する（下の色見本・実例の欄は審査しない）
+            - 比べる実在のサイトは `.judge/refs/`、何のサービスか・オーナーが決めた事は `.judge/brief.md`
+            - 書くのは `.judge/verdict.json` だけ。コード・HTML は開かない
+          claude_args: '--model opus --max-turns 40 --allowedTools "Read,Glob,Write"'
+      - name: 審査の結果（2 回目）
+        id: verdict2
+        if: ${{ !cancelled() && steps.review2.outputs.ok == 'true' }}
+        run: .github/scripts/design-review.sh verdict "${{ steps.review2.outputs.mode }}" 2
+      # オーナーに見せる物：審査の点の行と、ざっくり画面の下の欄（2画面目）の絵
+      - name: 審査の結果をまとめる
+        if: ${{ !cancelled() && (env.NEXT == 'looks' || env.NEXT == 'mocks') }}
+        run: |
+          .github/scripts/design-review.sh summary talk/judge.md || true
+          if [ "$NEXT" = mocks ]; then
+            for k in a b; do
+              f=".judge/made/mock-$k-1440-s2.png"
+              if [ -f "$f" ] && [ ! -L "$f" ]; then cp "$f" "talk/mock-$k-1440-s2.png"; fi
+            done
+          fi
       - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with:
@@ -180,6 +255,10 @@ jobs:
             talk/look-*-1440.png
             talk/mock-*-1440.png
             talk/mock-*-390.png
+            talk/mock-*-1440-s2.png
+            talk/concept.md
+            talk/img/credits.json
+            talk/judge.md
             !talk/state.json
             !talk/route.json
           retention-days: 3

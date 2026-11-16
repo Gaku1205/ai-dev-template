@@ -19,6 +19,7 @@
 #   DESIGN_FILE・CONTEXT_FILE・LIBS_FILE（任意）：デザイン担当が書いたデザイン仕様・使う人と場面・入れた道具（1行1つ）
 #   SITE_DIR（任意）：デザイン担当が作った画面（src/ と public/）。確認コマンドが通った印（.checks-ok）があり、形が正しいときだけ入れる
 #   DESIGN_REF_DIR（任意）：デザイン担当が作った画面を最後に撮った画像（PNG）。docs/design-ref/ に入れ、あとの Issue の目標の絵にする
+#   JUDGE_FILE（任意）：審査役の点の行（design-review.sh summary）。結果のコメントに載せる
 #   IDEA_FILE（任意）：ゲームのデザイン担当が選んだ遊び方のアイデア（board.md の「## アイデア」）。結果のコメントに畳んで載せる
 #   TODO_FILE（任意）：デザイン担当が作れなかった残り（1行1つ「- 」、最大3個）。画面を入れたときだけ、1つずつ Issue にする
 #   VERCEL_TOKEN・VERCEL_TEAM_ID（任意）、COMMENT_TOKEN（元のIssueにコメントする鍵。無ければ GH_TOKEN）
@@ -318,6 +319,11 @@ if [ -n "${IDEA_FILE:-}" ] && [ -f "$IDEA_FILE" ] && [ ! -L "$IDEA_FILE" ] && [ 
 ${idea}
 
 </details>"
+fi
+# 審査役の点（作ったAIとは別のAIが、できた画面の画像だけを見て採点した行。design-judge.py summary が作る。人への呼びかけ（@）は効かなくする）
+if [ -n "${JUDGE_FILE:-}" ] && [ -f "$JUDGE_FILE" ] && [ ! -L "$JUDGE_FILE" ] && [ "$(wc -c < "$JUDGE_FILE")" -le 4000 ]; then
+  judged=$(head -c 1500 "$JUDGE_FILE" | tr -d '\r`<>' | tr '\n' ' ' | sed 's/@/＠/g')
+  [ -n "$judged" ] && note "🧐 ${judged}"
 fi
 libs_line=$(grep '^LIBS=' "$work/libs.flag" 2> /dev/null | head -1)
 [ -n "$libs_line" ] && note "✅ デザイン担当が使った道具を入れた：${libs_line#LIBS=}"

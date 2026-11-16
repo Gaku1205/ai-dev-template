@@ -1,5 +1,5 @@
 # 画面案：見た目の大きい作り直し・新しい画面の Issue は、作る前にざっくり画面を2案作って、オーナーに選んでもらう（企画AIが MOCKS と決めると ai:mocks が付く）。
-# AIは今の画面とデザイン仕様を見て、1枚の HTML を2案（PC とスマホ）作るだけ。画像は ai-mocks ブランチに置き、Issue に選択肢と質問を書いて ai:question で待つ。
+# AIは今の画面とデザイン仕様を見て、設計メモ（題材の持ち物・考え・通し表）を書き、1枚の HTML を2案（PC とスマホ）作る。別のAI（審査役）が画像だけで審査し、届かなければ1回直す。画像は ai-mocks ブランチに置き、Issue に選択肢と質問を書いて ai:question で待つ。
 # 画面案が書かれなかったら、その場で1回だけやり直し、それでも無ければ止まらずに案なしで企画へ進む（mocks-publish.sh）。
 # オーナーが答えると answer.yml が企画に戻し、企画AIが選んだ画面を「目標の画面」として Issue に書く（実装AIはそれに合わせて作る）
 name: Claude Mocks
@@ -12,7 +12,8 @@ jobs:
   work:
     if: github.event.label.name == 'ai:mocks' && github.event.issue.state == 'open'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 作る ＋ 審査 ＋ 直し ＋ もう一度審査、まで入る長さ
+    timeout-minutes: 100
     concurrency:
       group: mocks-${{ github.event.issue.number }}
       cancel-in-progress: false
@@ -76,9 +77,10 @@ jobs:
             - 手順は `.github/factory/mocks.md`。最初に Read で読み、そのとおりに作る（置き場は `mocks/` だけ。最後に必ず `mocks/mocks.json` を書く）
             - Issue とコメントは `mocks/issue.txt`。今の画面は `mocks/now/`（あれば）
             - `.github/factory/design-department.md` の「AIっぽさの型（使わない）」を守る
-            - 使える道具は Read・Write・Edit・Glob・Grep と、撮るコマンド `node .github/scripts/shot.mjs ...` だけ。ほかのコマンド（ls・cat・mkdir など）は断られるので使わない
-            - 質問して止まらない。オーナーはこの場にいない。迷ったら無難な解釈で作り、迷った所は `mocks.json` の `questions` に入れる
-          claude_args: '--model opus --max-turns 120 --allowedTools "Read,Write,Edit,Glob,Grep,Bash(node .github/scripts/shot.mjs:*)"'
+            - 最初に設計メモ（`mocks/concept.md`。`.github/factory/concept.md` のとおり）を書く。作った画面は、別のAI（審査役）が画像だけを見て審査する
+            - 使える道具は Read・Write・Edit・Glob・Grep・WebSearch・WebFetch と、手順書に書いたコマンド（撮る `node .github/scripts/shot.mjs ...`、taste-skill の draw.mjs・assets.mjs・lint.mjs・inspect.mjs）だけ。ほかのコマンド（ls・cat・mkdir など）は断られるので使わない
+            - 質問して止まらない。オーナーはこの場にいない。迷ったら、考えがはっきり出る側（大きく・濃く・本物の素材を広く）で作り、迷った所は `mocks.json` の `questions` に入れる
+          claude_args: '--model opus --max-turns 150 --allowedTools "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Bash(node .github/scripts/shot.mjs:*),Bash(node .claude/skills/taste-skill/scripts/draw.mjs:*),Bash(node .claude/skills/taste-skill/scripts/lint.mjs:*),Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*),Bash(node .claude/skills/taste-skill/scripts/assets.mjs:*)"'
       # 何が起きたかを、ログと Summary に残す（拒否された操作と、AIが最後に言ったこと）。
       # 画面案（mocks/mocks.json）が無ければ、拒否された操作を手がかりに付けて、この場で1回だけやり直す
       - name: 結果を残して、やり直すか決める
@@ -107,15 +109,89 @@ jobs:
             - 手順は `.github/factory/mocks.md`。最初に Read で読み、そのとおりに作る（置き場は `mocks/` だけ。最後に必ず `mocks/mocks.json` を書く）
             - Issue とコメントは `mocks/issue.txt`。今の画面は `mocks/now/`（あれば）
             - `.github/factory/design-department.md` の「AIっぽさの型（使わない）」を守る
-            - 使える道具は Read・Write・Edit・Glob・Grep と、撮るコマンド `node .github/scripts/shot.mjs ...` だけ。ほかのコマンド（ls・cat・mkdir など）は断られるので使わない
-            - 質問して止まらない。オーナーはこの場にいない。迷ったら無難な解釈で作り、迷った所は `mocks.json` の `questions` に入れる
+            - 最初に設計メモ（`mocks/concept.md`。`.github/factory/concept.md` のとおり）を書く。作った画面は、別のAI（審査役）が画像だけを見て審査する
+            - 使える道具は Read・Write・Edit・Glob・Grep・WebSearch・WebFetch と、手順書に書いたコマンド（撮る `node .github/scripts/shot.mjs ...`、taste-skill の draw.mjs・assets.mjs・lint.mjs・inspect.mjs）だけ。ほかのコマンド（ls・cat・mkdir など）は断られるので使わない
+            - 質問して止まらない。オーナーはこの場にいない。迷ったら、考えがはっきり出る側（大きく・濃く・本物の素材を広く）で作り、迷った所は `mocks.json` の `questions` に入れる
             - これは2回目です。前回は `mocks/mocks.json` が書かれずに終わりました。${{ steps.retry.outputs.hint }}（断られた操作は使わない）。`mocks/` に書きかけのファイルがあれば、それを使って仕上げる
-          claude_args: '--model opus --max-turns 120 --allowedTools "Read,Write,Edit,Glob,Grep,Bash(node .github/scripts/shot.mjs:*)"'
+          claude_args: '--model opus --max-turns 150 --allowedTools "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Bash(node .github/scripts/shot.mjs:*),Bash(node .claude/skills/taste-skill/scripts/draw.mjs:*),Bash(node .claude/skills/taste-skill/scripts/lint.mjs:*),Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*),Bash(node .claude/skills/taste-skill/scripts/assets.mjs:*)"'
       - name: やり直しの結果も残す
         if: ${{ !cancelled() && steps.claude_retry.outcome != 'skipped' }}
         env:
           EXECUTION_FILE: ${{ steps.claude_retry.outputs.execution_file }}
         run: bash .github/scripts/ai-report.sh --title "画面案（やり直し）" "$EXECUTION_FILE" || true
+      # ---- 関門と審査（docs/pipeline.md「デザインの仕組み」） ----
+      # 作ったAIとは別のAI（審査役）が、画像だけを見て答える。合格かどうかはスクリプトが決める。届かなければ1回だけ直させ、もう一度審査する。
+      # それでも届かなければ、点と残った指摘を付けてオーナーに見せる（止めない）
+      - name: 関門と審査の準備（1 回目）
+        id: review1
+        if: ${{ !cancelled() && hashFiles('mocks/mocks.json') != '' }}
+        env:
+          BRIEF_FILE: mocks/issue.txt
+        run: .github/scripts/design-review.sh prepare mocks
+      - uses: anthropics/claude-code-action@v1
+        id: judge1
+        if: ${{ !cancelled() && steps.review1.outputs.ok == 'true' }}
+        continue-on-error: true
+        with:
+          allowed_bots: ${{ steps.bots.outputs.list }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            あなたは審査役です（作ったAIとは別のAI）。`.github/factory/judge.md` を全部読み、そのとおりに、画像だけを見て審査してください。
+            - 種類：screen（この種類の問いに全部答える）
+            - 審査する物（`items` の `name`）：${{ steps.review1.outputs.items }}。画像は `.judge/made/` にある（名前の頭が物の名前。`-s2`・`-s3` は下へスクロールした続き）
+            - 比べる実在の画面は `.judge/refs/`、Issue（オーナーの注文）と作った側の設計メモは `.judge/brief.md`
+            - 書くのは `.judge/verdict.json` だけ。コード・HTML は開かない
+          claude_args: '--model opus --max-turns 40 --allowedTools "Read,Glob,Write"'
+      - name: 審査の結果（1 回目）
+        id: verdict1
+        if: ${{ !cancelled() && steps.review1.outputs.ok == 'true' }}
+        run: .github/scripts/design-review.sh verdict screen 1
+      - uses: anthropics/claude-code-action@v1
+        id: fix
+        if: ${{ !cancelled() && steps.verdict1.outputs.pass == 'false' }}
+        continue-on-error: true
+        with:
+          allowed_bots: ${{ steps.bots.outputs.list }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            このリポジトリ（${{ github.repository }}）の Issue #${{ github.event.issue.number }} のざっくり画面（`mocks/`）を、別のAI（審査役）と関門が審査し、合格に届きませんでした。審査の結果を直してください。
+            - 手順は `.github/factory/mocks.md` の「審査の後の直し」。`.github/factory/concept.md` も読む
+            - `.judge/fix.md`（直すこと）と `.judge/made/`（審査に使った画像）を Read で見て、今ある `mocks/` の物を直す（新しく作り直さない。合格している案は触らない。消すだけにせず、埋める）
+            - 直したら、撮り直して全部 Read で見る。`mocks/mocks.json` は、中身が変わった所だけ直す（消さない）
+            - 使える道具は Read・Write・Edit・Glob・Grep・WebSearch・WebFetch と、手順書に書いたコマンドだけ
+          claude_args: '--model opus --max-turns 80 --allowedTools "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Bash(node .github/scripts/shot.mjs:*),Bash(node .claude/skills/taste-skill/scripts/draw.mjs:*),Bash(node .claude/skills/taste-skill/scripts/lint.mjs:*),Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*),Bash(node .claude/skills/taste-skill/scripts/assets.mjs:*)"'
+      - name: 関門と審査の準備（2 回目）
+        id: review2
+        if: ${{ !cancelled() && steps.fix.outcome != 'skipped' }}
+        env:
+          BRIEF_FILE: mocks/issue.txt
+        run: .github/scripts/design-review.sh prepare mocks
+      - uses: anthropics/claude-code-action@v1
+        id: judge2
+        if: ${{ !cancelled() && steps.review2.outputs.ok == 'true' }}
+        continue-on-error: true
+        with:
+          allowed_bots: ${{ steps.bots.outputs.list }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            あなたは審査役です（作ったAIとは別のAI）。`.github/factory/judge.md` を全部読み、そのとおりに、画像だけを見て審査してください。
+            - 種類：screen（この種類の問いに全部答える）
+            - 審査する物（`items` の `name`）：${{ steps.review2.outputs.items }}。画像は `.judge/made/` にある（名前の頭が物の名前。`-s2`・`-s3` は下へスクロールした続き）
+            - 比べる実在の画面は `.judge/refs/`、Issue（オーナーの注文）と作った側の設計メモは `.judge/brief.md`
+            - 書くのは `.judge/verdict.json` だけ。コード・HTML は開かない
+          claude_args: '--model opus --max-turns 40 --allowedTools "Read,Glob,Write"'
+      - name: 審査の結果（2 回目）
+        id: verdict2
+        if: ${{ !cancelled() && steps.review2.outputs.ok == 'true' }}
+        run: .github/scripts/design-review.sh verdict screen 2
+      - name: 審査の結果をまとめる
+        if: ${{ !cancelled() }}
+        run: |
+          .github/scripts/design-review.sh summary mocks/judge.md || true
+          for k in a b; do
+            f=".judge/made/mock-$k-1440-s2.png"
+            if [ -f "$f" ] && [ ! -L "$f" ]; then cp "$f" "mocks/mock-$k-1440-s2.png"; fi
+          done
       # 実行記録も渡す（publish が、拒否された操作をコメントに書くのに使う）
       - name: 実行記録を置く
         if: ${{ !cancelled() }}
@@ -133,6 +209,9 @@ jobs:
             mocks/mock-*.html
             mocks/mock-*-1440.png
             mocks/mock-*-390.png
+            mocks/mock-*-1440-s2.png
+            mocks/concept.md
+            mocks/judge.md
             mocks/claude-execution-output.json
           retention-days: 3
 

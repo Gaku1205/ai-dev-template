@@ -129,7 +129,7 @@ Issueを作る（メモ）。ラベルが無ければ自動で ai:plan が付く
 | AI（ワークフロー） | 許可している操作 | 許可していない操作と理由 |
 | --- | --- | --- |
 | 企画AI（`claude-plan.yml`） | `Bash(gh issue view:*)`、`Bash(gh issue edit:*)`、`Bash(gh issue comment:*)`、`Bash(gh issue create:*)`、`Bash(gh issue list:*)`、`Bash(gh pr list:*)`、`Bash(gh pr diff:*)`、`Read`、`Glob`、`Grep`、`Write` | コードを変えるgit操作・npm（企画はIssueを書くだけ。`Write` は結果ファイル `plan-result.txt` のため） |
-| 画面案（`claude-mocks.yml`） | `Read`、`Write`、`Edit`、`Glob`、`Grep`、`Bash(node .github/scripts/shot.mjs:*)` | git・gh・npm・ネット（今の画面とデザイン仕様を見て、`mocks/` にざっくり画面の HTML を書いて撮るだけ。Issue は前のステップが `mocks/issue.txt` に書いておく。鍵は持たない） |
+| 画面案（`claude-mocks.yml`） | `Read`、`Write`、`Edit`、`Glob`、`Grep`、`WebSearch`、`WebFetch`、`Bash(node .github/scripts/shot.mjs:*)`、`Bash(node .claude/skills/taste-skill/scripts/draw.mjs:*)`、`Bash(node .claude/skills/taste-skill/scripts/lint.mjs:*)`、`Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*)`、`Bash(node .claude/skills/taste-skill/scripts/assets.mjs:*)` | git・gh・npm（今の画面とデザイン仕様を見て、設計メモを書き、実例と本物の素材を探して、`mocks/` にざっくり画面の HTML を書いて撮って測るだけ。Issue は前のステップが `mocks/issue.txt` に書いておく。鍵は持たない。同じジョブの審査役は `Read`・`Glob`・`Write` だけで、画像を見て `.judge/verdict.json` を書く。直す役は作る役と同じ許可） |
 | 使ってみる役（`claude-try.yml`） | `Read`、`Write`、`Glob`、`Grep`、`Bash(node .github/scripts/shot.mjs:*)` | git・gh・npm（本番のサイトを撮って試し、見つけた問題を `.try/result.json` に書くだけ。Issue は鍵を持つ別のジョブが作る） |
 | 監査役（`claude-audit.yml`） | `Read`、`Write`、`Glob`、`Grep` | コマンドは全部（仕様書とコードを読んで、食い違いを `.audit/result.json` に書くだけ。Issue は鍵を持つ別のジョブが作る） |
 | 実装AI（`claude-implement.yml`） | pipeline.json の checks のコマンド（無ければ npm run typecheck・lint・test・build。下の「言語と公開先」）、`Bash(.github/scripts/tests/run-all.sh)`、`Bash(git status:*)`、`Bash(git diff:*)`、`Bash(git add:*)`、`Bash(git commit:*)`、`Bash(git fetch:*)`、`Bash(git merge:*)`、`Bash(git checkout --ours:*)`、`Bash(git checkout --theirs:*)`、`Bash(git push:*)`、`Bash(bash .github/scripts/tests/run-all.sh)`、`Bash(shellcheck:*)`、見た目のテストがあるアプリでは `Bash(npm run test:visual)`・`Bash(npm run test:visual -- -g:*)`・`Bash(npx playwright test:*)`（手元で動かして、位置や数値を確かめるため。基準の画像の撮り直し（--update-snapshots・-u）は許さない）、画面のあるアプリでは `Bash(npm run build)`・`Bash(node .github/scripts/shot.mjs:*)`・`Bash(.github/scripts/fetch-photos.sh:*)`（作った画面を本物のブラウザで 390・1440・1920 の幅で撮り、画像を見て直すため。下の「撮って見て直す」）、`Skill`（.claude/skills/ のスキル。画面を作るときの frontend-design・taste-skill・web-design-guidelines、GSAP・Lenis が入っているアプリでの motion-gsap-lenis。taste-skill のスクリプトは、測る inspect.mjs だけ動かしてよい） | `gh`（PRやコメントは進行役が作る）、`npm run readme:shots` などの重い物（README の撮影はCIのワークフローでやる）。ファイルの編集は、このツールの標準で許可される。gitは、標準に任せると拒否されて止まったことがあるので、明示して許可している。`git push --force`・`git rebase` は許可しない |
@@ -157,8 +157,41 @@ AIのアクションは作業フォルダをPRのブランチに切り替える�
 文字だけで画面を作ると、行をまたいで揃うはずの列のずれ・重なり・何も無い帯・弱い主役に、誰も気づけない（工場で作った最初の2つのサービスで起きた）。そこで、画面を作るAIは**自分で撮って見る**。
 
 - 撮るのは `.github/scripts/shot.mjs`（依存なし。Chrome の操作は `.github/scripts/lib/cdp.mjs`（taste-skill から写した物、MIT）で、ubuntu-latest に入っている Chrome で撮る。Node 22 以上）。`--serve` でビルド済みのアプリを立ち上げてパス（`/` など）を撮るか、URL（実在のサイト）か HTML のファイルを撮る。幅は 390・1440・1920。`--scrolls N` で1画面ずつスクロールしながら N 枚撮る（スクロールで出てくる物・動きの途中が見える）。`--scale 2 --format webp` でサイトに載せる用の高精細で軽い画像にする。`--links` でページにあるリンクを出す（ギャラリーの一覧から、載っているサイトを拾う）。押す・入力する・localStorage にデータを入れるなどの操作をしてから撮る場面は `--steps` の JSON で書く（使い方はファイルの先頭）
-- **実装AI**（`claude-implement.yml`）：画面のあるアプリ（package.json に `start` がある Node のアプリ）では、確認コマンドが通ったあと `npm run build` → `node .github/scripts/shot.mjs --serve /` で撮り、画像を全部見て、`docs/design-ref/` の目標の絵があれば見比べ、目立つ問題の上位3つを直して撮り直す（最大3回）。撮った画像は `.shots/` にでき、コミットされない（`.git/info/exclude`）。そのあと、**別のAI（審査役）**が、ワークフローが撮り直した画像と目標の絵だけを見て採点し（コードは見ない）、8点に届かなければ、指摘をつけて実装AIにもう1回だけ直させる。採点はPRの本文に入る。そのぶん時間の上限を 75 分にしている
+- **実装AI**（`claude-implement.yml`）：画面のあるアプリ（package.json に `start` がある Node のアプリ）では、確認コマンドが通ったあと `npm run build` → `node .github/scripts/shot.mjs --serve /` で撮り、画像を全部見て、`docs/design-ref/` の目標の絵があれば見比べ、目立つ問題の上位3つを直して撮り直す（最大3回）。撮った画像は `.shots/` にでき、コミットされない（`.git/info/exclude`）。そのあと、**別のAI（審査役）**が、ワークフローが撮り直した画像（下へスクロールした続きも）と目標の絵だけを見て答え（コードは見ない）、合格（下の「デザインの仕組み」。今あるアプリへの変更は、足した所が `docs/design.md` の「このサービスらしさ」に沿っているか・崩れ・スマホ・足した所の型と地味さ）に届かなければ、指摘をつけて実装AIにもう1回だけ直させる。結果はPRの本文に入る。そのぶん時間の上限を 75 分にしている
 - **デザイン担当**（工場）：実在の良いサイトを撮って参考にしてから、本物の画面を作り、撮って実例と見比べて直す（下の「工場」）
+
+## デザインの仕組み（考え → 関門 → 審査）
+
+禁止の決まりを足し続けると、画面は無難で地味になる（11月2日）。決まりを外すと、AIの平均になる（11月16日。クリーム色に朱・等幅の数字・罫線だらけ、白い角丸の箱にインディゴ）。どちらも、**その題材にしか無い物が画面に無い**のが原因で、それを作ったAI自身は見抜けない。そこで、見た目を作る所は全部、次の3つを通す。特定の系統（雑誌風・ミニマルなど）には寄せない。どの系統でも、題材だけの考えが絵に出ていて、やり切っていれば通る。
+
+| 段 | 誰が | 何をするか | どこに書いてあるか |
+| --- | --- | --- | --- |
+| 1. 考え | 作るAI（Opus） | 色や文字を選ぶ前に、**設計メモ**（`concept.md`）を書く：題材の持ち物を 8〜12 個 → 考え（「この画面では、〇〇が〇〇になる」。競合の名前に入れ替えて成り立つなら捨てる）→ 埋める物（大きい文字・色の面・本物の素材・中身）→ 通し表（全部の欄・全部の画面で、考えがどう出るか）。組み方（色・文字・構図）は taste-skill の `draw.mjs` に配ってもらい、考えを運べる物を選ぶ。本物の写真・古い地図・図版は `assets.mjs`・`fetch-photos.sh` で取る | `.github/factory/concept.md` |
+| 2. 関門 | スクリプト（AIではない） | 機械で測れる事を測る：設計メモの形（持ち物8個以上・考えの1文・通し表3行以上）、**本物の絵の枚数**（出どころの記録がある画像だけを数える。ページは相談で3枚・本物の画面で4枚以上。道具の画面は問わない）、`lint.mjs` の FAIL（今ある見た目への追加は `docs/design.md` が上なので見ない） | `.github/scripts/design-judge.py gate`・`design-review.sh prepare` |
+| 3. 審査 | 審査役（作ったAIとは別の Opus。読む・書くだけ、40 手まで） | **画像だけ**を見て（下へスクロールした続き・スマホ・実在のサイトの画像と並べて）、「はい・いいえ」の問いに答え、点（見た目 40%・使いやすさ 30%・考え 20%・中身 10%）と直し方を書く。コードも HTML も見ない。直し方は「消す」だけでなく「何で埋めるか」まで書く | `.github/factory/judge.md` |
+
+**合格はスクリプトが決める**（`design-judge.py verdict`。AIに自分で合格と言わせない）：必ず通す問いが全部「はい」で、点が 7.5 以上で、関門が通っていること。
+
+- 必ず通す問い：この題材だけの考えがある（`swap`）／本物の素材が主役の位置にある（`real`）／考えが下の欄・ほかの画面まで通っている（`through`）／地味でない（`full`）／AIの型が見えない（`tells`）／崩れが無い（`broken`）／オーナーが決めた事が絵に出ている（`owner`）。今あるアプリへの変更では、足した所が「このサービスらしさ」に沿っている（`fits`）
+- 点の上限だけの問い：1秒で主役が1つ見える／同じ構図が続いていない（審査役が書いた構図の言葉が続いていれば、答えにかかわらず「いいえ」）／スマホで成立／実例の隣で見劣りしない
+- 「いいえ」は、その欄の点に上限を掛ける（taste-skill の `references/critique.md` の上限を土台にした）。答えていない問いは「いいえ」。審査役が結果を書かなかったときは、合格とも不合格とも言わず「審査できなかった」と見せる
+- 届かなければ、指摘の紙（`.judge/fix.md`）を作ったAIに渡して**1回だけ**直させ、もう一度審査する（審査は最大2回）。それでも届かなければ、止めずに、点と残った指摘を付けてオーナーに見せる（選ぶのはオーナー。完全に止めると、全自動でなくなる）
+
+どこで動くか：
+
+| 場面 | 作る役 | 審査する物 | 種類 |
+| --- | --- | --- | --- |
+| 工場の相談「見た目の方向」（`factory-talk.yml`） | 相談役（Opus・150 手。直しは 80 手） | 3つの板の「最初の1画面」。3つが色違いでなく、考えから違うか（`distinct`） | looks |
+| 工場の相談「ざっくり画面」 | 同じ | 2案を、PC は4画面ぶん・スマホは3画面ぶん下まで | screen |
+| 工場のデザイン担当（`factory.yml`。ゲームは対象外） | デザイン担当（Opus・250 手。直しは 100 手） | できた本物の画面（最初のページを下まで、ほかのページ、スマホ）。直して確認コマンドが通らなくなったら、直す前の物に戻す | screen |
+| 既存アプリの画面案（`claude-mocks.yml`） | 画面案のAI（Opus・150 手。直しは 80 手） | 2案を下まで | screen |
+| Issue の実装（`claude-implement.yml`） | 実装AI（サイズで決まるモデル。直しは 50 手） | 変えた後の画面。足した所だけを見る | change |
+
+**あとから画面を足しても「らしさ」を消さない**：工場のデザイン担当は、`docs/design.md` の最初の節 `## このサービスらしさ`（考え・しるし・埋める物・新しい画面を足すときの決め方・通し表）を書く。実装AIは、画面に触るときここを読み、審査役は足した所がそれに沿っているか（`fits`）を見る。
+
+**既存アプリの作り直し**：画面全体の見た目を作り直す Issue（`ai:mocks`）では、画面案のAIは今の色・文字・部品の形に縛られない（今の画面は「何を載せているか」を知るためだけに見る）。最初に今の画面を審査役の問いで診断し、持ち物から考えを決め、組み方を配ってもらって2案を作る。オーナーが選ぶと、設計メモ（`ai-mocks` ブランチの `concept.md`）が実装AIに渡り、実装AIは `docs/design.md` の「このサービスらしさ」を書き直して、目標の画面に無い画面も同じ考えで作り直す。
+
+相談の2つの段階の間では、設計メモと使った絵の出どころ（`credits.json`）を `factory-talk` ブランチに置いて引き継ぎ、作り始めるときはデザイン担当に渡す（`factory-refs/issue/chosen-concept.md`・`chosen-credits.json`）。オーナーに見せるコメントには、ざっくり画面の下の欄（2画面目）の絵と、審査役の点の行が付く。
 
 ## 言語と公開先（`pipeline.json`）
 
@@ -229,8 +262,8 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 いきなり作らず、オーナーに選んでもらいながら、作る物と見た目を最初に大まかに決める（あとの作り直しを減らすため）。AIの決まりは `.github/factory/talk.md`、形の確かめとコメントは `.github/scripts/factory-talk.py`・`factory-talk-publish.sh`。
 
 1. **案**：AIが、作る物の案を5つ（名前・種類・使う人・新しい所・有料の分け方・画面）と、選択式の質問を Issue のコメントに書く
-2. **見た目の方向**：選んだ案の方向を3つ。実在の良いサイトを撮って、色・文字の見本と一緒に1枚の板の画像にする
-3. **ざっくり画面**：選んだ方向で、トップの画面を2案（1枚の HTML。PC とスマホを撮る）
+2. **見た目の方向**：選んだ案の方向を3つ。色違いではなく、題材の持ち物から作った考えが3つ。それぞれ、本物の素材で組んだ「最初の1画面」を、色・文字の見本と実例と一緒に1枚の板の画像にする（審査あり。上の「デザインの仕組み」）
+3. **ざっくり画面**：選んだ方向で、トップの画面を下の欄まで全部、2案（1枚の HTML。PC とスマホを撮る。審査あり）
 4. **最終確認**：名前・説明・無料と有料・値段・最初に作る画面・決まった事を1枚にまとめる。「作る」と返事すると、`factory.yml` を動かす（相談で決めた事をそのまま使い、名前をAIに決め直させない。デザイン担当は、選んだざっくり画面と方向の板を土台に本物を作る）
 
 - 各段階で、コメントの最後に選択式の質問を付ける。オーナーの返事（番号・「全部ちがう。もっと〇〇」・注文）は、AIが「選んだ物・質問の答え・注文」に読み替える（agent-desk のボタンからの返事は、印 `<!-- factory-answer:… -->` の形が決まっているので、AIを通さない）
@@ -245,6 +278,7 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 
 1. AIが、名前（英語の小文字と -）・種類（画面のあるWebなら Next.js、会員登録と月額の有料プランがあるWebなら saas、処理が中心なら Python、exe のゲームなら game、ブラウザで遊ぶゲームなら webgame）・1行の説明を決める（AIは名前を書くだけで、鍵は持たない）。メモが中身を任せているときは、ありきたりでない案を10個考えて1つ選ぶ（ToDo・家計簿・タイマー・割り勘・サブスク管理などは選ばない）
 2. **デザイン担当**（Next.js とゲームのとき。`.github/factory/design-department.md`）：AIが見た目を決めて、**本物の Next.js の画面を最後まで作る**。それがそのまま新しいリポジトリの最初の中身になる（前は、試作の HTML と文章の仕様を描いて、別のAIが作り直していた。伝言で質が落ちるのでやめた）
+   - **設計メモから始める**：色や文字を選ぶ前に `factory-refs/concept.md`（題材の持ち物・考え・埋める物・通し表）を書く。作った画面は、確認コマンドが通ったあと、関門と審査役が見る（上の「デザインの仕組み」。11月2日に審査役を外したが、作った本人だけでは「最初の1画面だけ凝る」「本物と答えたのに描いた絵で済ます」を止められなかったので、11月16日に、合格をスクリプトが決める形で戻した）。結果の点は、できたときのコメントに載る
    - **実例から作る**：描く前に、題材と雰囲気に近い実在のサイトを 8〜15 個探して（日本語の組み方の参考になる日本のギャラリー（SANKOU! など）から先に。Issue にギャラリーの URL を書けば、そこから拾う） `shot.mjs --scrolls` で撮り、良い所を `factory-refs/board.md` に書いて、どれのどこを混ぜるか決める（言葉だけで考えると平均的な画面になるため）。Issue に貼った画像がいちばん大事な実例
    - **決まりは最低限＋AI感を出す前に弾く**：読める・押せる・スマホで崩れない・動きを止められる・目的が果たせる・実在のブランドを写さない。そのうえで、`.claude/skills/taste-skill/`（実在の良いサイト 247 個の調べから方向を配り、AIが作った感を測って弾くスキル）を使う：方向は `draw.mjs` に配ってもらう（ページは `--options 3`、道具の画面は `--app`）、AIが作った感の一覧（`references/tells.md`。クリーム色の地＋朱・テラコッタ、罫線だらけ、等幅の数字、インディゴ・紫など）を使わない、本物の写真・古い地図・図版を `assets.mjs` で探して使う、出す前に `lint.mjs`・`inspect.mjs` で測って FAIL を直す。工場の相談（見た目の方向・ざっくり画面）でも同じ（`.github/factory/talk.md`）。11月2日にいったん外した（禁止を足し続けて地味になったため）が、相談の画面がAIっぽいとオーナーが言ったので 11月16日に戻した。今のスキルは「飾りを消した分を、大きい文字・色の面・本物の写真・中身で埋める」作りなので、前のように地味にはしない
    - **作って、撮って、実例と見比べて直す**（最低3回）。写真は `.github/scripts/fetch-photos.sh "<英語の検索語>" <枚数>` で Openverse（届かなければ Wikimedia Commons）から CC0・パブリックドメインの物だけを `public/photos/` に取る（鍵は要らない。画面のあるアプリの実装AIも使える。合わせて 20 枚まで、出どころは CREDITS.md。画面で使った写真だけが入る）。動き・3D の道具は `.github/scripts/factory-add-lib.sh <名前>` で、決まった物（`gsap`・`@gsap/react`・`lenis`・`motion`・`three`・`@react-three/fiber`・`@react-three/drei`・`pixi.js`。`.github/scripts/factory-libs.sh`）だけをその場で入れ、新しいリポジトリにも同じ物が入る（アプリのAIは依存を足せないため）
@@ -336,7 +370,7 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 
 ## 画面案が作れないとき・AIの結果の見える化
 
-見た目の大きい Issue では、作る前に画面案（`ai:mocks`、`claude-mocks.yml`）を作る。AIは専用の手順書 `.github/factory/mocks.md`（置き場は `mocks/` だけ）を読んで作る。AIが画面案を書かずに終わったとき（`mocks/mocks.json` が無い）は、止まらずに次の順で進む。
+見た目の大きい Issue では、作る前に画面案（`ai:mocks`、`claude-mocks.yml`）を作る。AIは専用の手順書 `.github/factory/mocks.md`（置き場は `mocks/` だけ）を読んで作る。作れた画面案は、関門と審査役が見て、届かなければ1回直してからオーナーに見せる（上の「デザインの仕組み」。審査で止まることは無い）。AIが画面案を書かずに終わったとき（`mocks/mocks.json` が無い）は、止まらずに次の順で進む。
 
 1. **その場で1回やり直す**：`work` ジョブの中で、拒否されたツールの名前を手がかりに付けて、もう一度AIを動かす（3回目は無い）
 2. **それでも無ければ、案なしで企画へ**：`publish` が `MOCKS_RETRY=1` で `mocks-publish.sh` を動かす。画面案が無い・形が不正なら、`ai:mocks` を外して `ai:plan` を付け、「画面案は作れなかったので、案なしで進めます」とコメントする（拒否されたツール名も入る）。`ai:stuck` にはしない
