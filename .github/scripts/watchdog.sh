@@ -102,8 +102,7 @@ for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry"
     review)
       write_retry_record "$n" "$next" "$kind" "$reason" "" "$limit_first"
       remove_label "$n" "ai:retry"
-      remove_label "$n" "ai:review"
-      add_label "$n" "ai:review"
+      request_review "$n"
       ;;
     mention)
       pr_json=$(gh api "repos/$REPO/pulls/$n")

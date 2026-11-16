@@ -6,7 +6,7 @@
 # コミットが増えず、PRの説明も変わっていなければ、理由を分けて動く（classify_no_change）：
 #   基準の画像の撮り直しが要る → visual:update を付ける（main を最後に取り込んだ後で2回まで）
 #   ツールの許可が拒否された   → 拒否された操作を書いて、1回だけ同じ依頼を出し直す（2回目は人間に回す）
-#   指摘は誤りと返した         → もう一度レビューに回す（直す回数の上限に数える）
+#   指摘は誤り・前の対応で直し済みと返した → もう一度レビューに回す（直す回数の上限に数える）
 #   撮り直しを頼まれたが、main とのコンフリクトが残っている → 撮り直しは動かないので付けない。拒否された操作があれば出し直し、無ければ人間に回す
 #   分類できない               → 人間に回す（ai:stuck）
 #
@@ -38,8 +38,7 @@ for pr in $(gh api "repos/$REPO/pulls?state=open&per_page=100" -q '.[].number');
   if [ -n "$asked_sha" ] && [ "$head" = "$asked_sha" ]; then
     if [ "${CONCLUSION:-success}" = "success" ] && [ -n "$asked_body" ] && [ "$(pr_body_hash "$pr")" != "$asked_body" ]; then
       # PRの説明だけを直した。CIは走らないので、ここでレビューを付け直す（直す回数は依頼のたびに数えるので、無限には回らない）
-      remove_label "$pr" "ai:review"
-      add_label "$pr" "ai:review"
+      request_review "$pr"
       echo "PR #$pr：PRの説明が直ったので、もう一度レビューを依頼しました"
     elif [ "${CONCLUSION:-success}" != "success" ]; then
       # AIがエラーで終わったとき（使用量の上限など）は、自動でやり直す（watchdog.sh）
@@ -139,10 +138,9 @@ ${PERM_RETRY_MARK}
           if [ "$failed" != "[]" ]; then
             stop_for_human "$pr" "修正AIは「指摘は誤り（直す必要は無い）」と返して変更を入れませんでしたが、CIが落ちたまま（$(printf '%s' "$failed" | jq -r 'join("、")')）なので先へ進めません（AIのコメントを確認してください）${denied_note}"
           else
-            comment "$pr" "修正AIは「指摘は誤り（直す必要は無い）」と理由をコメントして、変更を入れませんでした。人間に回さず、もう一度レビューに回します（同じ指摘が続けば、直す回数の上限で人間に回ります）。${denied_note}" || true
-            remove_label "$pr" "ai:review"
-            add_label "$pr" "ai:review"
-            echo "PR #$pr：指摘は誤りと返したので、もう一度レビューを依頼しました"
+            comment "$pr" "修正AIは「指摘は誤り（直す必要は無い）」か「前の対応で直し済み」と理由をコメントして、変更を入れませんでした。人間に回さず、もう一度レビューに回します（同じ指摘が続けば、直す回数の上限で人間に回ります）。${denied_note}" || true
+            request_review "$pr"
+            echo "PR #$pr：指摘は誤り（または前の対応で直し済み）と返したので、もう一度レビューを依頼しました"
           fi
           ;;
         *)

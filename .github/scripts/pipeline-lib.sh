@@ -221,6 +221,23 @@ ${AUTO_FIX_MARK}
 }
 
 # PR のマージの状態（GitHub が計算し終わるまで少し待つ）：clean / dirty（main と衝突）/ blocked / behind / unknown など
+# もう一度レビューに回す（ai:review を付け直すと、labeled イベントでレビューAIが動く）。
+# ただし main とコンフリクトしているPRでは、GitHub が pull_request のワークフローを動かさないので、レビューAIは起きない。
+# そのまま付け直すと誰も動かずに止まる（tochi-rirekisho PR #5：PRの説明を直した後のレビューが起きず、9時間止まった）。
+# コンフリクトしていれば、先にAIに解消させる（直す回数に数える。解消して push されると、CIのあとでレビューに回る）
+CONFLICT_FIX_MSG='main とコンフリクトしていて、このままではCIもレビューも動きません。`git fetch origin main` のあと `git merge origin/main` でコンフリクトを解消してください。両方の変更の意図を残し、どちらかを捨てるときはPRにコメントで理由を書いてください。解消したら確認コマンド（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）を全部通して push してください。'
+request_review() { # PR番号
+  local pr="$1" sha
+  if [ "$(pr_merge_state "$pr")" = dirty ]; then
+    sha=$(gh api "repos/$REPO/pulls/$pr" -q .head.sha)
+    request_fix_or_stop "$pr" "$sha" "$CONFLICT_FIX_MSG"
+    echo "PR #$pr：main とコンフリクトしていてレビューが動かないので、先にAIに解消を依頼しました"
+    return 0
+  fi
+  remove_label "$pr" "ai:review" 2> /dev/null || true
+  add_label "$pr" "ai:review"
+}
+
 pr_merge_state() {
   local pr="$1" i state=""
   for i in 1 2 3 4 5; do
@@ -797,7 +814,7 @@ ci_failed_steps() {
 # 基準の画像の撮り直しを頼んでいる言い方（AIの返事・レビューの指摘・PRの説明のどれかにあれば、撮り直しが要る）
 VISUAL_HINT_RE='visual:update|基準の?画像.{0,60}(古|撮り直|更新|差し替)|(撮り直|更新|差し替).{0,60}基準の?画像|スナップショット.{0,60}(古|撮り直|更新)|update-snapshots'
 # 「指摘が間違い・直す必要が無い」と返している言い方
-DISAGREE_HINT_RE='指摘は.{0,40}(誤り|間違|当たら|該当しな|不要)|(直す|修正の?|変更の?)必要(は|が|も)(ない|無い|ありません)|(修正|変更|対応)(は)?不要|直さず|直しません|直さない|false positive|not (a )?(real )?(bug|issue|problem)'
+DISAGREE_HINT_RE='指摘は.{0,40}(誤り|間違|当たら|該当しな|不要)|(前回|前の|これまで)の?(対応|修正|直し)で.{0,30}(直し|対応|修正)?(済み|ずみ|ました)|(すでに|既に).{0,20}(直し|対応|修正|書かれ|入っ)(て|済)|(直し|対応|修正)済み|already (fixed|addressed|done)|(直す|修正の?|変更の?)必要(は|が|も)(ない|無い|ありません)|(修正|変更|対応)(は)?不要|直さず|直しません|直さない|false positive|not (a )?(real )?(bug|issue|problem)'
 # 許可の拒否で、1回だけ自動でやり直した印（2回目は人間に回す）
 # shellcheck disable=SC2034  # after-mention.sh で使う
 PERM_RETRY_MARK="<!-- auto-perm-retry -->"

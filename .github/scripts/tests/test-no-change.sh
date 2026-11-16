@@ -21,6 +21,11 @@ assert_eq "実行記録に拒否がある" "permission" "$(classify '直しま�
 assert_eq "指摘は誤り" "disagree" "$(classify 'この指摘は誤りだと判断したので、直さずに理由を書きます。')"
 assert_eq "直す必要はない" "disagree" "$(classify '既に対処済みで、修正の必要はありません。')"
 assert_eq "英語の言い方" "disagree" "$(classify 'This is a false positive.')"
+# 前の対応で直し済みと返した（tochi-rirekisho PR #5：PRの説明を前の回に直したのに、もう一度依頼が来た）→ もう一度レビューへ
+assert_eq "前回の対応で直し済み" "disagree" "$(classify '指摘はPRの説明の不足だけで、前回の対応で直し済みでした。今回はコードを変えていないので、pushするコミットはありません。')"
+assert_eq "すでに書かれている" "disagree" "$(classify 'Closes や受け入れ条件は、すでに書かれています。')"
+assert_eq "英語：already fixed" "disagree" "$(classify 'This was already fixed in the previous commit.')"
+assert_eq "直せなかった、は誤りに数えない" "unknown" "$(classify 'テストが通らず、直せませんでした。')"
 assert_eq "分類できない" "unknown" "$(classify 'うまくいきませんでした。')"
 assert_eq "空" "unknown" "$(classify '')"
 
