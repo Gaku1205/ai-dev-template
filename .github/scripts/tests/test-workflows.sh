@@ -135,13 +135,25 @@ for name in claude-implement.yml claude-mention.yml; do
   assert_contains "$name：履歴を全部取る" "$wf" "fetch-depth: 0"
   assert_contains "$name：git fetch を許す" "$wf" "Bash(git fetch:*)"
   assert_contains "$name：git merge を許す" "$wf" "Bash(git merge:*)"
-  assert_contains "$name：push の前に main を取り込む指示" "$wf" "git merge origin/main で最新の main を取り込んでから"
 done
+assert_contains "部品：push の前に main を取り込む指示" "$(cat "$SCRIPTS_DIR/prompts/merge-main.md")" "git merge origin/main で最新の main を取り込んでから"
+
+echo "== AIへの指示は、部品から組んで渡す（compose-prompt.sh。docs/pipeline.md「指示を部品で組む」）"
+for pair in claude-implement.yml:implement claude-mention.yml:mention; do
+  name=${pair%%:*}; mode=${pair##*:}
+  wf="$(cat "$WORKFLOWS/$name")"
+  assert_contains "$name：部品から組む" "$wf" "compose-prompt.sh"
+  assert_contains "$name：mode" "$wf" "--mode $mode --auto"
+  assert_contains "$name：組んだ指示を渡す" "$wf" '--append-system-prompt \"${{ steps.prompt.outputs.text }}'
+  assert_not_contains "$name：長い指示を直接書かない" "$wf" "git merge origin/main で最新の main を取り込んでから"
+done
+assert_eq "実装AI：2か所とも組んだ指示" "2" "$(grep -c 'steps.prompt.outputs.text }}${{ steps.shots.outputs.prompt }}' "$WORKFLOWS/claude-implement.yml")"
+assert_contains "修正AI：部品を main から取る" "$(cat "$WORKFLOWS/claude-mention.yml")" "prompts/pr-body.md"
 
 echo "== 修正AIは、見た目のテストの差分の画像を見てから決める"
 wf="$(cat "$WORKFLOWS/claude-mention.yml")"
 assert_contains "claude-mention.yml：差分の画像を取ってくる" "$wf" ".github/scripts/fetch-visual-diff.sh"
-assert_contains "claude-mention.yml：画像を見る指示" "$wf" "Read で開いて見る"
+assert_contains "部品：画像を見る指示" "$(cat "$SCRIPTS_DIR/prompts/visual-diff.md")" "Read で開いて見る"
 assert_contains "claude-mention.yml：artifact を読む権限" "$wf" "actions: read"
 
 echo "== 見張り役は、何もしなかった実行（skipped）の後には動かない"
@@ -371,8 +383,6 @@ assert_contains "BLOCKED" "$(cat "$WORKFLOWS/claude-plan.yml")" '`BLOCKED`：'
 
 echo "== 読む量を減らす：企画AIが Issue に「読む所」を書き、実装AI・修正AIはそこだけを読む"
 assert_contains "企画のプロンプト" "$(cat "$WORKFLOWS/claude-plan.yml")" "### 読む所"
-for f in claude-implement.yml claude-mention.yml; do
-  assert_contains "$f の指示" "$(cat "$WORKFLOWS/$f")" "「読む所」の見出しがあれば、docs/spec.md と docs/design.md は最初から全部は読まない"
-done
+assert_contains "部品：読む所の指示" "$(cat "$SCRIPTS_DIR/prompts/read-sections.md")" "「読む所」の見出しがあれば、docs/spec.md と docs/design.md は最初から全部は読まない"
 
 finish
