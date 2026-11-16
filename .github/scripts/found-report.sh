@@ -29,7 +29,7 @@ existing=$(gh api "repos/$REPO/issues?state=open&labels=ai%3Afound&per_page=100"
 made=0 skipped=0
 n=$(jq '.findings | length' "$file")
 for ((i = 0; i < n && made < max; i++)); do
-  title=$(jq -r ".findings[$i].title // empty" "$file" | head -1 | cut -c1-120)
+  title=$(jq -r ".findings[$i].title // empty | tostring | split(\"\n\")[0] | .[0:60]" "$file")
   body=$(jq -r ".findings[$i].body // empty" "$file")
   [ -z "$title" ] || [ -z "$body" ] && continue
   dup=0

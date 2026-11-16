@@ -67,6 +67,15 @@ assert_contains "ログの場所" "$first" "https://example/run"
 assert_contains "印" "$first" "<!-- ai-found: try -->"
 assert_not_contains "上限を超えた分は作らない" "$(python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print([m['title'] for m in s['issues_meta'].values()])")" "4件目"
 
+echo "== 長い日本語の題名でも、文字の途中で切れず、重複として見送れる"
+LONG="仕様書の保存の節とデザイン仕様の保存ボタンの節で、ボタンの文言と押したあとの挙動が食い違っている件について詳しく"
+init_state '{}'
+jq -n --arg t "$LONG" '{findings:[{title:$t,body:"本文"}]}' > "$F"
+bash "$SCRIPTS_DIR/found-report.sh" audit "$F" > /dev/null
+bash "$SCRIPTS_DIR/found-report.sh" audit "$F" > "$MOCK_DIR/rep2.txt"
+assert_not_contains "題名に壊れた文字が無い" "$(python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print([m['title'] for m in s['issues_meta'].values()])")" "�"
+assert_contains "2回目は重複で見送る" "$(cat "$MOCK_DIR/rep2.txt")" "作った Issue：0件（重複で見送り：1件）"
+
 echo "== 結果のファイルが無い・壊れている → 何もしない（失敗にしない）"
 init_state '{}'
 bash "$SCRIPTS_DIR/found-report.sh" audit "$MOCK_DIR/none.json" > /dev/null
