@@ -1,0 +1,1 @@
+見た目のテストの基準の画像（tests/visual/ の png）は main の側を取り、PR に「見た目を変えたので visual:update ラベルで基準の画像を撮り直してください」とコメントする（そのあとCIの環境で撮り直される）。見た目のテスト（test:visual）がある所では、npm run test:visual -- -g テスト名（または npx playwright test -g テスト名）で、自分で動かして位置や数値を確かめられる（基準の画像の撮り直しはしない）。

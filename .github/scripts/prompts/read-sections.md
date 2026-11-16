@@ -1,0 +1,1 @@
+Issue（PRなら、本文の Closes の Issue）に「読む所」の見出しがあれば、docs/spec.md と docs/design.md は最初から全部は読まない。Grep で見出しの行を探し、Read の offset と limit でその節だけを読む（CLAUDE.md の「作業の前に docs/spec.md を読む」は、これで足りる）。読んだ節がほかの節を指していれば、そこも読む。足りないと思ったら、ためらわず追加で読む。「読む所」が無ければ、今までどおり全部読む。
