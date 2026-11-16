@@ -3,7 +3,10 @@
 #   指摘なし → CIも全部通っていれば自動でマージ（ai:hold が付いていたら、マージは人間に任せて通知）
 #   指摘あり → AIに直させる（上限を超えたら人間に回す）
 #
-# 環境変数：CONCLUSION、HEAD_SHA、HEAD_BRANCH、READ_TOKEN（ワークフローのトークン）、EXECUTION_FILE（あれば。レビューAIの実行記録。失敗の原因を見分ける）
+#   CI 以外のチェック（Vercel など）が通っていない → 名前と理由をPRに書き、時間をおいて確かめ直す。続くなら人間に回す
+# 見張り役（watchdog.sh）も、マージのやり直し（種類 merge）のときに、CONCLUSION=success でここを呼ぶ
+#
+# 環境変数：CONCLUSION、HEAD_SHA、HEAD_BRANCH、READ_TOKEN（ワークフローのトークン。checks: read・statuses: read）、EXECUTION_FILE（あれば。レビューAIの実行記録。失敗の原因を見分ける）
 source "$(dirname "$0")/pipeline-lib.sh"
 set -e
 
@@ -95,13 +98,28 @@ if [ -z "$review" ]; then
 fi
 
 # CI（レビュー以外のチェック）が全部通っているか、もう一度確かめる
-# チェックの読み取りはワークフロー自身のトークン（checks: read）で行う（PIPELINE_TOKEN に Checks の権限は付けていない）
-checks=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" \
-  -q '[.check_runs[] | select(.name != "review")]')
+# チェックの読み取りはワークフロー自身のトークン（checks: read）で行う（読めなければ、パイプラインの鍵で読む。read_api）
+checks=$(read_api "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" -q '[.check_runs[] | select(.name != "review")]')
 actions_count=$(printf '%s' "$checks" | jq '[.[] | select(.app.slug == "github-actions")] | length')
-not_ok=$(printf '%s' "$checks" | jq '[.[] | select(.status != "completed" or (.conclusion | IN("success", "neutral", "skipped") | not))] | length')
+not_ok=$(printf '%s' "$checks" | jq '[.[] | select(.app.slug == "github-actions") | select(.status != "completed" or (.conclusion | IN("success", "neutral", "skipped") | not))] | length')
 if [ "$actions_count" -eq 0 ] || [ "$not_ok" -gt 0 ]; then
   echo "CIがまだ全部通っていないので、マージしません（CIが終わればもう一度レビューから進みます）"
+  exit 0
+fi
+# CI 以外のチェック（Vercel など、GitHub Actions 以外の App が付けた check run）が通っていないとき：
+# CI のあとの処理は呼ばれないので、黙って終わると誰も先へ進めない。名前と理由をPRに書き、時間をおいて確かめ直す（続くなら人間に回す）。
+# まだ終わっていないだけなら、少しだけ待つ（レビューのほうが先に終わった、など）
+ext=$(printf '%s' "$checks" | external_check_runs_not_ok)
+tries=0
+while [ -n "$ext" ] && ! printf '%s\n' "$ext" | cut -f3 | grep -qx failed && [ "$tries" -lt "${EXTERNAL_CHECK_WAIT_TRIES:-3}" ]; do
+  tries=$((tries + 1))
+  sleep "${EXTERNAL_CHECK_WAIT_SEC:-20}"
+  checks=$(read_api "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" -q '[.check_runs[] | select(.name != "review")]') || break
+  ext=$(printf '%s' "$checks" | external_check_runs_not_ok)
+done
+if [ -n "$ext" ]; then
+  # コミットステータスも、通っていない物があれば一緒に書く（コミットステータスだけなら、今までどおりマージを試す）
+  handle_external_checks "$pr" "$HEAD_SHA" "$(external_checks_not_ok "$HEAD_SHA" "$checks")"
   exit 0
 fi
 
@@ -131,7 +149,8 @@ if has_label "$pr" "ai:hold"; then
   exit 0
 fi
 
-merge_or_handle "$pr" "$HEAD_SHA" review || exit 0
+# マージできなかったときのやり直しは、種類 merge（レビューは済んでいるので、見張り役はAIを動かさず、ここ（マージの判断）だけをやり直す）
+merge_or_handle "$pr" "$HEAD_SHA" merge || exit 0
 notify merged "マージしました" "PR #${pr} ${title}：CIもレビューもOKだったので自動でマージしました" 2
 # 使い終わったブランチを消す（リポジトリの「Automatically delete head branches」が先に消していても構わない）
 delete_branch_if_ai "$HEAD_BRANCH"

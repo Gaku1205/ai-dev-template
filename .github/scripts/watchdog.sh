@@ -13,7 +13,7 @@
 #   8. 次のやり直しの時刻に、自分を起こす目覚まし（retry-timer.yml）をかける
 # 人間の確認待ち（ai:stuck）の物は触らない。
 #
-# 環境変数：READ_TOKEN（ワークフローのトークン、actions: write。CIの実行を読む・目覚ましを動かす）、RETRY_TIMER（off で目覚ましを使わない）
+# 環境変数：READ_TOKEN（ワークフローのトークン、actions: write・checks: read・statuses: read。CIの実行とチェックを読む・目覚ましを動かす）、RETRY_TIMER（off で目覚ましを使わない）
 source "$(dirname "$0")/pipeline-lib.sh"
 
 has_pipeline_token || { echo "PIPELINE_TOKEN が無いので何もしません"; exit 0; }
@@ -104,6 +104,27 @@ for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry"
       remove_label "$n" "ai:retry"
       remove_label "$n" "ai:review"
       add_label "$n" "ai:review"
+      ;;
+    merge)
+      # CIもレビューも済んでいて、マージだけができなかった（CI 以外のチェックが通っていない・GitHub が断った）。
+      # AIは動かさず、レビューのあとの処理（after-review.sh）のマージの判断だけをやり直す
+      pr_json=$(gh api "repos/$REPO/pulls/$n")
+      head=$(printf '%s' "$pr_json" | jq -r .head.sha)
+      ref=$(printf '%s' "$pr_json" | jq -r .head.ref)
+      write_retry_record "$n" "$next" "$kind" "$reason" "" "$limit_first"
+      remove_label "$n" "ai:retry"
+      head_date=$(gh api "repos/$REPO/commits/$head" -q .commit.committer.date)
+      reviewed=$(all_comments "$n" | jq --arg since "$head_date" \
+        '[.[] | select((.user.login == "claude[bot]" or .user.login == "github-actions[bot]") and (.body | startswith("## Code review")) and .created_at >= $since)] | length')
+      if [ "$(printf '%s' "$pr_json" | jq -r .state)" != open ]; then
+        echo "PR #$n：もう閉じているので、マージはやり直しません"
+      elif [ "$reviewed" -eq 0 ]; then
+        # 待っている間に新しいコミットが入った：CI → レビューのいつもの流れが進めるので、ここでは何もしない
+        echo "PR #$n：先頭コミットのレビュー結果がまだ無いので、マージはやり直しません（CIとレビューの流れに任せます）"
+      else
+        CONCLUSION=success HEAD_SHA="$head" HEAD_BRANCH="$ref" "$SCRIPT_DIR/after-review.sh" ||
+          echo "::warning::PR #$n：マージの判断をやり直せませんでした（次の見張りで拾います）"
+      fi
       ;;
     mention)
       pr_json=$(gh api "repos/$REPO/pulls/$n")

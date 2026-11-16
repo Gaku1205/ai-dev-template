@@ -31,6 +31,9 @@ jobs:
       contents: read
       # actions: write は、次のやり直しの時刻に目覚まし（retry-timer.yml）を動かすため
       actions: write
+      # マージのやり直し（CI 以外のチェックが通っていなかったPR）で、先頭コミットのチェックを読むため
+      checks: read
+      statuses: read
     steps:
       # 秘密鍵を PKCS#8 にそろえる（create-github-app-token は Node 24 だと「BEGIN RSA PRIVATE KEY」の形式を読めず Invalid keyData になる）
       - name: パイプラインの鍵の秘密鍵をそろえる
