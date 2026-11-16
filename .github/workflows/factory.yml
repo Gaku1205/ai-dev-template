@@ -231,7 +231,7 @@ jobs:
             （ゲームは最初に、ありきたりにしないための遊び方のアイデア）→ 実例を集めて撮る → 参考の板（`factory-refs/board.md`）と方向 → `src/` に作る → 撮って実例と見比べて直す（最低3回）→ 仕上げ（確認コマンド・`docs/design.md`）。
             書いてよい場所：`src/`、`public/`、`docs/design.md`、`factory-refs/`、`.shots/`、`factory-context.md`、`factory-todo.md`、`factory-pages.txt`（ゲームは `index.html` も。会員と課金のサービスは `factory-price.txt` も）
             （道具を factory-add-lib.sh で入れると、package.json・package-lock.json・factory-libs.txt も変わる）。ほかは変えない。
-          claude_args: '--model opus --max-turns 250 --allowedTools "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Bash(npm run build),Bash(npm run typecheck),Bash(npm run lint),Bash(npm run test),Bash(node .github/scripts/shot.mjs:*),Bash(.github/scripts/fetch-photos.sh:*),Bash(.github/scripts/factory-add-lib.sh:*)"'
+          claude_args: '--model opus --max-turns 250 --allowedTools "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Bash(npm run build),Bash(npm run typecheck),Bash(npm run lint),Bash(npm run test),Bash(node .github/scripts/shot.mjs:*),Bash(.github/scripts/fetch-photos.sh:*),Bash(.github/scripts/factory-add-lib.sh:*),Bash(node .claude/skills/taste-skill/scripts/draw.mjs:*),Bash(node .claude/skills/taste-skill/scripts/lint.mjs:*),Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*),Bash(node .claude/skills/taste-skill/scripts/assets.mjs:*)"'
       # 確認コマンドを、AIとは別にもう一度動かす（AIが「通った」と言っても、ここで通らなければ新しいリポジトリには入れない）
       - name: 確かめる（1 回目）
         id: check1
@@ -248,7 +248,7 @@ jobs:
             あなたはこのサービスの画面を作ったデザイン担当です。作った画面で、確認コマンド（typecheck・lint・test・build）が通りませんでした。
             `factory-checks.log`（失敗したときの出力の最後）を読んで、原因を直してください。見た目は変えない。直したら、4つのコマンドを全部動かして通ることを確かめる。
             書いてよい場所：`src/`、`public/`、`docs/design.md`（道具は `.github/scripts/factory-add-lib.sh` で入れる）。ほかは変えない。
-          claude_args: '--model opus --max-turns 80 --allowedTools "Read,Write,Edit,Glob,Grep,Bash(npm run build),Bash(npm run typecheck),Bash(npm run lint),Bash(npm run test),Bash(.github/scripts/factory-add-lib.sh:*)"'
+          claude_args: '--model opus --max-turns 80 --allowedTools "Read,Write,Edit,Glob,Grep,Bash(npm run build),Bash(npm run typecheck),Bash(npm run lint),Bash(npm run test),Bash(.github/scripts/factory-add-lib.sh:*),Bash(node .claude/skills/taste-skill/scripts/draw.mjs:*),Bash(node .claude/skills/taste-skill/scripts/lint.mjs:*),Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*),Bash(node .claude/skills/taste-skill/scripts/assets.mjs:*)"'
       - name: 確かめる（2 回目）
         id: check2
         if: ${{ !cancelled() && steps.fixer.conclusion == 'success' }}

@@ -16,7 +16,7 @@
 - 1回の質問は 0〜5 個。前の段階で聞いた事と重ねない
 - 文はカジュアルで短い日本語。説明は1〜2文
 - 実在のブランドの名前・ロゴ・文言を写さない
-- 書いてよい場所は `talk/` の中だけ
+- 書いてよい場所は `talk/` の中だけ（taste-skill の作業の置き場 `.taste-skill/` もよい）
 
 ## 1. 案（ideas）
 
@@ -54,22 +54,24 @@
 
 選んだ案（`state.json` の `ideas[idea]`）の見た目の方向を3つ作り、それぞれ1枚の「見本の板」の画像にします。`ideas[idea]` に `parts` があれば、オーナーがその番号の案をまとめて1つのサービスにすると選んだ（例：遊ぶゲームを選べる1つのサイト）。まとめた全体に合う方向にする。
 
-1. `.github/factory/design-department.md` の「1. 実例を集める」と「AIっぽさの型（使わない）」を読む。実例の集め方（ギャラリー・`shot.mjs`）はそのとおりにする
+1. `.github/factory/design-department.md` の「1. 実例を集める」「AIっぽさの型（使わない）」「taste-skill を使う」を読む。実例の集め方（ギャラリー・`shot.mjs`）はそのとおりにする。`.claude/skills/taste-skill/references/tells.md` も読む（クリーム色の地＋朱・テラコッタ、罫線だらけ、等幅の数字、インディゴ・紫は使わない）
+   - 方向の土台を配ってもらう：ページなら `node .claude/skills/taste-skill/scripts/draw.mjs --sector <業種> --brief "<選んだ案の1行>" --options 3 --out talk/draw`、道具の画面が主役なら `node .claude/skills/taste-skill/scripts/draw.mjs --app --kind <種類> --brief "<1行>" --screens <画面> --options 3 --out talk/draw`。配られた3つを、3つの方向の土台にする（色・文字・構図の考え方は配られた物から。実例は、それをこの題材でどう組むかを学ぶため）。3つ目が題材に合わないときだけ引き直し、理由を `looks.json` の `idea` に1文で書く
 2. 実例を撮る：`node .github/scripts/shot.mjs --out talk/refs --widths 1440 <URL> ...`（1画面だけでよい）。撮った画像は全部 Read で見る
 3. 方向を3つ決める。3つは**はっきり違う**物にする（色の明るさ・文字の性格・構図の考え方が違う）。どれも「AIっぽさの型」を使わない
-4. 方向ごとに `talk/look-1.html`・`look-2.html`・`look-3.html` を書く（幅 1440px の1枚の板。外のファイルは読み込まない。ただし Google Fonts の `<link>` と、`talk/refs/` の画像は使ってよい）。板に載せる物：
+4. 方向ごとに `talk/look-1.html`・`look-2.html`・`look-3.html` を書く（幅 1440px の1枚の板。外のファイルは読み込まない。ただし Google Fonts の `<link>` と、`talk/refs/`・`talk/img/` の画像は使ってよい）。板に載せる物：
    - 方向の名前と、1文の考え（「この画面は〇〇に見える」）
    - 参考にした実例の画像を3〜4枚（`refs/…png`。小さめに並べ、下にサイト名）と、それぞれ何を学ぶかを1行
    - 色：5〜6色の見本（hex と用途）
    - 文字：見出し・本文・数字の書体で、このサービスの本物の文言を組んだ見本
    - このサービスの部品を1つだけ、その方向で描いた物（ボタン・数字の欄・一覧の1行など）
 5. 撮る：`node .github/scripts/shot.mjs --out talk --widths 1440 --full talk/look-1.html talk/look-2.html talk/look-3.html`（`talk/look-1-1440.png` などができる）。Read で見て、崩れていたら直して撮り直す
+   - 測る：`node .claude/skills/taste-skill/scripts/lint.mjs talk/look-1.html talk/look-2.html talk/look-3.html`。AIが作った感の型（禁止の物）が出たら直す。板そのものの表（色の見本の枠など）は板の都合なのでよいが、「このサービスの部品」の欄は禁止の型を使わない
 6. `talk/looks.json` を書く：
 
 ```json
 {
   "looks": [
-    { "title": "潮見表", "idea": "釣具屋で配る紙の潮見表のように、罫線の表と数字で見せる", "colors": ["#F2EDE3", "#1B2430", "#C8452D"], "fonts": "BIZ UDPGothic・IBM Plex Mono", "refs": ["https://..."] }
+    { "title": "（方向の名前）", "idea": "（この画面は〇〇に見える、を1文。配られた方向の id も書く）", "colors": ["#……", "#……", "#……"], "fonts": "（見出し・本文の書体）", "refs": ["https://..."] }
   ],
   "questions": []
 }
@@ -82,10 +84,13 @@
 
 選んだ方向（`state.json` の `looks[look]`。板は `talk/chosen-look.png`）で、トップの画面を2案作ります。本物のアプリではなく、見た目を決めるための1枚の HTML です。
 
-- `.github/factory/design-department.md` の「AIっぽさの型（使わない）」を守る。道具のサービスなら、開いた最初の画面に道具そのものを出す
+- `.github/factory/design-department.md` の「AIっぽさの型（使わない）」「taste-skill を使う」を守る。道具のサービスなら、開いた最初の画面に道具そのものを出す
+- 選んだ方向が配られた紙（`talk/draw/`）から来ていれば、その紙の構図・色・文字をそのまま使う（同じ紙をもう一度出すなら `node .claude/skills/taste-skill/scripts/draw.mjs --show --out talk/draw`）
+- **本物の絵を使う**：題材の世界の本物の写真・古い地図・図版を `node .claude/skills/taste-skill/scripts/assets.mjs "<英語の検索語>"` で探し、`--get <ref> --to talk/img` で取って、`img/…` で載せる（`state.json` の答えで「本物の〇〇」と決まっていれば必ず。描いた絵で代用しない。取れなかったら `mocks.json` の `note` にそう書く）
 - 2案は、同じ方向の中で**構図が違う**物にする（例：A は曲線が主役、B は表が主役）
 - `talk/mock-a.html`・`talk/mock-b.html` を書く。1枚の HTML（CSS は中に書く。Google Fonts の `<link>` は使ってよい。JavaScript は使わない）。中身はこのサービスの本物らしい文言と数字（「テキスト」「Lorem」は使わない）。幅 1440px と 390px のどちらでも崩れないように書く（`@media`）
 - 撮る：`node .github/scripts/shot.mjs --out talk --widths 1440,390 talk/mock-a.html talk/mock-b.html`。全部 Read で見て、崩れ・重なり・はみ出しを直してから撮り直す
+- 測る：`node .claude/skills/taste-skill/scripts/lint.mjs talk/mock-a.html talk/mock-b.html` と `node .claude/skills/taste-skill/scripts/inspect.mjs talk/mock-a.html`（道具の画面が主役なら `--app`。`mock-b` も）。FAIL は全部直してから `mocks.json` を書く
 - `talk/mocks.json` を書く：
 
 ```json

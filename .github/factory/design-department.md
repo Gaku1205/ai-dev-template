@@ -28,6 +28,18 @@ AIに作らせた画面は、どれも同じ型になります。オーナーは
 
 方向を決めたら、`board.md` に「上の型のどれも使っていないか」を1行ずつ確かめて書く。見比べて直すときも、自分の画像にこの型が出ていないかを最初に見る。
 
+## taste-skill を使う（AIが作った感を、出す前に弾く）
+
+`.claude/skills/taste-skill/` は、実在の良いサイト 247 個の調べから、方向を配り、AIが作った感を測って弾くスキル（2026年11月16日に戻した。前に外したのは「禁止を足し続けて地味になった」ため。今のスキルは「飾りを消した分を、大きい文字・色の面・本物の写真・中身で埋める」作りなので、地味にはならない）。上の「外さないこと」とオーナーの答え（`state.json`・メモ）がいちばん上で、スキルの決まりはその次。
+
+- **最初に読む**：`.claude/skills/taste-skill/references/tells.md`（AIが作った感の一覧。日付つき）。とくに「第3波」：**クリーム色の地＋朱・テラコッタ・錆色の差し色**、**細い罫線だらけの新聞・野帳風**、**数字を等幅の書体で組む**、**小さい色つきの見出しラベル**は、いま一番AIっぽく見える型。インディゴ・紫も使わない
+- **方向は配ってもらう**（自分で思いついた方向は、その題材のAIの平均になる）：
+  - ページ（読んでスクロールする物）：`node .claude/skills/taste-skill/scripts/draw.mjs --sector <業種> --brief "<1行>" --sections <並び> --options 3` で3つ配り、題材の持ち物（地名・素材・数字・印刷物）を運べる物を選んで `--direction <id>` で全部を配る（`SKILL.md` の「The run」）
+  - 画面で作業する道具（一覧・管理・計算・地図で調べる、など）：`node .claude/skills/taste-skill/scripts/draw.mjs --app --kind <種類> --brief "<1行>" --screens <画面> --options 3`、選んで `--style <id>`（`references/app-screens.md` を全部読む）
+  - 配られた紙（direction sheet）は採用する。慣れた形に戻すための引き直しはしない。引き直したら `board.md` に理由を書く
+- **本物の絵を使う**：題材の世界の本物の写真・古い地図・図版を、`node .claude/skills/taste-skill/scripts/assets.mjs "<英語の検索語>"` で探し（商用に使える物だけ）、`--get <ref> --to public/photos` で取る（出どころは CREDITS.md に足す）。`fetch-photos.sh` も使ってよい。オーナーが「本物の〇〇を使う」と答えていたら、それを描いた絵で代用しない（どうしても取れなければ、取れなかったと `board.md` に書く）
+- **出す前に測る**：`node .claude/skills/taste-skill/scripts/lint.mjs src` と、ビルドした画面への `node .claude/skills/taste-skill/scripts/inspect.mjs <URL かファイル>`（道具の画面は `--app`）。FAIL は全部直す。WARN は、デザイナーに1文で説明できる物だけ残す。撮った画像は全部見る
+
 ## 進め方
 
 ### 1. 実例を集める（描く前に必ず。ここを飛ばさない）

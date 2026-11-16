@@ -214,7 +214,7 @@ out.append("images-first" if img < names.index("designer") and "github.token" in
 print(",".join(out))
 PY2
 )
-assert_eq "factory.yml のデザイン担当" "bash=.github/scripts/factory-add-lib.sh:*|.github/scripts/fetch-photos.sh:*|node .github/scripts/shot.mjs:*|npm run build|npm run lint|npm run test|npm run typecheck,ro-first,chmod,images-first" "$result"
+assert_eq "factory.yml のデザイン担当" "bash=.github/scripts/factory-add-lib.sh:*|.github/scripts/fetch-photos.sh:*|node .claude/skills/taste-skill/scripts/assets.mjs:*|node .claude/skills/taste-skill/scripts/draw.mjs:*|node .claude/skills/taste-skill/scripts/inspect.mjs:*|node .claude/skills/taste-skill/scripts/lint.mjs:*|node .github/scripts/shot.mjs:*|npm run build|npm run lint|npm run test|npm run typecheck,ro-first,chmod,images-first" "$result"
 
 echo "== デザイン担当の画面：AIとは別に確認コマンドを動かし、通らなければ1回だけ直させる。通った物だけを撮って、新しいリポジトリに渡す"
 result=$(python3 - "$WORKFLOWS/factory.yml" <<'PY2'

@@ -1,5 +1,5 @@
 // taste-skill（https://github.com/Leonxlnx/taste-skill、MIT License、Copyright (c) 2026 Leonxlnx）の scripts/lib/cdp.mjs を写した物。
-// 撮影（shot.mjs）だけが使う。taste-skill 本体は工場から外したので、ここに置く。MIT の全文は下の LICENSE の節。
+// 撮影（shot.mjs）だけが使う。撮影はスキルが無いリポジトリでも使うので、ここにも置く。MIT の全文は下の LICENSE の節。
 //
 // Zero-dependency Chrome DevTools Protocol client.
 // Drives an installed Chrome / Edge / Chromium in headless mode over Node's built-in WebSocket.
