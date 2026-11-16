@@ -84,4 +84,16 @@ run_open > /dev/null
 assert_eq "開いたまま" "open" "$(python3 -c "import json,os;print(json.load(open(os.environ['MOCK_STATE']))['issues_meta']['7']['state'])")"
 assert_contains "人間に回す" "$(labels_of 7)" "ai:stuck"
 
+echo "== 一部だけ直っている・直せなかった返事は、「すでに」があっても閉じない"
+for msg in \
+  '一部はすでに直っていましたが、残りの保存処理は原因が分からず直せませんでした。' \
+  '既にmainに入っている変更とコンフリクトしたため、直せませんでした。' \
+  'The list page was already fixed in main, but the detail page still fails and I could not fix it.'; do
+  init_state '{"labels":{"7":["ai:implement"]},"issues_meta":{"7":{"title":"t","state":"open"}}}'
+  printf '[{"type":"result","subtype":"success","result":"%s","permission_denials":[]}]' "$msg" > "$exec_file"
+  run_open > /dev/null
+  assert_eq "開いたまま" "open" "$(python3 -c "import json,os;print(json.load(open(os.environ['MOCK_STATE']))['issues_meta']['7']['state'])")"
+  assert_contains "人間に回す" "$(labels_of 7)" "ai:stuck"
+done
+
 finish
