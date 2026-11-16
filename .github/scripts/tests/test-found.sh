@@ -30,6 +30,23 @@ init_state '{"homepage":"https://old.vercel.app","main_commit_date":"2026-11-16T
 gate try
 assert_eq "url" "https://o.github.io/r/" "$(val url)"
 
+echo "== 本番が main の最新に追いついていない（先頭に公開のステータスが無く、前のコミットにある）→ 動かさない"
+init_state '{"homepage":"https://app.vercel.app","main_commit_date":"2026-11-16T03:00:00Z","main_commits":["h2","h1"],"statuses_by_sha":{"h2":[],"h1":[{"context":"Vercel","state":"success"}]}}'
+gate try
+assert_eq "run" "false" "$(val run)"
+echo "== 先頭の公開が公開中 → 動かさない"
+init_state '{"homepage":"https://app.vercel.app","main_commit_date":"2026-11-16T03:00:00Z","main_commits":["h2"],"statuses_by_sha":{"h2":[{"context":"deploy/vercel","state":"pending"}]}}'
+gate try
+assert_eq "run" "false" "$(val run)"
+echo "== 先頭の公開が成功 → 動かす"
+init_state '{"homepage":"https://app.vercel.app","main_commit_date":"2026-11-16T03:00:00Z","main_commits":["h2","h1"],"statuses_by_sha":{"h2":[{"context":"Vercel","state":"success"},{"context":"CI","state":"failure"}]}}'
+gate try
+assert_eq "run" "true" "$(val run)"
+echo "== 手で動かしたら（FORCE=1）見ない"
+init_state '{"homepage":"https://app.vercel.app","main_commit_date":"2026-11-16T03:00:00Z","main_commits":["h2","h1"],"statuses_by_sha":{"h2":[],"h1":[{"context":"Vercel","state":"success"}]}}'
+FORCE=1 gate try
+assert_eq "run" "true" "$(val run)"
+
 echo "== 監査役：進行中の作業が無い → 動かす"
 init_state '{"labels":{"5":[]}}'
 gate audit
