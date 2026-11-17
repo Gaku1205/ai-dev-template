@@ -271,11 +271,17 @@ for pr in $(printf '%s' "$open_prs" | jq -r '.[].number'); do
   fi
   m=$(idle_min "$(printf '%s' "$pr_json" | jq -r .updated_at)")
   runs="[]"
+  runs_read=false
 
   # ---- 3. CIが承認待ちで止まっている ----
   if [ "$m" -ge "$IDLE_CI_MIN" ]; then
-    runs=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/runs?head_sha=$head&event=pull_request&per_page=50" \
-      -q '[.workflow_runs[] | select(.name == "CI")]')
+    # 読めたときだけ runs_read=true にする（読めなかったのを「CIの実行が0件」と取り違えないため）
+    if runs=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/runs?head_sha=$head&event=pull_request&per_page=50" \
+      -q '[.workflow_runs[] | select(.name == "CI")]') && [ -n "$runs" ]; then
+      runs_read=true
+    else
+      runs="[]"
+    fi
     waiting=$(printf '%s' "$runs" | jq '[.[] | select(.conclusion == "action_required")] | length')
     running=$(printf '%s' "$runs" | jq '[.[] | select(.conclusion != "action_required")] | length')
     if [ "$waiting" -gt 0 ] && [ "$running" -eq 0 ]; then
@@ -400,7 +406,7 @@ ${nudge_mark}"
           ;;
       esac
       continue
-    elif [ -z "$ci" ] && [ "$(pr_merge_state "$pr")" != dirty ]; then
+    elif [ "$runs_read" = true ] && [ -z "$ci" ] && [ "$(pr_merge_state "$pr")" != dirty ]; then
       # CIの実行が1件も無い（イベントの取りこぼしなど）：レビューが通っても after-review.sh は「CIがまだ」で終わり、印も通知も無く止まる。
       # 空のコミットを足してCIを動かす。同じ先頭コミットには1回だけ。印があるのにまだ0件なら人間に回す
       # （コンフリクト中は 3.2 が扱う。待つ理由のある ai:hold でマージ待ちのPRは、CIの実行がある前提なのでここでは区別しない）

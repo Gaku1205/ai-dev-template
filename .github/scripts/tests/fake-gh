@@ -209,6 +209,7 @@ if m: out({'workflow_runs':st.get('wf_runs',{}).get(m.group(1),[])}); sys.exit(0
 m=re.match(r'actions/workflows/([^/]+)/dispatches$',base)
 if m and method=='POST':
     st.setdefault('dispatches',[]).append({'workflow':m.group(1),**fields}); save(); sys.exit(0)
+if base=='actions/runs' and st.get('runs_fail'): sys.stderr.write('HTTP 502: Bad Gateway\n'); sys.exit(1)
 if base=='actions/runs': out({'workflow_runs':st.get('runs',[])}); sys.exit(0)
 if base.startswith('compare/'): out({'ahead_by':st.get('ahead_by',0)}); sys.exit(0)
 m=re.match(r'commits/([^/]+)$',base)

@@ -91,6 +91,13 @@ run_script watchdog.sh > /dev/null
 assert_contains "人間に回す" "$(labels_of 58)" "ai:stuck"
 assert_eq "もう空のコミットは足さない" "0" "$(new_commits)"
 
+echo "== CIの実行を読めなかった（APIの一時的なエラー）：0件とみなさず、空のコミットも足さない・人間にも回さない"
+init_state '{"labels":{"58":[]},"runs_fail":true,"pulls":['"$(pr_of 58 claude/issue-5-x 60)"'],"runs":[]}'
+run_script watchdog.sh > /dev/null
+assert_eq "空のコミットを足さない" "0" "$(new_commits)"
+assert_not_contains "印も付けない" "$(comments_of 58)" "auto-nudge"
+assert_not_contains "人間には回さない" "$(labels_of 58)" "ai:stuck"
+
 echo "== 0件でも、早い・コンフリクト中・fork・下書き・配布・ai:retry・visual:update：動かさない"
 for case in \
   '{"labels":{"58":[]},"pulls":['"$(pr_of 58 claude/issue-5-x 20)"'],"runs":[]}' \
