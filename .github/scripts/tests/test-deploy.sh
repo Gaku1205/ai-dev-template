@@ -18,7 +18,10 @@ case "$*" in
   *"commits?sha="*) [ -n "${HIST_FAIL:-}" ] && exit 1; for h in ${HIST:-}; do echo "${h%%:*}"; done ;;
   *"commits/"*"/statuses"*) sha="${2#repos/o/app/commits/}"; sha="${sha%%/*}"; for h in ${HIST:-}; do [ "${h%%:*}" = "$sha" ] && echo "${h##*:}"; done ;;
   *"compare/"*) printf '%s\n' "${SINCE:-}" ;;
-  "release create"*) [ -n "${RELEASE_FAIL:-}" ] && exit 1 ;;
+  # 置くファイルの名前と中身を記録する（上書きされていないかを確かめる）
+  "release create"*) [ -n "${RELEASE_FAIL:-}" ] && exit 1; for a in "$@"; do [ -f "$a" ] && echo "asset $(basename "$a")=$(cat "$a")" >> "$LOG"; done ;;
+  # タグがあるか：EXISTING_TAGS（空白区切り）にあれば、ある。無ければ 404
+  *"git/ref/tags/"*) t="${2##*/}"; case " ${EXISTING_TAGS:-} " in *" $t "*) exit 0 ;; *) exit 1 ;; esac ;;
 esac
 exit 0
 GH
@@ -214,6 +217,49 @@ assert_contains "下のフォルダの物も" "$created" "README-windows.txt"
 assert_contains "そのコミットに付ける" "$created" "--target 0123456789abcdef"
 assert_contains "タイトルにPRのタイトル" "$created" "あいさつを足す"
 assert_contains "URL を出す" "$(cat "$work/r")" "url=https://github.com/o/app/releases/tag/build-20261029-0300-0123456"
+echo "== Releases：同じ名前のファイルが別のフォルダにあっても、上書きしない（フォルダの名前を付ける）"
+rm -rf all; mkdir -p all/build-windows-latest/sub/deep all/build-windows-latest/other all/build-macos-14/sub
+echo top > all/build-windows-latest/README.txt
+echo sub > all/build-windows-latest/sub/README.txt
+echo deep > all/build-windows-latest/sub/deep/README.txt
+echo other > all/build-windows-latest/other/README.txt
+echo flat > all/build-windows-latest/sub-README.txt
+echo mac > all/build-macos-14/sub/README.txt
+echo lic1 > all/build-windows-latest/other/LICENSE
+echo lic2 > all/build-windows-latest/sub/LICENSE
+: > "$LOG"
+out=$(NOW=20261029-0300 GITHUB_OUTPUT=/dev/null bash "$SCRIPTS_DIR/deploy-release.sh" all 2>&1); rc=$?
+assert_eq "同じ名前：終了コード 0" "0" "$rc"
+assets=$(grep "^asset " "$LOG" | sort)
+assert_eq "8個とも置く（1つも消えない）" "8" "$(printf '%s\n' "$assets" | wc -l)"
+assert_contains "浅い物は今までの名前" "$assets" "asset README-windows.txt=top"
+assert_contains "ぶつかった物はフォルダの名前を付ける" "$assets" "asset other-README-windows.txt=other"
+assert_contains "付けた名前もぶつかれば番号を付ける" "$assets" "asset sub-README-windows-2.txt=sub"
+assert_contains "元からその名前の物はそのまま" "$assets" "asset sub-README-windows.txt=flat"
+assert_contains "深いフォルダ" "$assets" "asset sub-deep-README-windows.txt=deep"
+assert_contains "別の OS とはぶつからない" "$assets" "asset README-macos.txt=mac"
+assert_contains "拡張子の無い物：先の物" "$assets" "asset LICENSE-windows=lic1"
+assert_contains "拡張子の無い物：後の物" "$assets" "asset sub-LICENSE-windows=lic2"
+assert_contains "何が起きたかを出す" "$out" "sub/deep/README.txt → sub-deep-README-windows.txt"
+assert_contains "数" "$out" "（8個）"
+
+echo "== Releases：タグがもうある（同じ分にやり直した）→ -2 を付けて別のリリースにする"
+rm -rf all; mkdir -p all/build-windows-latest
+echo exe > all/build-windows-latest/hello.exe
+: > "$LOG"
+out=$(EXISTING_TAGS="build-20261029-0300-0123456" NOW=20261029-0300 GITHUB_OUTPUT="$work/r2" bash "$SCRIPTS_DIR/deploy-release.sh" all 2>&1); rc=$?
+assert_eq "タグがある：終了コード 0" "0" "$rc"
+assert_contains "タグに -2" "$(grep "gh release create" "$LOG")" "release create build-20261029-0300-0123456-2 "
+assert_contains "URL も -2" "$(cat "$work/r2")" "url=https://github.com/o/app/releases/tag/build-20261029-0300-0123456-2"
+assert_contains "何が起きたかを出す" "$out" "はもうあるので"
+: > "$LOG"
+out=$(EXISTING_TAGS="build-20261029-0300-0123456 build-20261029-0300-0123456-2" NOW=20261029-0300 GITHUB_OUTPUT=/dev/null bash "$SCRIPTS_DIR/deploy-release.sh" all 2>&1); rc=$?
+assert_contains "-2 もあれば -3" "$(grep "gh release create" "$LOG")" "release create build-20261029-0300-0123456-3 "
+: > "$LOG"
+out=$(EXISTING_TAGS="$(printf 'build-20261029-0300-0123456 '; for k in 2 3 4 5 6 7 8 9; do printf 'build-20261029-0300-0123456-%s ' "$k"; done)" NOW=20261029-0300 GITHUB_OUTPUT=/dev/null bash "$SCRIPTS_DIR/deploy-release.sh" all 2>&1); rc=$?
+assert_eq "-9 まであれば失敗（延々と続けない）" "1" "$rc"
+assert_eq "リリースは作らない" "0" "$(grep -c "gh release create" "$LOG")"
+
 echo "== Releases：OS が1つだと、download-artifact は build-<OS> を作らずに直に置く。その OS の名前を付ける"
 rm -rf all; mkdir -p all/sub
 echo exe > all/Game.exe
