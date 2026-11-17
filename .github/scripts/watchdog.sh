@@ -35,6 +35,14 @@ now=$(date +%s)
 idle_min() {
   echo $(( (now - $(date -d "$1" +%s)) / 60 ))
 }
+# Issue の最後の動きから何分か。更新時刻を読めない・空なら失敗する（空のまま idle_min に渡すと、date -d "" が今日の0時になり、
+# 動いている物を「止まった」と見て ai:retry を付けてしまう）。呼ぶ側は、失敗したらその Issue を今回は飛ばす
+issue_idle_min() {
+  local at
+  at=$(gh api "repos/$REPO/issues/$1" -q '.updated_at // ""' 2> /dev/null) || return 1
+  [ -n "$at" ] || return 1
+  idle_min "$at"
+}
 
 # 一覧は、ページをまたいで全部読む（api_list・--paginate。100件までなら API は1回のまま。per_page=100 だけだと、101件目からの
 # Issue・PR を見張れず、止まったままになる）
@@ -47,13 +55,26 @@ has_open_pr_for_issue() {
 # ---- 1. ai:retry が付いた物をやり直す ----
 handled=" "   # この実行でやり直した番号（同じ実行で、すぐ次の確認に引っかからないように）
 for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry" --paginate -q '.[].number'); do
-  if has_label "$n" "ai:stuck"; then
+  # ラベルを読めなければ、この回は触らない（「ai:stuck・ai:skip が無い」と取り違えて、やり直さない。次の見張りで見る）
+  stuck_rc=0
+  has_label "$n" "ai:stuck" || stuck_rc=$?
+  if [ "$stuck_rc" -eq 2 ]; then
+    echo "#$n：ラベルを読めないので、今回は触りません"
+    continue
+  fi
+  if [ "$stuck_rc" -eq 0 ]; then
     remove_label "$n" "ai:retry"
     continue
   fi
   # まだ動かさない物（ai:skip。オーナー以外が作って受付が止めた Issue など）は、やり直さない。印だけ外す
   # （やり直すと、パイプラインの鍵が ai:plan を付け直し、オーナーが確かめていない Issue を企画・実装してしまう）
-  if has_label "$n" "ai:skip"; then
+  skip_rc=0
+  has_label "$n" "ai:skip" || skip_rc=$?
+  if [ "$skip_rc" -eq 2 ]; then
+    echo "#$n：ラベルを読めないので、今回は触りません"
+    continue
+  fi
+  if [ "$skip_rc" -eq 0 ]; then
     remove_label "$n" "ai:retry"
     echo "#$n：ai:skip が付いているので、やり直しません"
     continue
@@ -190,10 +211,11 @@ done
 # 企画AI：ai:plan が付いたまま動きが無い
 for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aplan" --paginate -q '.[] | select(.pull_request | not) | .number'); do
   case "$handled" in *" $n "*) continue ;; esac
-  has_label "$n" "ai:stuck" && continue
-  has_label "$n" "ai:retry" && continue
-  has_label "$n" "ai:skip" && continue
-  m=$(idle_min "$(gh api "repos/$REPO/issues/$n" -q .updated_at)")
+  # ラベル・更新時刻を読めなければ、この回は飛ばす（「付いていない」「今日の0時から動いていない」と取り違えない）
+  has_label_or_unreadable "$n" "ai:stuck" && continue
+  has_label_or_unreadable "$n" "ai:retry" && continue
+  has_label_or_unreadable "$n" "ai:skip" && continue
+  m=$(issue_idle_min "$n") || { echo "#$n：更新時刻を読めないので、今回は見ません"; continue; }
   [ "$m" -lt "$IDLE_PLAN_MIN" ] && continue
   mark_for_retry "$n" plan "企画AIの終了が確認できないまま${m}分たちました"
 done
@@ -201,19 +223,32 @@ done
 # 実装AI：ai:implement が付いたまま、PRもできず動きが無い
 # 実装AIのジョブは、審査役と直しを含めて最大75分動く。その間 Issue には何も書かれないことがあるので、
 # 実装AIの実行がまだ動いている間は「止まった」とみなさない（動いている物に ai:retry を付けない）
-implement_running=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/workflows/claude-implement.yml/runs?status=in_progress&per_page=30" \
-  -q '[.workflow_runs[] | select(.status != "completed")] | length' 2> /dev/null) || implement_running=0
+# 動いている（in_progress）物と、始まるのを待っている（queued）物の両方を数える（画面案の mocks_running と同じ数え方）。
+# 一覧を読めなければ、その回は実装の止まりを見ない（「動いていない」と読むと、動いている実装に ai:retry を付け、二重に実装が走る）
+implement_running=0
+for st in in_progress queued; do
+  if ! c=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/workflows/claude-implement.yml/runs?status=$st&per_page=30" \
+    -q '[.workflow_runs[] | select(.status != "completed")] | length' 2> /dev/null) || ! [[ "$c" =~ ^[0-9]+$ ]]; then
+    implement_running=unknown
+    break
+  fi
+  implement_running=$(( implement_running + c ))
+done
 for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aimplement" --paginate -q '.[] | select(.pull_request | not) | .number'); do
   case "$handled" in *" $n "*) continue ;; esac
-  if [ "${implement_running:-0}" -gt 0 ]; then
+  if [ "$implement_running" = unknown ]; then
+    echo "実装AIの実行の一覧を読めないので、実装の止まりは今回は見ません"
+    break
+  fi
+  if [ "$implement_running" -gt 0 ]; then
     echo "実装AIの実行が動いている（${implement_running} 件）ので、実装の止まりは今回は見ません"
     break
   fi
-  has_label "$n" "ai:stuck" && continue
-  has_label "$n" "ai:retry" && continue
-  has_label "$n" "ai:skip" && continue
+  has_label_or_unreadable "$n" "ai:stuck" && continue
+  has_label_or_unreadable "$n" "ai:retry" && continue
+  has_label_or_unreadable "$n" "ai:skip" && continue
   has_open_pr_for_issue "$n" && continue
-  m=$(idle_min "$(gh api "repos/$REPO/issues/$n" -q .updated_at)")
+  m=$(issue_idle_min "$n") || { echo "#$n：更新時刻を読めないので、今回は見ません"; continue; }
   [ "$m" -lt "$IDLE_IMPLEMENT_MIN" ] && continue
   mark_for_retry "$n" implement "実装AIの終了が確認できないまま${m}分たちました"
 done
@@ -226,10 +261,10 @@ done
 mocks_running=""
 for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Amocks" --paginate -q '.[] | select(.pull_request | not) | .number'); do
   case "$handled" in *" $n "*) continue ;; esac
-  has_label "$n" "ai:stuck" && continue
-  has_label "$n" "ai:retry" && continue
-  has_label "$n" "ai:skip" && continue
-  m=$(idle_min "$(gh api "repos/$REPO/issues/$n" -q .updated_at)")
+  has_label_or_unreadable "$n" "ai:stuck" && continue
+  has_label_or_unreadable "$n" "ai:retry" && continue
+  has_label_or_unreadable "$n" "ai:skip" && continue
+  m=$(issue_idle_min "$n") || { echo "#$n：更新時刻を読めないので、今回は見ません"; continue; }
   [ "$m" -lt "$IDLE_MOCKS_MIN" ] && continue
   # 画面案のジョブが動いている・待っている間は、止まったとみなさない（時間がたった物があるときだけ調べる。どの Issue の実行かは
   # 分からないので、1つでも動いていれば今回は見ない）。読めなければ「動いていない」とみなす（時間の上限は、もう過ぎている）
@@ -260,7 +295,7 @@ done
 # PRごとの確認
 for pr in $(printf '%s' "$open_prs" | jq -r '.[].number'); do
   case "$handled" in *" $pr "*) continue ;; esac
-  has_label "$pr" "ai:stuck" && continue
+  has_label_or_unreadable "$pr" "ai:stuck" && continue
   pr_json=$(printf '%s' "$open_prs" | jq -c --argjson n "$pr" '.[] | select(.number == $n)')
   head=$(printf '%s' "$pr_json" | jq -r .head.sha)
   ref=$(printf '%s' "$pr_json" | jq -r .head.ref)
@@ -327,7 +362,7 @@ ${relabel_mark}"
   fi
 
   # レビューAI：ai:review を付けたのに結果が出ないまま止まっている
-  if has_label "$pr" "ai:review" && ! has_label "$pr" "ai:retry" && [ "$m" -ge "$IDLE_REVIEW_MIN" ]; then
+  if has_label "$pr" "ai:review" && ! has_label_or_unreadable "$pr" "ai:retry" &&[ "$m" -ge "$IDLE_REVIEW_MIN" ]; then
     head_date=$(gh api "repos/$REPO/commits/$head" -q .commit.committer.date)
     reviewed=$(all_comments "$pr" | jq --arg since "$head_date" \
       '[.[] | select((.user.login == "claude[bot]" or .user.login == "github-actions[bot]") and (.body | startswith("## Code review")) and .created_at >= $since)] | length')
@@ -343,11 +378,12 @@ ${relabel_mark}"
   # 回数制限）・呼ばれなかった（CIや修正AIが時間切れで「取り消し」になると、進行役は動かない）ときは、ラベルも記録も残らず、
   # 誰も動かないまま止まる。CIが終わっていて、待つ理由（ai:stuck・ai:retry・visual:update・マージ待ちの ai:hold）が無いのに
   # IDLE_ORPHAN_MIN 分なにも起きていなければ、続きを動かす。同じ先頭コミットには1回だけ。それでも進まなければ人間に回す
-  # fork からの他人のPRは見ない（進行役も扱わない。pr-trust.sh と同じく、head がこのリポジトリのPRだけ）
-  if [ "$m" -ge "$IDLE_ORPHAN_MIN" ] && [[ "$ref" != pipeline-sync/* ]] &&
+  # fork からの他人のPRは見ない（進行役も扱わない。pr-trust.sh と同じく、head がこのリポジトリのPRだけ）。
+  # 配布のPR（pipeline-sync/*）も見る（main の取り込み・マージが落ちたまま、次の配布まで黙って残らないように）。続きは after-ci.sh の配布の流れが決める
+  if [ "$m" -ge "$IDLE_ORPHAN_MIN" ] &&
     [ "$(printf '%s' "$pr_json" | jq -r --arg r "$REPO" '((.head.repo.full_name // "") | ascii_downcase) == ($r | ascii_downcase)')" = true ] &&
     [ "$(printf '%s' "$pr_json" | jq -r '.draft // false')" != true ] &&
-    ! has_label "$pr" "ai:retry" && ! has_label "$pr" "visual:update"; then
+    ! has_label_or_unreadable "$pr" "ai:retry" && ! has_label_or_unreadable "$pr" "visual:update"; then
     ci=$(printf '%s' "${runs:-[]}" | jq -c 'sort_by(.created_at // "") | last // empty')
     if [ -n "$ci" ] && [ "$(printf '%s' "$ci" | jq -r '.status // "completed"')" = completed ]; then
       ci_conclusion=$(printf '%s' "$ci" | jq -r '.conclusion // ""')
@@ -406,9 +442,10 @@ ${nudge_mark}"
           ;;
       esac
       continue
-    elif [ "$runs_read" = true ] && [ -z "$ci" ] && [ "$(pr_merge_state "$pr")" != dirty ]; then
+    elif [ "$runs_read" = true ] && [ -z "$ci" ] && [[ "$ref" != pipeline-sync/* ]] && [ "$(pr_merge_state "$pr")" != dirty ]; then
       # CIの実行が1件も無い（イベントの取りこぼしなど）：レビューが通っても after-review.sh は「CIがまだ」で終わり、印も通知も無く止まる。
       # 空のコミットを足してCIを動かす。同じ先頭コミットには1回だけ。印があるのにまだ0件なら人間に回す
+      # （配布のPRには空のコミットを足さない。次の配布で作り直される）
       # （コンフリクト中は 3.2 が扱う。待つ理由のある ai:hold でマージ待ちのPRは、CIの実行がある前提なのでここでは区別しない）
       nudge_mark="<!-- auto-nudge: ${head} -->"
       if all_comments "$pr" | jq -e --arg mk "$nudge_mark" 'any(.[]; .body | contains($mk))' > /dev/null; then
@@ -466,7 +503,7 @@ done
 BLOCKED_UNREADABLE_MIN="${BLOCKED_UNREADABLE_MIN:-60}"
 for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Ablocked" --paginate -q '.[] | select(.pull_request | not) | .number'); do
   case "$handled" in *" $n "*) continue ;; esac
-  has_label "$n" "ai:stuck" && continue
+  has_label_or_unreadable "$n" "ai:stuck" && continue
   marks=$(all_comments "$n" | jq -r 'map(select(.body | test("<!-- blocked-by: "))) | last | .body // ""' | grep -oE "$BLOCKED_MARK_RE" || true)
   if [ -z "$marks" ]; then
     stop_issue_for_human "$n" "ai:blocked（他の Issue・PR の完了待ち）が付いていますが、待ち先の印（blocked-by）がありません。待つ必要が無ければ、ai:blocked を外して ai:plan を付けてください"
@@ -589,7 +626,7 @@ set_retry_timer() {
   [ "${RETRY_TIMER:-on}" = "off" ] && return 0
   now_s=$(date +%s)
   for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry" --paginate -q '.[].number'); do
-    has_label "$n" "ai:stuck" && continue
+    has_label_or_unreadable "$n" "ai:stuck" && continue
     t=$(retry_due_at "$n")
     [ "$t" -gt "$now_s" ] || continue
     if [ -z "$earliest" ] || [ "$t" -lt "$earliest" ]; then earliest="$t"; fi

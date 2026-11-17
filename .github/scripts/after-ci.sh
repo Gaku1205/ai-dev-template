@@ -20,8 +20,8 @@ if [ "$head" != "$HEAD_SHA" ]; then
   echo "このCIのあとに新しいコミットが来ているので、何もしません"
   exit 0
 fi
-if has_label "$pr" "ai:stuck"; then
-  echo "人間の確認待ち（ai:stuck）なので、何もしません"
+if has_label_or_unreadable "$pr" "ai:stuck"; then
+  echo "人間の確認待ち（ai:stuck）か、ラベルを読めないので、何もしません"
   exit 0
 fi
 
@@ -41,8 +41,15 @@ case "$sync_pr" in
     if [ "$CONCLUSION" = success ]; then
       behind=$(gh api "repos/$REPO/compare/$HEAD_SHA...main" -q .ahead_by)
       if [ "${behind:-0}" -gt 0 ]; then
-        gh api -X PUT "repos/$REPO/pulls/$pr/update-branch" -f expected_head_sha="$HEAD_SHA" > /dev/null 2>&1 || true
-        echo "PR #$pr（パイプラインの更新）：main を取り込みました。CIが終わったらマージします"
+        if gh api -X PUT "repos/$REPO/pulls/$pr/update-branch" -f expected_head_sha="$HEAD_SHA" > /dev/null 2>&1; then
+          echo "PR #$pr（パイプラインの更新）：main を取り込みました。CIが終わったらマージします"
+        else
+          # 黙って「取り込みました」で終わると、次の配布まで誰も拾わない。配られた更新は AI に直させない（マネージャーが見る）
+          add_label "$pr" "ai:stuck"
+          comment "$pr" "⚠️ テンプレートから配られたパイプラインの更新に、main の変更を取り込めませんでした（コンフリクト・GitHub の一時的なエラーなど）。マネージャーに確認してもらってください（AIには直させません）。"
+          notify stuck "パイプラインの更新が入りません" "PR #${pr}：配られた更新に main を取り込めませんでした" 4
+          echo "PR #$pr（パイプラインの更新）：main を取り込めなかったので人間に回しました"
+        fi
       else
         # 一時的なエラー（502 など）は、少し待って3回まで試す（merge_pr）
         if ! out=$(merge_pr "$pr" "$HEAD_SHA"); then

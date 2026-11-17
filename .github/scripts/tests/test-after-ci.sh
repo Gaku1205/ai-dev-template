@@ -66,6 +66,7 @@ pr = {'number': 70, 'body': os.environ.get('SYNC_BODY', '<!-- pipeline-sync -->'
 s = {'next_id': 0, 'comments': [], 'labels': {'70': []}, 'issue_updated': {}, 'pulls': [pr], 'jobs': [], 'checks': [], 'runs': [], 'branches': [{'name': 'pipeline-sync/123abcd'}], 'authors': {}, 'ahead_by': int(sys.argv[1])}
 if os.environ.get('MERGE_FAIL'): s['merge_fail'] = os.environ['MERGE_FAIL']
 if os.environ.get('MERGE_FAIL_TIMES'): s['merge_fail_times'] = int(os.environ['MERGE_FAIL_TIMES'])
+if os.environ.get('UPDATE_BRANCH_FAIL'): s['update_branch_fail'] = True
 json.dump(s, open(os.environ['MOCK_STATE'], 'w'))
 PY
   RUN_ID=1 CONCLUSION="$1" HEAD_SHA=abc HEAD_BRANCH=pipeline-sync/123abcd run_script after-ci.sh > /dev/null
@@ -107,5 +108,21 @@ assert_not_contains "人間に回さない" "$(labels_of 70)" "ai:stuck"
 MERGE_FAIL_TIMES=3 sync_case success 0
 assert_eq "3回とも駄目ならマージしない" "" "$(merged_of)"
 assert_contains "人間に回す" "$(labels_of 70)" "ai:stuck"
+
+update_branches() { python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print(','.join(map(str,s.get('update_branches',[]))))"; }
+echo "== パイプラインの更新のPR：main が先に進んでいれば取り込む（マージはCIのあと）"
+sync_case success 3
+assert_eq "取り込む" "70" "$(update_branches)"
+assert_eq "まだマージしない" "" "$(merged_of)"
+assert_not_contains "人間には回さない" "$(labels_of 70)" "ai:stuck"
+
+echo "== パイプラインの更新のPR：main の取り込みが失敗した（コンフリクト・一時的なエラー）→ 黙らず人間に回す"
+: > "$MOCK_DIR/curl.log"
+UPDATE_BRANCH_FAIL=1 sync_case success 3
+assert_contains "ai:stuck が付く" "$(labels_of 70)" "ai:stuck"
+assert_contains "理由をコメントする" "$(comments_of 70)" "main の変更を取り込めませんでした"
+assert_not_contains "AIに直させない" "$(comments_of 70)" "auto-fix"
+assert_contains "通知する" "$(cat "$MOCK_DIR/curl.log")" "配られた更新に main を取り込めませんでした"
+assert_eq "マージしない" "" "$(merged_of)"
 
 finish

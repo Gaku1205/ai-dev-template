@@ -112,6 +112,8 @@ if m:
         for l in flist:
             if l not in L: L.append(l)
         save(); print('[]'); sys.exit(0)
+    # read_fail_labels：この番号のラベルは読めない（502。「ラベル無し」と取り違えないかのテスト用）
+    if n in st.get('read_fail_labels',[]): sys.stderr.write('HTTP 502\n'); sys.exit(1)
     out([{'name':l} for l in L]); sys.exit(0)
 m=re.match(r'issues/(\d+)/labels/(.+)$',base)
 if m and method=='DELETE':
@@ -205,7 +207,18 @@ if m and method=='POST':
     if st.get('rerun_fail'): sys.stderr.write('HTTP 403: Resource not accessible by integration\n'); sys.exit(1)
     st.setdefault('reruns_all',[]).append(int(m.group(1))); save(); print('{}'); sys.exit(0)
 m=re.match(r'actions/workflows/([^/]+)/runs$',base)
-if m: out({'workflow_runs':st.get('wf_runs',{}).get(m.group(1),[])}); sys.exit(0)
+# wf_runs_fail：このワークフローの実行の一覧は読めない（502）。status= があれば、その状態の実行だけを返す（本物と同じ）
+if m and m.group(1) in st.get('wf_runs_fail',[]): sys.stderr.write('HTTP 502: Bad Gateway\n'); sys.exit(1)
+if m:
+    _runs=st.get('wf_runs',{}).get(m.group(1),[])
+    _sm=re.search(r'status=([a-z_]+)',path)
+    if _sm: _runs=[r for r in _runs if r.get('status')==_sm.group(1)]
+    out({'workflow_runs':_runs}); sys.exit(0)
+# PR に main を取り込む（update-branch）：update_branch_fail があれば断る（コンフリクトなど）。取り込んだPRを update_branches に残す
+m=re.match(r'pulls/(\d+)/update-branch$',base)
+if m and method=='PUT':
+    if st.get('update_branch_fail'): sys.stderr.write('HTTP 422: merge conflict between base and head\n'); sys.exit(1)
+    st.setdefault('update_branches',[]).append(int(m.group(1))); save(); print('{}'); sys.exit(0)
 m=re.match(r'actions/workflows/([^/]+)/dispatches$',base)
 if m and method=='POST':
     st.setdefault('dispatches',[]).append({'workflow':m.group(1),**fields}); save(); sys.exit(0)
