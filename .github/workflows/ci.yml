@@ -26,6 +26,19 @@ jobs:
       # pipeline.json の checks を順に全部回す（無ければ型チェック・リント・テスト（あれば）・ビルド）
       - name: 確認
         run: .github/scripts/run-checks.sh
+      # 依存の脆弱性（npm audit。本番で使う物だけ・重い物から）。テンプレート本体では落とす（工場が作る新しいサービスに危ない版を入れない。#141）。
+      # 配り先のアプリでは警告だけ（今ある依存で全アプリのCIを一斉に止めないため。上げるのは各アプリの Issue で）
+      - name: 依存の脆弱性
+        if: hashFiles('package-lock.json') != ''
+        env:
+          IS_TEMPLATE: ${{ github.event.repository.is_template }}
+        run: |
+          if npm audit --omit=dev --audit-level=high; then exit 0; fi
+          if [ "$IS_TEMPLATE" = true ]; then
+            echo "::error::重い脆弱性のある依存があります（npm audit）。package.json の版を上げてください"
+            exit 1
+          fi
+          echo "::warning::重い脆弱性のある依存があります（npm audit）。このアプリの package.json の版を上げる Issue を作ってください"
       # 見た目のテスト：画面のスクショを、前の画像と比べる（Node のアプリで、package.json に test:visual があるときだけ）
       - name: 見た目のテストがあるか
         id: visual
