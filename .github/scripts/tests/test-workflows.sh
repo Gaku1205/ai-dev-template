@@ -564,4 +564,32 @@ PY
 )
 assert_contains "after-review.sh に EXECUTION_FILE" "$result" "ai-result/execution.json"
 
+echo "== 公開：計画のジョブが、前のコミットの公開の結果を読める（アプリの変更が公開されないまま残るのを防ぐ）"
+wf="$(cat "$WORKFLOWS/deploy.yml")"
+plan_job="$(awk '/^  plan:/{f=1} /^  apprunner:/{f=0} f' "$WORKFLOWS/deploy.yml")"
+assert_contains "plan に GH_TOKEN" "$plan_job" 'GH_TOKEN: ${{ github.token }}'
+assert_contains "plan に statuses: read" "$plan_job" "statuses: read"
+assert_not_contains "plan に書き込みの権限は渡さない" "$plan_job" ": write"
+
+echo "== 公開（Vercel）：頼めなかったときに知らせるための、通知の設定を渡す"
+wf="$(cat "$WORKFLOWS/deploy-vercel.yml")"
+assert_contains "NTFY_TOPIC" "$wf" 'NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}'
+assert_contains "NOTIFY_EVENTS" "$wf" 'NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}'
+
+echo "== 公開の通知：まとめてマージ（squash）では1行目を題にする"
+assert_contains "マージコミットのときだけ3行目" "$(cat "$WORKFLOWS/deploy-notify.yml")" '"Merge pull request "*'
+
+echo "== CI：配り先の形でテストを動かす（テンプレート本体だけ。配り先では動かさない）"
+job="$(awk '/^  script-tests-as-app:/{f=1} f' "$WORKFLOWS/ci.yml")"
+assert_contains "テンプレートだけ" "$job" "if: github.event.repository.is_template"
+assert_contains "run-as-app.sh を動かす" "$job" ".github/scripts/tests/run-as-app.sh"
+
+echo "== 使ってみる役・監査役：もう報告してある問題の一覧をAIに渡す（同じ問題の Issue を何度も作らない）"
+for pair in "claude-try.yml:.try" "claude-audit.yml:.audit"; do
+  f="${pair%%:*}"; d="${pair##*:}"
+  wf="$(cat "$WORKFLOWS/$f")"
+  assert_contains "$f：一覧を作る" "$wf" "bash .github/scripts/found-known.sh $d/known.md"
+  assert_eq "$f：1回目とやり直しの両方のプロンプトにある" "2" "$(grep -c "\`$d/known.md\` があれば Read で読む" "$WORKFLOWS/$f")"
+done
+
 finish

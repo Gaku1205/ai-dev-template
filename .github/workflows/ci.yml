@@ -70,3 +70,18 @@ jobs:
       - uses: actions/checkout@v6
       - name: スクリプトのテスト
         run: .github/scripts/tests/run-all.sh
+
+  # 配り先の形でテストを動かす（テンプレート本体だけ）。テストは .github/ ごと全部のアプリに配られ、アプリの CI でも動く。
+  # テンプレートにしか無い物（examples/ など）に頼るテストが混ざると、配ったとたんに全部のアプリの CI が落ちるので、配る前にここで見つける
+  script-tests-as-app:
+    if: github.event.repository.is_template
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - name: 配る物だけを空のリポジトリに置いて、テストを動かす
+        run: |
+          if [ ! -f .github/scripts/tests/run-as-app.sh ]; then echo "run-as-app.sh がまだ無いので、飛ばします"; exit 0; fi
+          .github/scripts/tests/run-as-app.sh

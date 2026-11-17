@@ -49,6 +49,15 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 > /dev/null 2>&1 || true
           .github/scripts/install-ja-fonts.sh
           mkdir -p .try
+      # もう報告してある問題（開いている ai:found と、最近閉じた物）の題名をAIに渡す。AIは同じ問題にも毎回ちがう題名を付けるので、
+      # 題名の重複（found-report.sh）だけでは、同じ Issue が何度も作られる
+      - name: もう報告してある問題の一覧を作る
+        if: steps.gate.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p .try
+          if [ -f .github/scripts/found-known.sh ]; then bash .github/scripts/found-known.sh .try/known.md; fi
       - name: 手順書とスクリプトを読み取り専用にする
         if: steps.gate.outputs.run == 'true'
         run: chmod -R a-w .github .claude CLAUDE.md AGENTS.md 2> /dev/null || true
@@ -66,6 +75,7 @@ jobs:
             - 本番のサイトを本物のブラウザで開く：`node .github/scripts/shot.mjs --out .try --widths 390,1440 <URL>`。押す・入力する・戻るは、`.try/steps.json` に場面を書いて `node .github/scripts/shot.mjs --out .try --widths 390,1440 --steps .try/steps.json`（書き方は `.github/scripts/shot.mjs` の先頭のコメント）。撮った画像は全部 Read で見る。表示されたページのエラーも見る
             - 探すのは次の3つだけ：壊れている（エラー・押しても何も起きない・真っ白・データが消える）／迷う（次に何をすればいいか分からない・文言が分からない・戻れない）／崩れている（はみ出し・重なり・読めない文字・スマホで押せない小ささ）。好みの問題（色や雰囲気）は書かない
             - ログインが要るサービスでは、ログインの手前の画面（入口・ログイン画面）だけを試す。ログインできないこと自体は問題として書かない
+            - `.try/known.md` があれば Read で読む。そこにある問題（対応中・最近閉じた物）は、もう報告してある。言い方が違っても同じ物なら書かない
             - 見つけた中から、利用者が困る順に最大3件。無ければ0件でよい（無理に探さない）
             - 最後に必ず `.try/result.json` を Write で書く：`{"findings":[{"title":"短い題名（何がどうなる）","body":"どこで（URL・画面・幅）／やった手順／期待したこと／実際に起きたこと／その場面の画像のファイル名（.try/ の中）"}]}`。日本語で書く。0件なら `{"findings":[]}`
             - `.try/` の外のファイルは変えない。使える道具は Read・Write・Glob・Grep と `node .github/scripts/shot.mjs ...` だけ（ほかのコマンドは断られる）
@@ -87,6 +97,7 @@ jobs:
             - 本番のサイトを本物のブラウザで開く：`node .github/scripts/shot.mjs --out .try --widths 390,1440 <URL>`。押す・入力する・戻るは、`.try/steps.json` に場面を書いて `node .github/scripts/shot.mjs --out .try --widths 390,1440 --steps .try/steps.json`（書き方は `.github/scripts/shot.mjs` の先頭のコメント）。撮った画像は全部 Read で見る。表示されたページのエラーも見る
             - 探すのは次の3つだけ：壊れている（エラー・押しても何も起きない・真っ白・データが消える）／迷う（次に何をすればいいか分からない・文言が分からない・戻れない）／崩れている（はみ出し・重なり・読めない文字・スマホで押せない小ささ）。好みの問題（色や雰囲気）は書かない
             - ログインが要るサービスでは、ログインの手前の画面（入口・ログイン画面）だけを試す。ログインできないこと自体は問題として書かない
+            - `.try/known.md` があれば Read で読む。そこにある問題（対応中・最近閉じた物）は、もう報告してある。言い方が違っても同じ物なら書かない
             - 見つけた中から、利用者が困る順に最大3件。無ければ0件でよい（無理に探さない）
             - 最後に必ず `.try/result.json` を Write で書く：`{"findings":[{"title":"短い題名（何がどうなる）","body":"どこで（URL・画面・幅）／やった手順／期待したこと／実際に起きたこと／その場面の画像のファイル名（.try/ の中）"}]}`。日本語で書く。0件なら `{"findings":[]}`
             - `.try/` の外のファイルは変えない。使える道具は Read・Write・Glob・Grep と `node .github/scripts/shot.mjs ...` だけ（ほかのコマンドは断られる）
