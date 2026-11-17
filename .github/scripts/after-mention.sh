@@ -81,7 +81,10 @@ for pr in $prs; do
       # 指摘がワークフローの所（AIは直せない）を指す物を含むか：行への指摘の path と、まとめ中のパスから
       inline_paths=$(gh api "repos/$REPO/pulls/$pr/comments?per_page=100" --paginate --slurp 2> /dev/null \
         | jq -r --arg sha "$head" 'add // [] | map(select(.user.login == "claude[bot]" and .original_commit_id == $sha) | .path // empty) | .[]') || inline_paths=""
-      review_targets=$({ printf '%s\n' "$inline_paths"; printf '%s' "$review_text" | review_paths_from_text; } | awk 'NF' | sort -u)
+      # 「No issues found」のまとめは、確かめた内容にパスが出てくるだけなので読まない（指摘のあるまとめだけ読む）
+      findings_text=$(printf '%s' "$comments" | jq -r --arg since "$head_date" \
+        '[.[] | select((.user.login == "claude[bot]" or .user.login == "github-actions[bot]") and (.body | startswith("## Code review")) and (.body | contains("No issues found") | not) and .created_at >= $since) | .body] | join("\n")')
+      review_targets=$({ printf '%s\n' "$inline_paths"; printf '%s' "$findings_text" | review_paths_from_text; } | awk 'NF' | sort -u)
       wf_flag=""
       [ "$(printf '%s\n' "$review_targets" | review_paths_kind)" != other ] && wf_flag=1
       # 拒否された操作：実行記録（EXECUTION_FILE。あれば）と、AIの報告の文から

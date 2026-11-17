@@ -125,6 +125,14 @@ assert_contains "ai:stuck" "$(labels_of 58)" "ai:stuck"
 assert_contains "理由の文" "$(comments_of 58)" "ワークフローの指摘が残っています"
 assert_contains "指摘の場所" "$(comments_of 58)" ".github/workflows/ci.yml"
 
+echo "== 「No issues found」のまとめにワークフローのパスがあっても、workflow にしない（許可の拒否は permission のまま）"
+setup_case '確認コマンドを動かせませんでした。'
+state_py "
+s['comments'].append({'id':52,'issue':'58','body':'## Code review\n\nNo issues found. \`.github/workflows/ci.yml\` を確かめました。','user':{'login':'github-actions[bot]'},'created_at':'$(ago 0)','updated_at':'$(ago 0)'})"
+out=$(EXECUTION_FILE="$MOCK_DIR/exec.json" run_after)
+assert_contains "permission になる" "$out" "理由：permission"
+assert_not_contains "ai:stuck にしない" "$(labels_of 58)" "ai:stuck"
+
 echo "== 分類できない：今までどおり人間に回す"
 setup_case 'うまくいきませんでした。'
 run_after > /dev/null
