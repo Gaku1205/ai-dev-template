@@ -21,7 +21,7 @@ REPO="${GITHUB_REPOSITORY:?}"
 # 頼めなかった：ログに出し、スマホに知らせて、失敗で終わる。3時間ごとの確かめと、回数の上限（あとで自動でやり直す）では知らせない
 give_up() {
   echo "::error::$1"
-  if [ "${GITHUB_EVENT_NAME:-}" != schedule ] && ! printf '%s' "$1" | grep -qiE 'rate.?limit'; then
+  if [ "${GITHUB_EVENT_NAME:-}" != schedule ] && ! grep -qiE 'rate.?limit' <<< "$1"; then
     "$(dirname "$0")/notify.sh" deploy_failed "公開を頼めませんでした（Vercel）" "$1" 5 > /dev/null || true
   fi
   exit 1
