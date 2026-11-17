@@ -147,6 +147,11 @@ trusted_author() {
   return 1
 }
 
+# PR の JSON（pulls の1件）の head が、このリポジトリか（fork からの他人のPRでなければ 0）。pr-trust.sh と同じ決まり
+pr_head_is_repo() {
+  [ "$(printf '%s' "$1" | jq -r --arg r "$REPO" '((.head.repo.full_name // "") | ascii_downcase) == ($r | ascii_downcase)')" = true ]
+}
+
 # まだパイプラインに乗っていないIssueか（ai: で始まるラベルが1つも無い。ai:skip も ai: なので「まだ動かさない」になる）
 needs_intake() {
   local labels title
@@ -1124,7 +1129,13 @@ retry_due() {
 # そうなっていたら、オーナーのトークンで空のコミットを1つ足して、CIを動かし直す（オーナーのpushなら承認は要らない）。
 # READ_TOKEN（ワークフローのトークン、actions: read）でCIの実行を読む
 rerun_ci_if_waiting_approval() {
-  local pr="$1" sha="$2" branch="$3" runs="[]"
+  local pr="$1" sha="$2" branch="$3" runs="[]" pr_json
+  # fork からの他人のPRは触らない（同じ名前のブランチに、他人のコミットを入れてしまうため）
+  pr_json=$(gh api "repos/$REPO/pulls/$pr" 2> /dev/null) || pr_json=""
+  if [ -z "$pr_json" ] || ! pr_head_is_repo "$pr_json"; then
+    echo "PR #$pr：head がこのリポジトリではない（fork）か読めないので、何もしません"
+    return 0
+  fi
   for _ in 1 2 3 4; do
     runs=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/runs?head_sha=$sha&event=pull_request&per_page=50" \
       -q '[.workflow_runs[] | select(.name == "CI")]')

@@ -130,7 +130,7 @@ ${VISUAL_MARK}"
         files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null) &&
         ! printf '%s\n' "$files" | grep -q '^\.github/'; then
         reruns=$(all_comments "$pr" | jq --arg m "$PIPELINE_TEST_MARK" '[.[] | select(.body | contains($m))] | length')
-        if [ "$reruns" -lt 1 ] && gh api -X POST "repos/$REPO/actions/runs/$RUN_ID/rerun-failed-jobs" > /dev/null 2>&1; then
+        if [ "$reruns" -lt 1 ] && GH_TOKEN="${READ_TOKEN:-$GH_TOKEN}" gh api -X POST "repos/$REPO/actions/runs/$RUN_ID/rerun-failed-jobs" > /dev/null 2>&1; then
           comment "$pr" "パイプライン自体のテスト（スクリプトのテスト・shellcheck）だけが落ちました。このPRの変更（.github/ の外）が原因ではないので、AIには直させず、落ちたジョブを1回だけやり直します。
 
 ${PIPELINE_TEST_MARK}"

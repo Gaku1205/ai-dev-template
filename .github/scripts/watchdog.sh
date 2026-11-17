@@ -86,6 +86,18 @@ for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aretry"
       continue
     fi
   fi
+  # 企画・画面案・実装のやり直しは、作者がオーナーかパイプラインの Issue だけ（他人の Issue に ai:plan などを付け直さない）
+  case "$kind" in
+    plan | mocks | implement)
+      author=$(gh api "repos/$REPO/issues/$n" -q .user.login 2> /dev/null) || author=""
+      if ! trusted_author "$author"; then
+        add_label "$n" "ai:skip"
+        remove_label "$n" "ai:retry"
+        echo "#$n：オーナー以外（${author:-不明}）が作った Issue なので、やり直さず ai:skip で止めました"
+        continue
+      fi
+      ;;
+  esac
   echo "#$n：${kind} をやり直します（${next}/${MAX_RETRY}回目）"
   handled="${handled}${n} "
 
@@ -252,6 +264,11 @@ for pr in $(printf '%s' "$open_prs" | jq -r '.[].number'); do
   pr_json=$(printf '%s' "$open_prs" | jq -c --argjson n "$pr" '.[] | select(.number == $n)')
   head=$(printf '%s' "$pr_json" | jq -r .head.sha)
   ref=$(printf '%s' "$pr_json" | jq -r .head.ref)
+  # fork からの他人のPRは何もしない（push・空コミット・修正の依頼をしない。pr-trust.sh と同じく、head がこのリポジトリのPRだけ）
+  if ! pr_head_is_repo "$pr_json"; then
+    echo "PR #$pr：head がこのリポジトリではない（fork）ので、何もしません"
+    continue
+  fi
   m=$(idle_min "$(printf '%s' "$pr_json" | jq -r .updated_at)")
   runs="[]"
 
@@ -451,6 +468,13 @@ for n in $(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Ablocke
   fi
   if [ -n "$still" ]; then
     echo "#$n：待ち先（${still% }）がまだ開いているので、待ちます"
+    continue
+  fi
+  author=$(gh api "repos/$REPO/issues/$n" -q .user.login 2> /dev/null) || author=""
+  if ! trusted_author "$author"; then
+    remove_label "$n" "ai:blocked"
+    add_label "$n" "ai:skip"
+    echo "#$n：オーナー以外（${author:-不明}）が作った Issue なので、企画に戻さず ai:skip で止めました"
     continue
   fi
   remove_label "$n" "ai:blocked"
