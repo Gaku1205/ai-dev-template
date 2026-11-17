@@ -36,6 +36,31 @@ if [ "${ACTION:-opened}" = "opened" ]; then
   fi
 fi
 
+# テンプレートでない所の「新サービス：」は、工場が動かないので、普通の Issue として企画・実装に回ってしまう。
+# 理由を書いて ai:skip で止める（Template repository のチェックが要る）。ai: のラベルが付いた物は、上と同じく何もしない
+if [ "${ACTION:-opened}" = "opened" ]; then
+  title=$(gh api "repos/$REPO/issues/$NUMBER" -q '.title' 2> /dev/null) || title=""
+  case "$title" in
+    新サービス：* | 新サービス:*)
+      if [ "$(gh api "repos/$REPO" -q .is_template 2> /dev/null)" != "true" ]; then
+        labels=$(gh api "repos/$REPO/issues/$NUMBER/labels" -q '.[].name') || exit 1
+        # すでに止まっている物には、二重に書かない
+        printf '%s\n' "$labels" | grep -qx "ai:skip" && exit 0
+        # 先に ai:skip を付け、雛形で付いた作業のラベルを外す（残すと企画・実装が動く）
+        add_label "$NUMBER" "ai:skip"
+        for l in ai:plan ai:implement ai:queue ai:mocks; do
+          if printf '%s\n' "$labels" | grep -qx "$l"; then remove_label "$NUMBER" "$l"; fi
+        done
+        comment "$NUMBER" "⏸ 「新サービス：」は、このリポジトリの **Template repository** のチェックが入っているときだけ、工場が新しいサービスを作ります（Settings → General → Template repository）。いまはチェックが無いので、企画にも実装にも回さず止めました。
+
+チェックを入れてから、もう一度「新サービス：〜」の Issue を作ってください。普通の Issue として進めたいときは、タイトルから「新サービス：」を外して、\`ai:skip\` を外してください。" || true
+        echo "#$NUMBER：テンプレートではない所の「新サービス：」なので、ai:skip で止めました"
+        exit 0
+      fi
+      ;;
+  esac
+fi
+
 # 作った直後にラベルを付ける人・スクリプトがいるので、少し待ってから見る
 sleep "${INTAKE_WAIT_SEC:-15}"
 if needs_intake "$NUMBER"; then
