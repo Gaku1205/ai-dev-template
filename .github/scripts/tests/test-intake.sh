@@ -44,7 +44,14 @@ NUMBER=9 ACTION=opened run_script intake.sh > /dev/null
 assert_eq "テンプレート：ラベルを付けない" "" "$(labels_of 9)"
 init_state '{"labels":{"9":[]},"authors":{"9":"o"},"is_template":false,"issues_meta":{"9":{"title":"新サービス：毎朝の天気","state":"open"}}}'
 NUMBER=9 ACTION=opened run_script intake.sh > /dev/null
-assert_eq "アプリ：企画に回す" "ai:plan" "$(labels_of 9)"
+assert_eq "テンプレートでない所：企画に回さず ai:skip で止める" "ai:skip" "$(labels_of 9)"
+assert_contains "理由（Template repository のチェック）をコメントする" "$(comments_of 9)" "Template repository"
+init_state '{"labels":{"9":["ai:plan"]},"authors":{"9":"o"},"is_template":false,"issues_meta":{"9":{"title":"新サービス：毎朝の天気","state":"open"}}}'
+NUMBER=9 ACTION=opened run_script intake.sh > /dev/null
+assert_eq "雛形の ai:plan も外す" "ai:skip" "$(labels_of 9)"
+init_state '{"labels":{"9":[]},"authors":{"9":"o"},"is_template":false,"issues_meta":{"9":{"title":"毎朝の天気","state":"open"}}}'
+NUMBER=9 ACTION=opened run_script intake.sh > /dev/null
+assert_eq "ふつうの題名は、今まで通り企画に回す" "ai:plan" "$(labels_of 9)"
 
 
 echo "== オーナー以外が雛形（メモ）から作ると ai:plan が付く：外して ai:skip で止める（やり直しで他人の Issue を企画しない）"

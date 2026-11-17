@@ -71,6 +71,20 @@ Next.js＋Vercel なら、必須は次の3つだけ。ほかの設定は既定�
 
 テンプレート（本体）の更新（`.github/`・`docs/pipeline.md`・`docs/pipeline-setup.md`・`.claude/skills/`）は、本体の main でCIが通った版だけが、このテンプレートから作ったリポジトリ（自動）と、本体の `.github/sync-targets` に書いた配り先へ自動で配られる（この自動配布は本体だけが動かす）。
 
+**自動配布の範囲：** 自動で配られるのは、作者（Gaku1205）のアカウントにあるテンプレートから作ったリポジトリだけ。他の人が、このリポジトリをコピー（Use this template・フォーク）して作った写しには、更新は届かない。写しでは、最初の準備（Bootstrap）のときに `.github/sync-targets` の配り先を空にする（作者の配り先が、写しから配られないようにするため）。
+
+**写しで更新を取り込むには：** 自分のリポジトリで、テンプレートの更新を手で取り込む。
+
+```sh
+git remote add template https://github.com/Gaku1205/ai-dev-template.git
+git fetch template main
+git merge template/main --allow-unrelated-histories   # 2回目からは --allow-unrelated-histories は要らない
+```
+
+コンフリクトしたら、`.github/sync-targets` は自分の側（空）を残し、ほかは両方の変更を残して解消する。`.github/workflows/` の更新は、手で push するときにワークフローの書き込み権限が要る。
+
+また、「新サービス：〜」の Issue で新しいサービスを作る工場は、**Template repository** のチェックを入れたリポジトリ（Settings → General）でだけ動く。チェックが無い所では、理由をコメントして `ai:skip` で止める。
+
 ### Vercelの公開回数について
 
 Vercelの無料プランには、1日に公開できる回数の上限があります。AIは `claude/*` ブランチに何度もpushするので、そのたびにプレビューを作ると上限をすぐ使い切ってしまいます。`vercel.json` は、`claude/*` ブランチのプレビューを作らず、mainにマージされたときだけ公開するための設定です。また、直前のコミットが `.github/` と `docs/pipeline.md`・`docs/pipeline-setup.md`・`docs/factory.md` の変更だけなら、アプリは変わらないので公開を飛ばします（`ignoreCommand`）。
