@@ -189,6 +189,11 @@ if m:
     st['checks_calls']=st.get('checks_calls',0)+1; save()
     if 'checks_later' in st and st['checks_calls']>st.get('checks_flip_after',0): out({'check_runs':st['checks_later']}); sys.exit(0)
     out({'check_runs':st.get('checks',[])}); sys.exit(0)
+# コミットステータスを付ける（POST statuses/<sha>）：status_posts に記録する。status_fail があれば断る（権限が無い、を表す）
+m=re.match(r'statuses/([^/]+)$',base)
+if m and method=='POST':
+    if st.get('status_fail'): sys.stderr.write('HTTP 403: Resource not accessible by integration\n'); sys.exit(1)
+    st.setdefault('status_posts',[]).append({'sha':m.group(1),'state':fields.get('state'),'context':fields.get('context'),'description':fields.get('description'),'token':os.environ.get('GH_TOKEN','')}); save(); print('{}'); sys.exit(0)
 # コミットステータス（まとめ）：st['statuses'] = [{'context':'Vercel','state':'failure','description':'…','target_url':'…'}]
 m=re.match(r'commits/([^/]+)/status$',base)
 if m:

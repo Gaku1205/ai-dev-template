@@ -25,6 +25,15 @@ fetch_main_protected() {
   [ -n "$b" ] || return 0
   gh api "repos/$REPO/branches/$b" --jq '.protected' 2> /dev/null || true
 }
+# main の保護で必須のチェック（context）を1行ずつ出す。保護が無い・読めないときは何も出さず、終了コード 1。読み取りの権限で見える
+fetch_main_required_contexts() {
+  local b o
+  b=$(gh api "repos/$REPO" --jq '.default_branch // empty' 2> /dev/null) || b=""
+  [ -n "$b" ] || return 1
+  o=$(gh api "repos/$REPO/branches/$b" --jq 'if .protected == true and .protection.required_status_checks != null then (.protection.required_status_checks.contexts // [])[] else empty end' 2> /dev/null) || return 1
+  [ -n "$o" ] || return 1
+  printf '%s\n' "$o"
+}
 # GitHub Pages の Source：workflow（GitHub Actions）/ legacy（ブランチ）/ none（無効＝404）/ 空（読めない）
 fetch_pages() {
   local o
@@ -107,6 +116,16 @@ check_settings() {
   if [ "$v" = true ]; then ok "main が保護されている（PRを通さないと入らない）"
   elif [ "$v" = false ]; then warn "main が保護されていない（AIが PR とレビューを通さずに main へ push できてしまう）" "Settings → Branches → Add classic branch protection rule で、main に「Require a pull request before merging」（承認0人でよい）と「Require status checks to pass」を付け、検索欄で check（CI のジョブの名前）を選ぶ"
   else echo "- ➖ main の保護は読めなかったので確かめていない"; fi
+  if [ "$v" = true ]; then check_review_required; fi
+}
+
+# main の保護で、必須のチェックに「AIレビュー」が入っているか（入っていないと、レビューの前・指摘を直している間に、人間がマージできてしまう）。
+# 設定はしない（Administration の権限が要る）。保護が無い・読めないときは何も足さない
+check_review_required() {
+  local c
+  c=$(fetch_main_required_contexts) || return 0
+  if grep -qxF "AIレビュー" <<< "$c"; then ok "main の保護で「AIレビュー」が必須になっている"
+  else warn "AIレビューが必須になっていない（レビューの前・指摘を直している間に、人間がマージできてしまう）" "docs/pipeline.md の「コミットのステータス『AIレビュー』」の手順で、main の保護の「Require status checks to pass」に AIレビュー を足す"; fi
 }
 
 check_files() {

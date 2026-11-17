@@ -64,6 +64,7 @@ if [ "$inline" -gt 0 ] || { [ -n "$review" ] && ! printf '%s' "$review" | grep -
     echo "PR #$pr：レビューに指摘がありましたが、このコミットにはもう直すよう頼んであるので、重ねて頼みません"
     exit 0
   fi
+  review_status "$HEAD_SHA" failure "指摘があります。AIが直しています"
   request_fix_or_stop "$pr" "$HEAD_SHA" "レビューで指摘がありました。このPRの「Code review」のコメントと、コードの行に付いた指摘を読んで直してください。指摘が間違っていると判断した場合は、直さずにその理由をこのPRにコメントしてください。"
   echo "PR #$pr：指摘があったので直すよう依頼しました（行への指摘 ${inline} 件）"
   exit 0
@@ -76,6 +77,7 @@ if [ -z "$review" ]; then
   if kinds=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate     -q '.[] | if (.patch == null and (.changes // 0) == 0) then "binary" else "text" end')     && [ -n "$kinds" ] && ! printf '%s\n' "$kinds" | grep -q '^text$'; then
     comment "$pr" "画像など、文字で読めない変更だけなので、レビューする差分がありません。指摘なしとして進めます。" || true
     review="No issues found"
+    status_desc="画像など文字で読めない変更だけなので、レビューする差分がありません"
     echo "PR #$pr：文字で読めない変更だけなので、指摘なしとして進めます"
   fi
 fi
@@ -85,6 +87,7 @@ fi
 if [ -z "$review" ] && gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null | grep -qx '.github/workflows/claude-review.yml'; then
   has_label "$pr" "ai:hold" || add_label "$pr" "ai:hold" || true
   remove_label "$pr" "ai:retry"
+  review_status "$HEAD_SHA" success "レビューAIが動けないPRなので、人間が確かめてください"
   comment "$pr" "ℹ️ このPRはレビューのワークフロー（\`.github/workflows/claude-review.yml\`）を変えるので、レビューAIは動けません（ワークフローが main と同じ内容でないと、AIのアクションは何もしません）。CIは通っています。人間が中身を確かめて、マージしてください。
 
 <!-- ${REVIEW_UNAVAILABLE_MARK} ${HEAD_SHA} -->" || true
@@ -101,6 +104,9 @@ if [ -z "$review" ]; then
   fi
   exit 0
 fi
+
+# ここまで来たら指摘なし（コメントが「No issues found」か、文字で読めない変更だけ）
+review_status "$HEAD_SHA" success "${status_desc:-指摘なし}"
 
 # CI（レビュー以外のチェック）が全部通っているか、もう一度確かめる
 # チェックの読み取りはワークフロー自身のトークン（checks: read）で行う（読めなければ、パイプラインの鍵で読む。read_api）

@@ -46,6 +46,11 @@ notify() {
   "$SCRIPT_DIR/notify.sh" "$@" || true
 }
 
+# コミットのステータス「AIレビュー」を付ける（review-status.sh）。付けられなくても、呼んだスクリプトは止めない
+review_status() { # sha 状態（pending|success|failure） 説明
+  bash "$SCRIPT_DIR/review-status.sh" "$1" "$2" "$3" || true
+}
+
 has_pipeline_token() {
   [ -n "${GH_TOKEN:-}" ]
 }
