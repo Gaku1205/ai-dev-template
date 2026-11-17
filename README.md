@@ -27,6 +27,8 @@
 - **人間が判断**：何を作るか（メモを書く）。止まって通知が来たとき（`ai:stuck`）の確認。`ai:hold` を付けた大事な変更の最後のマージ
 - 順番待ち（`ai:queue`）を付けると、前の作業が終わってから順に始まります（`priority:high` が先）。触るファイルが重ならない物は2つまで並べて進むので、まとめて頼んで寝ておけます
 
+不具合と改善の記録は、毎日自動で Excel にまとめて [Releases の pipeline-report](../../releases/tag/pipeline-report) に置く（`pipeline-report.xlsx`。集計・一覧・止まった記録・洗い出しの4シート。洗い出しで見つけた物には `audit` ラベルを付ける）。
+
 詳しい流れ・ラベル・止まる条件は [docs/pipeline.md](docs/pipeline.md)（AIも読む）。最初の設定・言語と公開先は [docs/pipeline-setup.md](docs/pipeline-setup.md)、工場は [docs/factory.md](docs/factory.md)。
 
 ## 1行で新しいサービスを作る（工場）
