@@ -1,0 +1,76 @@
+# パイプラインの不具合と改善の表（Excel）を毎日作り直し、Releases の「pipeline-report」に置く（いつも同じ場所から最新が取れる）。
+# テンプレート本体だけで動く（配り先のアプリでは何もしない）。中身は pipeline-report.py
+name: Pipeline report
+
+on:
+  schedule:
+    # 毎日 20:47（日本時間）
+    - cron: "47 11 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pipeline-report
+  cancel-in-progress: true
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # テンプレート本体だけで動く（配り先のアプリでは何もしない）。schedule のときは github.event に repository が入らないので、API で見る
+      - name: テンプレート本体か
+        id: tpl
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          t=$(gh api "repos/$GITHUB_REPOSITORY" -q .is_template 2> /dev/null || echo false)
+          echo "is=$t" >> "$GITHUB_OUTPUT"
+          [ "$t" = true ] || echo "テンプレート本体ではないので、何もしません"
+      # 秘密鍵を PKCS#8 にそろえる（create-github-app-token は Node 24 だと「BEGIN RSA PRIVATE KEY」の形式を読めず Invalid keyData になる）
+      - name: パイプラインの鍵の秘密鍵をそろえる
+        id: app-key
+        if: steps.tpl.outputs.is == 'true' && vars.PIPELINE_APP_ID != ''
+        continue-on-error: true
+        env:
+          KEY: ${{ secrets.PIPELINE_APP_PRIVATE_KEY }}
+        run: |
+          k=$(printf '%s' "$KEY" | tr -d '\r'); k=${k//\\n/$'\n'}
+          type=$(printf '%s' "$k" | grep -oE 'BEGIN [A-Z ]*PRIVATE KEY' | head -1 | sed 's/^BEGIN //')
+          [ -n "$type" ] || type="RSA PRIVATE KEY"
+          body=$(printf '%s' "$k" | sed -e 's/-----BEGIN [A-Z ]*PRIVATE KEY-----//' -e 's/-----END [A-Z ]*PRIVATE KEY-----//' | tr -d ' \n\t"')
+          pem=$(printf -- '-----BEGIN %s-----\n%s\n-----END %s-----\n' "$type" "$(printf '%s' "$body" | fold -w 64)" "$type" | openssl pkey 2> /dev/null) || exit 1
+          while IFS= read -r line; do [ -n "$line" ] && echo "::add-mask::$line"; done <<< "$pem"
+          { echo 'pem<<PEM_END'; echo "$pem"; echo 'PEM_END'; } >> "$GITHUB_OUTPUT"
+      # 配り先のアプリも含めて読む鍵（読むだけ）。無ければこのリポジトリだけを読む
+      - name: パイプラインの鍵を作る
+        id: app-token
+        if: steps.app-key.outputs.pem != ''
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.PIPELINE_APP_ID }}
+          private-key: ${{ steps.app-key.outputs.pem }}
+          owner: ${{ github.repository_owner }}
+      - uses: actions/checkout@v6
+        if: steps.tpl.outputs.is == 'true'
+      - name: 表を作る
+        if: steps.tpl.outputs.is == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+        run: |
+          pip install --quiet openpyxl
+          # 鍵が入っているリポジトリ全部（パイプラインが動いているアプリ）。読めなければこのリポジトリだけ
+          REPORT_REPOS=$(gh api "installation/repositories?per_page=100" -q '.repositories[] | select(.archived | not) | .full_name' 2> /dev/null | tr '\n' ' ') || REPORT_REPOS=""
+          export REPORT_REPOS
+          python3 .github/scripts/pipeline-report.py pipeline-report.xlsx
+      - name: Releases に置く
+        if: steps.tpl.outputs.is == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view pipeline-report > /dev/null 2>&1 || \
+            gh release create pipeline-report --title "パイプラインの不具合と改善の表" --notes "毎日自動で作り直す Excel（pipeline-report.xlsx）。中身は .github/scripts/pipeline-report.py" --latest=false
+          gh release upload pipeline-report pipeline-report.xlsx --clobber
