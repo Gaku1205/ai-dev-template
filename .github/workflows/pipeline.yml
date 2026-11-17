@@ -32,6 +32,8 @@ jobs:
       # 進捗ログ（Issue のコメント）を書く・PRから Issue を引く
       issues: write
       pull-requests: read
+      # コミットのステータス「AIレビュー」を付ける（review-status.sh。#144）
+      statuses: write
     steps:
       # 秘密鍵を PKCS#8 にそろえる（create-github-app-token は Node 24 だと「BEGIN RSA PRIVATE KEY」の形式を読めず Invalid keyData になる）
       - name: パイプラインの鍵の秘密鍵をそろえる
@@ -84,6 +86,7 @@ jobs:
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           READ_TOKEN: ${{ github.token }}
+          STATUS_TOKEN: ${{ github.token }}
         run: .github/scripts/after-ci.sh
 
   after-review:
@@ -98,8 +101,8 @@ jobs:
     permissions:
       contents: read
       checks: read
-      # CI 以外のチェック（Vercel など）のコミットステータスを読む
-      statuses: read
+      # CI 以外のチェック（Vercel など）のコミットステータスを読む・「AIレビュー」のステータスを付ける（#144）
+      statuses: write
       # レビューAIの結果（ai-result）を読む・進捗ログ（Issue のコメント）を書く・PRから Issue を引く
       actions: read
       issues: write
@@ -165,6 +168,7 @@ jobs:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           READ_TOKEN: ${{ github.token }}
+          STATUS_TOKEN: ${{ github.token }}
           # レビューAIの実行記録（上で取った ai-result）。エラーで終わったとき、使用量の上限かどうかを見分けるのに使う（無くてもよい）
           EXECUTION_FILE: ${{ runner.temp }}/ai-result/execution.json
         run: .github/scripts/after-review.sh

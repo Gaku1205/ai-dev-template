@@ -28,7 +28,15 @@ jobs:
       pull-requests: write
       issues: read
       id-token: write
+      # コミットのステータス「AIレビュー」を pending にする（#144。通るまで人間もマージできないようにする）
+      statuses: write
     steps:
+      # PRのスクリプトは呼ばない（PRの中身でトークンを使われない）
+      - name: AIレビューのステータスを pending にする
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$SHA" -f state=pending -f context="AIレビュー" -f description="AIがレビュー中です" > /dev/null || echo "::warning::AIレビューのステータスを付けられませんでした"
       - name: 始めた時刻（進捗ログ用）
         id: started
         run: echo "at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"

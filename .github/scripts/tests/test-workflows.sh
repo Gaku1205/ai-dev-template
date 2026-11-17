@@ -214,11 +214,32 @@ w = sys.argv[1]
 out = []
 for f, job in (("pipeline.yml", "after-review"), ("watchdog.yml", "watch")):
     perms = yaml.safe_load(open(f"{w}/{f}"))["jobs"][job].get("permissions") or {}
-    out.append(f"{f}:" + ("ok" if perms.get("checks") == "read" and perms.get("statuses") == "read" else "ng"))
+    # statuses は、レビューのあとの処理では「AIレビュー」のステータスも付けるので write（#144。write は read を含む）
+    out.append(f"{f}:" + ("ok" if perms.get("checks") == "read" and perms.get("statuses") in ("read", "write") else "ng"))
 print(",".join(out))
 PYX
 )
 assert_eq "読み取りの権限" "pipeline.yml:ok,watchdog.yml:ok" "$result"
+
+echo "== コミットのステータス「AIレビュー」（#144）：付けるジョブに statuses: write と STATUS_TOKEN。レビューAIは始めに pending を付ける"
+result=$(python3 - "$WORKFLOWS" <<'PYX'
+import sys, yaml
+w = sys.argv[1]
+out = []
+p = yaml.safe_load(open(f"{w}/pipeline.yml"))["jobs"]
+for job, script in (("after-ci", "after-ci.sh"), ("after-review", "after-review.sh")):
+    j = p[job]
+    st = [s for s in j["steps"] if script in str(s.get("run", ""))]
+    ok = j["permissions"].get("statuses") == "write" and st and "STATUS_TOKEN" in (st[0].get("env") or {})
+    out.append(f"{job}:" + ("ok" if ok else "ng"))
+r = yaml.safe_load(open(f"{w}/claude-review.yml"))["jobs"]["review"]
+first = r["steps"][0]
+ok = r["permissions"].get("statuses") == "write" and "state=pending" in first.get("run", "") and "AIレビュー" in first.get("run", "")
+out.append("review:" + ("ok" if ok else "ng"))
+print(",".join(out))
+PYX
+)
+assert_eq "ステータスを付けられる" "after-ci:ok,after-review:ok,review:ok" "$result"
 
 echo "== 配る（sync.yml）は、待ってから。新しい方が来たら古い待ちは止まり、配る本体は途中で止めない"
 result=$(python3 - "$WORKFLOWS/sync.yml" <<'PY2'
