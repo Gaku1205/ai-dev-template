@@ -428,10 +428,54 @@ repo_has_visual_tests() {
   gh api "repos/$REPO/contents/tests/visual?ref=main" --jq 'type' > /dev/null 2>&1
 }
 
+# ---- 人間のマージ待ち（ai:hold）が長いPRは、順番待ちを止めない ----
+# 人間のマージ待ち＝ai:hold が付いていて、レビューまで済んでいる（またはレビューAIが動けないPRだと知らせてある）。watchdog.sh の判定と同じ。
+# 待ち時間は ai:hold が付いた時刻から数える。HOLD_BLOCK_MIN 分を過ぎたPRは、触るファイルを「進行中」から外す。
+HOLD_BLOCK_MIN="${HOLD_BLOCK_MIN:-60}"
+HOLD_RELEASED_MARK="<!-- ai-hold-released -->"
+HOLD_BLOCKING_MARK="<!-- ai-hold-blocking -->"
+
+# PR（番号・先頭コミット）が、人間のマージ待ちか
+pr_awaiting_human() {
+  local pr="$1" sha="$2" comments head_date reviewed
+  has_label "$pr" "ai:hold" || return 1
+  comments=$(all_comments "$pr") || return 1
+  head_date=$(gh api "repos/$REPO/commits/$sha" -q .commit.committer.date 2> /dev/null) || return 1
+  reviewed=$(printf '%s' "$comments" | jq --arg since "$head_date" \
+    '[.[] | select((.user.login == "claude[bot]" or .user.login == "github-actions[bot]") and (.body | startswith("## Code review")) and .created_at >= $since)] | length')
+  [ "${reviewed:-0}" -gt 0 ] && return 0
+  printf '%s' "$comments" | jq -e --arg mk "$REVIEW_UNAVAILABLE_MARK $sha" 'any(.[]; .body | contains($mk))' > /dev/null
+}
+
+# ai:hold が付いてから何分か。時刻が読めなければ何も出さない
+hold_wait_min() {
+  local at
+  at=$(api_list "repos/$REPO/issues/$1/events?per_page=100" 2> /dev/null \
+    | jq -r '[.[] | select(.event == "labeled" and .label.name == "ai:hold") | .created_at] | last // empty') || return 0
+  [ -z "$at" ] && return 0
+  at=$(date -d "$at" +%s 2> /dev/null) || return 0
+  echo $((($(date +%s) - at) / 60))
+}
+
+# 人間のマージ待ちのPRを「番号 expired」（待ちが長い）か「番号 waiting」（時間内・時刻が読めない）で1行ずつ出す。読めなければ失敗
+hold_prs() {
+  local pulls pr sha w
+  pulls=$(api_list "repos/$REPO/pulls?state=open&per_page=100") || return 1
+  while IFS=' ' read -r pr sha; do
+    [ -z "$pr" ] && continue
+    pr_awaiting_human "$pr" "$sha" || continue
+    w=$(hold_wait_min "$pr")
+    if [ -n "$w" ] && [ "$w" -ge "$HOLD_BLOCK_MIN" ]; then echo "$pr expired"; else echo "$pr waiting"; fi
+  done < <(printf '%s' "$pulls" | jq -r '.[] | "\(.number) \(.head.sha)"')
+  return 0
+}
+
 # 進行中の作業が触っているファイル。1行目に「unknown」が出たら、分からない物がある（並列にしない）
 # 実装中の Issue は本文の印、open のPRは変えたファイル（AI以外のPR＝配布・依存の更新なども含む）
+# ただし、人間のマージ待ちが HOLD_BLOCK_MIN 分より長い ai:hold のPRは外す
 inflight_touches() {
-  local n body t pr files impl pulls
+  local n body t pr files impl pulls expired
+  expired=$(hold_prs 2> /dev/null | awk '$2 == "expired" {print $1}') || expired=""
   # 一覧を読めなかったら、分からない物があるとして待つ（空の一覧とみなさない）
   impl=$(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aimplement" --paginate -q '.[] | select(.pull_request | not) | .number' 2> /dev/null) || { echo unknown; return 0; }
   pulls=$(gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate -q '.[] | "\(.number) \(.head.ref)"' 2> /dev/null) || { echo unknown; return 0; }
@@ -443,6 +487,7 @@ inflight_touches() {
     if [ -z "$t" ]; then echo unknown; else printf '%s\n' "$t"; fi
   done
   for pr in $(printf '%s\n' "$pulls" | cut -d' ' -f1); do
+    if printf '%s\n' "$expired" | grep -qx "$pr"; then continue; fi
     files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null) || { echo unknown; continue; }
     printf '%s\n' "$files"
   done
@@ -453,8 +498,31 @@ inflight_touches() {
 # - 進行中の物があっても、上限（MAX_PARALLEL）に達しておらず、触るファイルが進行中の物と重ならない物は、並べて始める
 #   （触るファイルが分からない物・進行中の物に分からない物があるときは、今までどおり待つ。見た目のテストがあれば画面どうしも待つ）
 # 止まっている物（ai:stuck）は数えない（企画で止まった物はコードに触れていない）
+# 待ちが長くて進行中から外したPRに、外したことを1回だけ書く（印で二重に書かない）
+note_hold_released() {
+  local pr="$1" next="$2"
+  all_comments "$pr" | jq -e --arg mk "$HOLD_RELEASED_MARK" 'any(.[]; .body | contains($mk))' > /dev/null && return 0
+  comment "$pr" "${HOLD_RELEASED_MARK}
+⏩ 人間のマージ待ちが長いので、このPRを待たずに #${next} を始めます。あとで入る変更とコンフリクトしたら、AIが解消します。" || true
+}
+
+# 順番待ちを止めている ai:hold のPRに「このPRをマージすると #番号 が動き出す」と書く。コメントは1つで、待つ Issue が変わったら書き換える
+note_hold_blocking() {
+  local pr="$1" next="$2" c id body
+  body="${HOLD_BLOCKING_MARK}
+⏸ このPRをマージすると #${next} が動き出します（触るファイルが重なるので、順番待ちで待っています）。
+<!-- ai-hold-blocking-issue: ${next} -->"
+  c=$(all_comments "$pr" | jq -c --arg mk "$HOLD_BLOCKING_MARK" 'map(select(.body | startswith($mk))) | last // empty')
+  if [ -z "$c" ]; then
+    comment "$pr" "$body" || true
+  elif ! printf '%s' "$c" | jq -r .body | grep -qF "ai-hold-blocking-issue: ${next} "; then
+    id=$(printf '%s' "$c" | jq -r .id)
+    gh api -X PATCH "repos/$REPO/issues/comments/$id" -f body="$body" > /dev/null || true
+  fi
+}
+
 start_next_in_queue() {
-  local busy stuck prs inflight queue n body t rc started=0 screen=0
+  local busy stuck prs inflight queue n body t rc started=0 screen=0 holds pr state files marked=" " startedlist=" "
   busy=$(count_open_issues_with_label "ai:implement") || return 1
   stuck=$(count_open_issues_with_label "ai:stuck") || return 1
   prs=$(count_open_prs) || return 1
@@ -477,6 +545,7 @@ start_next_in_queue() {
     return 0
   fi
   if repo_has_visual_tests; then screen=1; fi
+  holds=$(hold_prs 2> /dev/null) || holds=""
   for n in $queue; do
     if [ $((busy + started)) -ge "$MAX_PARALLEL" ]; then
       echo "並列の上限（${MAX_PARALLEL}）なので、ここまでにします"
@@ -497,9 +566,34 @@ start_next_in_queue() {
     # 0＝始めた、2＝ほかの処理が先に始めた。どちらも進行中が1つ増えたので、数えて続きの判断に入れる
     if [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ]; then
       started=$((started + 1))
+      startedlist="${startedlist}${n} "
       inflight="$inflight
 $t"
     fi
+    # 待ちが長いマージ待ちのPRを外したから始められた（そのPRと重なる）なら、そのPRに1回だけ知らせる
+    if [ "$rc" -eq 0 ]; then
+      while read -r pr state; do
+        [ "$state" = expired ] || continue
+        files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null) || continue
+        if paths_overlap "$t" "$files" "$screen"; then note_hold_released "$pr" "$n"; fi
+      done <<< "$holds"
+    fi
+  done
+  # 止まっている（時間内の）マージ待ちのPRに、どの Issue が待っているかの目印を付ける
+  for n in $queue; do
+    case "$startedlist" in *" $n "*) continue ;; esac
+    body=$(gh api "repos/$REPO/issues/$n" -q '.body // ""' 2> /dev/null) || continue
+    t=$(touches_from_body "$body")
+    [ -z "$t" ] && continue
+    while read -r pr state; do
+      [ "$state" = waiting ] || continue
+      case "$marked" in *" $pr "*) continue ;; esac
+      files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null) || continue
+      if paths_overlap "$t" "$files" "$screen"; then
+        note_hold_blocking "$pr" "$n"
+        marked="${marked}${pr} "
+      fi
+    done <<< "$holds"
   done
   [ "$started" -eq 0 ] && echo "今は始められる物がありません（進行中の物が終わると、もう一度見ます）"
   return 0

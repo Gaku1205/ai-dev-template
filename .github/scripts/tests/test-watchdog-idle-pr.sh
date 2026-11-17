@@ -84,6 +84,16 @@ init_state '{"labels":{"58":["ai:hold"]},"pulls":['"$(pr_of 58 claude/issue-5-x 
 run_script watchdog.sh > /dev/null
 assert_contains "レビューがまだなら、レビューへ" "$(labels_of 58)" "ai:review"
 
+echo "== マージ待ち（ai:hold）のPRが main とコンフリクトした：AIに解消を頼む（同じ先頭コミットには1回だけ）"
+init_state '{"labels":{"58":["ai:hold","ai:review"]},"pulls":['"$(pr_of 58 claude/issue-5-x 600 | sed 's/"mergeable_state":"clean"/"mergeable_state":"dirty"/')"'],"runs":['"$(ci success)"'],
+  "comments":[{"id":902,"issue":"58","user":{"login":"github-actions[bot]"},"created_at":"'"$(ago 600)"'","updated_at":"'"$(ago 600)"'","body":"## Code review\n\nNo issues found."}]}'
+run_script watchdog.sh > /dev/null
+assert_contains "解消の依頼が付く" "$(comments_of 58)" "コンフリクトしています"
+assert_contains "直す依頼の印" "$(comments_of 58)" "auto-fix-sha: abc123"
+assert_not_contains "人間には回さない" "$(labels_of 58)" "ai:stuck"
+run_script watchdog.sh > /dev/null
+assert_eq "二度目は頼まない" "1" "$(comments_of 58 | grep -c 'auto-fix-sha: abc123')"
+
 
 echo "== レビューAIが動けないPR（レビューのワークフローを変えるPR）で、人間のマージ待ちにしてある：動かさない"
 init_state '{"labels":{"58":["ai:hold","ai:review"]},"pulls":['"$(pr_of 58 fix/review 600)"'],"runs":['"$(ci success)"'],
