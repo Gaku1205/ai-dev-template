@@ -169,6 +169,49 @@ verdict mock-a "$all_ok" > v.json; judge verdict --mode screen v.json --out r2.j
 line=$(judge summary r1.json r2.json)
 assert_contains "1回目と直した後" "$line" "1回目 ⚠️ mock-a 8.0 点（残った指摘：この題材だけの考えがある） → 直した後 ✅ mock-a 8.5 点"
 
+echo "== 複数の案から使う案を選ぶ（pick）"
+res() { # ファイル 合格(true|false) 点 [judged]
+  jq -n --argjson p "$2" --argjson s "$3" --argjson j "${4:-true}" \
+    '{mode:"screen", pass:$p, judged:$j, items:(if $j then [{name:"x", pass:$p, overall:$s, failed:[], fixes:[]}] else [] end), set_failed:[], gate_ok:true}' > "$1"
+}
+res p0.json false 7.0; res p1.json true 7.6; res p2.json true 8.2
+out=$(judge pick p0.json p1.json p2.json)
+assert_contains "合格した案の中で最高点を選ぶ" "$out" "index=2"
+assert_contains "合格があれば直しは要らない" "$out" "fix=false"
+res p0.json false 7.4; res p1.json true 7.5
+assert_contains "高い点でも不合格の案より、合格した案を優先" "$(judge pick p0.json p1.json)" "index=1"
+res p0.json false 8.9; res p1.json true 7.5
+assert_contains "不合格の方が点が高くても、合格を選ぶ" "$(judge pick p0.json p1.json)" "index=1"
+res p0.json true 8.0; res p1.json true 8.0
+assert_contains "同点は番号が小さい方" "$(judge pick p0.json p1.json)" "index=0"
+res p0.json false 6.0; res p1.json false 6.8; res p2.json false 6.8
+out=$(judge pick p0.json p1.json p2.json)
+assert_contains "合格が無ければ最高点（同点は小さい方）" "$out" "index=1"
+assert_contains "最高点が 6.8（0.7 点差）なら直さない" "$out" "fix=false"
+res p0.json false 6.0; res p1.json false 5.0
+out=$(judge pick p0.json p1.json)
+assert_contains "最高点 6.0 は 1.5 点低い：直す" "$out" "fix=true"
+assert_contains "直す対象は最高点の案" "$out" "index=0"
+res p0.json false 6.1
+assert_contains "1.4 点低いだけでは直さない" "$(judge pick p0.json)" "fix=false"
+res p0.json false 3.0 false; res p1.json false 6.9
+out=$(judge pick p0.json p1.json)
+assert_contains "審査できなかった案は選ばない" "$out" "index=1"
+res p0.json true 9.0 false; res p1.json false 7.0
+assert_contains "審査できなかった案は、合格と書いてあっても選ばない" "$(judge pick p0.json p1.json)" "index=1"
+res p0.json false 0 false; res p1.json false 0 false
+out=$(judge pick p0.json p1.json none.json)
+assert_contains "全部審査できなければ番号は空" "$out" "index="
+assert_not_contains "番号は空（0 などを入れない）" "$out" "index=0"
+assert_contains "全部審査できなければ直しは false" "$out" "fix=false"
+res p0.json false 7.0; res p1.json true 7.9
+line=$(judge summary --picked 1 p0.json p1.json)
+assert_contains "複数案：各案の点" "$line" "案1 7.0 点 ／ 案2 7.9 点（合格）★"
+assert_contains "複数案：選んだ案" "$line" "選んだ案：案2"
+assert_contains "複数案：選べなかったとき" "$(judge summary --picked "" p0.json none.json)" "案2 審査できなかった → 選べる案が無かった"
+res p0.json true 8.0
+assert_contains "案が1つのときの表示は今までどおり" "$(judge summary p0.json)" "✅ x 8.0 点"
+
 echo "== 審査役に渡す紙：オーナーが決めた事を入れる"
 echo '{"memo":"土地の履歴","ideas":[{"title":"土地の履歴書","pitch":"p","who":"w"}],"idea":0,"look":2,"looks":[{"n":2,"title":"地図","idea":"地形図が目次になる"}],"answers":[{"q":"地図は？","a":"本物の古い地形図を重ねる"}],"notes":[{"stage":"looks","note":"朱はやめて"}]}' > state.json
 b=$(judge brief --state state.json --concept talk/concept.md --stage mocks)
