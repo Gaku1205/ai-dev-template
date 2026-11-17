@@ -18,6 +18,12 @@
       FIX.md は直すAIが読む紙。--critique は実装の審査の形（1行目「点数: 7.5」）で書く。GITHUB_OUTPUT に pass=true|false|none と score
   design-judge.py summary RESULT.json [RESULT2.json]
       オーナーに見せる1〜数行（1回目と、直した後の2回目）
+  design-judge.py summary --picked N|"" RESULT0.json RESULT1.json [RESULT2.json]
+      案が複数のとき：各案の点と、選んだ案（N は 0 始まり。空なら選べなかった）
+  design-judge.py pick RESULT0.json RESULT1.json [RESULT2.json]
+      複数の案の審査結果（verdict の --out）から使う案を選ぶ。合格した案の中で最高点、合格が無ければ最高点、同点は番号が小さい方。
+      審査できなかった案は選ばない。GITHUB_OUTPUT に index（0 始まり。全部審査できなければ空）と fix=true|false
+      （合格した案が無く、最高点が合格の点より 1.5 点以上低いときだけ true）
 """
 import json
 import os
@@ -25,6 +31,7 @@ import re
 import sys
 
 PASS_LINE = 7.5
+PICK_FIX_GAP = 1.5  # 複数案：最高点が PASS_LINE よりこれ以上低いときだけ直しの回を行う
 WEIGHTS = {"design": 0.4, "use": 0.3, "idea": 0.2, "content": 0.1}
 SCORE_NAMES = {"design": "見た目", "use": "使いやすさ", "idea": "考え", "content": "中身"}
 
@@ -467,9 +474,64 @@ def summary_line(result):
     return ("✅ " if result["pass"] else "⚠️ ") + " ／ ".join(parts)
 
 
+def result_score(r):
+    """審査結果の点：見た目の悪い方（verdict の score と同じ）"""
+    return min((x["overall"] for x in r.get("items", [])), default=0)
+
+
+def pick(a):
+    """複数の案の審査結果から、使う案を選ぶ。合格した案の中で最高点、合格が無ければ最高点。同点は番号が小さい方。
+    審査できなかった案は選ばない。直しが要るのは、最高点が PASS_LINE より 1.5 点以上低く、合格した案が無いときだけ"""
+    if not a:
+        die(__doc__)
+    cands = []
+    for i, p in enumerate(a):
+        r = None
+        if os.path.isfile(p) and not os.path.islink(p):
+            try:
+                r = load(p)
+            except Exception:
+                r = None
+        if isinstance(r, dict) and r.get("judged") and r.get("items"):
+            cands.append((i, bool(r.get("pass")), result_score(r)))
+    if not cands:
+        output(index="", fix="false")
+        return
+    pool = [c for c in cands if c[1]] or cands
+    best = min(pool, key=lambda c: (-c[2], c[0]))
+    fix = not best[1] and best[2] <= PASS_LINE - PICK_FIX_GAP + 1e-9
+    output(index=best[0], fix=str(fix).lower())
+
+
+def summary_multi(paths, picked):
+    parts = []
+    for i, p in enumerate(paths):
+        r = None
+        if os.path.isfile(p) and not os.path.islink(p):
+            try:
+                r = load(p)
+            except Exception:
+                r = None
+        mark = "★" if picked is not None and i == picked else ""
+        if isinstance(r, dict) and r.get("judged") and r.get("items"):
+            parts.append(f"案{i + 1} {result_score(r)} 点{'（合格）' if r.get('pass') else ''}{mark}")
+        else:
+            parts.append(f"案{i + 1} 審査できなかった")
+    chosen = f"選んだ案：案{picked + 1}" if picked is not None else "選べる案が無かった（審査できなかった）"
+    print(f"審査役（作ったAIとは別のAIが、画像だけを見て採点。合格は {PASS_LINE} 点以上で、必ず通す問いが全部「はい」）：" + " ／ ".join(parts) + f" → {chosen}")
+
+
 def summary(a):
     if not a:
         die(__doc__)
+    opts, a = args_of(a, ["picked"])
+    if opts["picked"] is not None or len(a) > 2:
+        try:
+            picked = int(opts["picked"]) if opts["picked"] not in (None, "") else None
+        except ValueError:
+            picked = None
+        summary_multi(a, picked if picked is not None and 0 <= picked < len(a) else None)
+        return
     results = []
     for p in a[:2]:
         if os.path.isfile(p) and not os.path.islink(p):
@@ -499,6 +561,8 @@ def main():
         verdict(rest)
     elif cmd == "summary":
         summary(rest)
+    elif cmd == "pick":
+        pick(rest)
     else:
         die(__doc__)
 
