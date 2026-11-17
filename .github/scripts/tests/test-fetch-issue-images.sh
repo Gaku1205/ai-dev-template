@@ -14,6 +14,7 @@ done
 case "$url" in
   "https://api.github.com/repos/me/app/contents/images/2026-11/abc.png?ref=issue-images") { printf '\x89PNG\r\n\x1a\n'; head -c 2000 /dev/zero; } > "$out" ;;
   "https://api.github.com/repos/me/app/contents/images/2026-11/s%20p.jpg?ref=issue-images") { printf '\xff\xd8\xff\xe0'; head -c 2000 /dev/zero; } > "$out" ;;
+  *"site.jpg?size[w]=1") { printf '\xff\xd8\xff\xe0'; head -c 2000 /dev/zero; } > "$out" ;;
   */reel.png) { printf '\x89PNG\r\n\x1a\n'; head -c 2000 /dev/zero; } > "$out" ;;
   */site.jpg) { printf '\xff\xd8\xff\xe0'; head -c 2000 /dev/zero; } > "$out" ;;
   */anim.gif) { printf 'GIF89a'; head -c 2000 /dev/zero; } > "$out" ;;
@@ -69,5 +70,11 @@ assert_eq "../ を含む道は Contents API に渡さない" "0" "$(grep 'api.gi
 out=$(run '![x](https://github.com/me/app/raw/issue-images/images/2026-11/missing.png)'); code=$?
 assert_eq "取れなくても成功" "0" "$code"
 assert_contains "取れなかったと書く" "$out" "取れませんでした：https://github.com/me/app/raw/issue-images/images/2026-11/missing.png"
+
+echo "== 題つきの画像・[ ] を含む URL も取る"
+rm -rf "$T/work/factory-refs"; : > "$T/calls.log"
+out=$(run '![t](https://github.com/user-attachments/assets/reel.png "題") ![q](https://cdn.example.com/x/site.jpg?size[w]=1)')
+assert_contains "2 枚" "$out" "2 枚取りました"
+assert_eq "curl は -g（[ ] を範囲と読まない）" "2" "$(grep -c '^curl -gsSL' "$T/calls.log")"
 
 finish

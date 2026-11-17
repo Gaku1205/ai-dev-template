@@ -68,6 +68,8 @@ title=$(issue_title "$ISSUE")
 
 case "$result" in
   READY*)
+    # 清書で画像の行が消えていたら足し直す（実装AIが同じ画像を見るため。企画AIには残すよう頼んでいるが、確かめはここ）
+    keep_issue_images "$ISSUE" "${ISSUE_BODY_BEFORE:-}" || true
     size=$(printf '%s' "$result" | grep -oE 'size:(S|L)' || true)
     # 人間や工場が先にサイズを決めていれば（最初の画面を作る Issue の size:L など）、そちらを残す
     if [ -n "$size" ] && ! has_label "$ISSUE" "size:S" && ! has_label "$ISSUE" "size:L"; then

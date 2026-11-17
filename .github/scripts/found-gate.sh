@@ -6,6 +6,7 @@
 #           NOW（テスト用。UNIX秒）、GITHUB_OUTPUT（run・url・reason を書く。無ければ標準出力）
 # docs/pipeline.md「使ってみる役・監査役」
 set -uo pipefail
+source "$(dirname "$0")/pipeline-paths.sh"
 kind="${1:-}"
 REPO="${REPO:-${GITHUB_REPOSITORY:-}}"
 out="${GITHUB_OUTPUT:-/dev/stdout}"
@@ -24,7 +25,7 @@ pipeline_only_commit() {
   local sha="$1" files
   if [ -z "${_pl_only[$sha]:-}" ]; then
     files=$(gh api "repos/$REPO/commits/$sha" --jq '[.files[].filename] | join("\n")' 2> /dev/null || true)
-    if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -vqE '^(\.github/|\.claude/|docs/pipeline(-setup)?\.md$)'; then
+    if pipeline_files_only "$files"; then
       _pl_only[$sha]=yes
     else
       _pl_only[$sha]=no

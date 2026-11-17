@@ -18,7 +18,8 @@ urls=$(printf '%s' "${BODY:-}" | python3 -c '
 import re, sys
 text = sys.stdin.read()
 # 書かれた順に拾う（Markdown の画像と <img>）
-pat = re.compile(r"!\[[^\]]*\]\((https://[^\s)]+)\)|<img[^>]*\bsrc=[\"\x27](https://[^\"\x27\s>]+)", re.I)
+# ![alt](URL "題") のように題が付いた形も拾う
+pat = re.compile(r"!\[[^\]]*\]\((https://[^\s)]+)(?:\s+(?:\"[^\"]*\"|\x27[^\x27]*\x27))?\s*\)|<img[^>]*\bsrc=[\"\x27](https://[^\"\x27\s>]+)", re.I)
 found = [m.group(1) or m.group(2) for m in pat.finditer(text)]
 seen = []
 for u in found:
@@ -60,12 +61,12 @@ while IFS= read -r url; do
   if [ -n "$rf" ]; then
     # gh api は中身を文字として扱い、画像では壊れる（transform: short source buffer）ので curl で取る
     api="https://api.github.com/repos/$GITHUB_REPOSITORY/contents/${rf#*$'\t'}?ref=${rf%%$'\t'*}"
-    curl -sSLf --proto '=https' --max-time 60 --max-filesize "$MAX_BYTES" -A "ai-dev-template-factory/1.0" -H "Accept: application/vnd.github.raw+json" -H "Authorization: Bearer ${GH_TOKEN:-}" -o "$tmp" "$api" 2> /dev/null || { echo "取れませんでした：$url"; continue; }
+    curl -gsSLf --proto '=https' --max-time 60 --max-filesize "$MAX_BYTES" -A "ai-dev-template-factory/1.0" -H "Accept: application/vnd.github.raw+json" -H "Authorization: Bearer ${GH_TOKEN:-}" -o "$tmp" "$api" 2> /dev/null || { echo "取れませんでした：$url"; continue; }
   else
     host=$(printf '%s' "$url" | sed -E 's#^https://([^/]+).*#\1#')
     auth=()
     [ "$host" = github.com ] && [ -n "${GH_TOKEN:-}" ] && auth=(-H "Authorization: token $GH_TOKEN")
-    curl -sSL --proto '=https' --max-time 60 --max-filesize "$MAX_BYTES" -A "ai-dev-template-factory/1.0" "${auth[@]}" -o "$tmp" "$url" 2> /dev/null || { echo "取れませんでした：$url"; continue; }
+    curl -gsSL --proto '=https' --max-time 60 --max-filesize "$MAX_BYTES" -A "ai-dev-template-factory/1.0" "${auth[@]}" -o "$tmp" "$url" 2> /dev/null || { echo "取れませんでした：$url"; continue; }
   fi
   size=$(wc -c < "$tmp")
   [ "$size" -gt 100 ] && [ "$size" -le "$MAX_BYTES" ] || { echo "大きさが合いません：$url"; continue; }

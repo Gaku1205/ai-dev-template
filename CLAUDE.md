@@ -24,7 +24,7 @@
 - `.github/` 配下（ワークフロー、スクリプト、テンプレート）。ただし ai-dev-template 自身だけ、下の「ai-dev-template 自身の作業」で許した物は触ってよい
 - `package.json` の依存パッケージの追加・変更（必要なら理由をコメントに書いて人間に任せる）
 - `pipeline.json`（言語・確認コマンド・公開先。AIに許すコマンドを決めるので、変えるときは理由と差分をPRの説明に書いて人間に任せる）
-- `CLAUDE.md`、`AGENTS.md`、`docs/pipeline.md`（パイプラインの説明。ai-dev-template 自身だけ、`docs/pipeline.md` は下の節で触ってよい）。`docs/spec.md` と `docs/design.md` は、上のとおり必要なときだけ更新してよい
+- `CLAUDE.md`、`AGENTS.md`、`docs/pipeline.md`・`docs/pipeline-setup.md`（パイプラインの説明。ai-dev-template 自身だけ、`docs/pipeline.md` は下の節で触ってよい）。`docs/spec.md` と `docs/design.md` は、上のとおり必要なときだけ更新してよい
 - APIキーやトークンなどの秘密情報。コード・コメント・テストに書かない。設定は環境変数から読む
 
 ## ai-dev-template 自身の作業（パイプライン本体のリポジトリだけ。テンプレートから新しいアプリを作ったら、この節ごと消す）

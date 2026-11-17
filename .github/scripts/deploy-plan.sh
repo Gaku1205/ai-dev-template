@@ -24,7 +24,8 @@ else
   changed=$(git diff --name-only HEAD^ HEAD 2> /dev/null || true)
 fi
 kinds=$(stack_deploy_kinds)
-pipeline_only() { [ -n "$1" ] && ! printf '%s\n' "$1" | grep -vqE '^(\.github/|docs/pipeline(-setup)?\.md$)'; }
+source "$(dirname "$0")/pipeline-paths.sh"
+pipeline_only() { pipeline_files_only "$1"; }
 
 # 最後に公開の結果が付いたコミットから、今のコミットまでに変わったファイル（調べられなければ 1 で終わる）
 changed_since_last_deploy() {

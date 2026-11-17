@@ -14,6 +14,7 @@
 #           GITHUB_EVENT_NAME（schedule なら3時間ごとの確かめ）、NTFY_TOPIC・NOTIFY_EVENTS（通知。無ければ知らせない）、VERCEL_RETRY_MAX
 # 終了コード：公開を頼んだ・何もしなくてよい → 0、頼めなかった → 1
 set -uo pipefail
+source "$(dirname "$0")/pipeline-paths.sh"
 VERCEL_API="${VERCEL_API:-https://api.vercel.com}"
 REPO="${GITHUB_REPOSITORY:?}"
 
@@ -75,7 +76,7 @@ if [ "${VERCEL_FORCE:-}" != 1 ]; then
   fi
   if [ -n "$last_ok" ]; then
     changed=$(gh api "repos/$REPO/compare/$last_ok...$head" -q '.files[].filename' 2> /dev/null || true)
-    if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -vqE '^(\.github/|docs/pipeline(-setup)?\.md$)'; then
+    if pipeline_files_only "$changed"; then
       echo "::notice::前の公開（${last_ok:0:7}）から、パイプラインの更新しか変わっていないので公開しません"
       exit 0
     fi
