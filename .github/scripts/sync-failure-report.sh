@@ -17,7 +17,7 @@ read -r src sha < <(printf '%s' "$body" | sed -n 's/.*pipeline-sync-src: \([^@ ]
 if [ -z "${sha:-}" ]; then
   sha="${HEAD_BRANCH:-}"; sha="${sha#pipeline-sync/}"
 fi
-printf '%s' "$sha" | grep -Eq '^[0-9a-f]+$' || exit 0
+grep -Eq '^[0-9a-f]+$' <<< "$sha" || exit 0
 
 title="配布 ${sha} が配り先で落ちています"
 
