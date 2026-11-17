@@ -17,14 +17,22 @@ concurrency:
 
 jobs:
   report:
-    if: github.event.repository.is_template
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # テンプレート本体だけで動く（配り先のアプリでは何もしない）。schedule のときは github.event に repository が入らないので、API で見る
+      - name: テンプレート本体か
+        id: tpl
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          t=$(gh api "repos/$GITHUB_REPOSITORY" -q .is_template 2> /dev/null || echo false)
+          echo "is=$t" >> "$GITHUB_OUTPUT"
+          [ "$t" = true ] || echo "テンプレート本体ではないので、何もしません"
       # 秘密鍵を PKCS#8 にそろえる（create-github-app-token は Node 24 だと「BEGIN RSA PRIVATE KEY」の形式を読めず Invalid keyData になる）
       - name: パイプラインの鍵の秘密鍵をそろえる
         id: app-key
-        if: vars.PIPELINE_APP_ID != ''
+        if: steps.tpl.outputs.is == 'true' && vars.PIPELINE_APP_ID != ''
         continue-on-error: true
         env:
           KEY: ${{ secrets.PIPELINE_APP_PRIVATE_KEY }}
@@ -47,7 +55,9 @@ jobs:
           private-key: ${{ steps.app-key.outputs.pem }}
           owner: ${{ github.repository_owner }}
       - uses: actions/checkout@v6
+        if: steps.tpl.outputs.is == 'true'
       - name: 表を作る
+        if: steps.tpl.outputs.is == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
         run: |
@@ -57,6 +67,7 @@ jobs:
           export REPORT_REPOS
           python3 .github/scripts/pipeline-report.py pipeline-report.xlsx
       - name: Releases に置く
+        if: steps.tpl.outputs.is == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
