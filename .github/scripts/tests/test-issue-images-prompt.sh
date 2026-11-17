@@ -40,4 +40,12 @@ out=$(run '画像なしのメモ' issue-images2 plan)
 assert_eq "空の一言" "prompt=" "$out"
 assert_eq "置き場所を作らない" "no" "$([ -d "$T/work/issue-images2" ] && echo yes || echo no)"
 
+echo "== 本文に HTML コメント（目印など）があれば、原文を置いて読むよう伝える（AIへの表示では消えるため）"
+out=$(run '目印は `<!-- hold-blocking: #12,#15 -->` の形' issue-images3 implement)
+assert_contains "原文の場所を伝える" "$out" "本文の原文は issue-images3/body.md にある"
+assert_contains "原文に目印が残る" "$(cat "$T/work/issue-images3/body.md")" "<!-- hold-blocking: #12,#15 -->"
+assert_eq "1行のまま" "1" "$(wc -l < "$T/out" | tr -d ' ')"
+out=$(run '目印なし' issue-images4 plan)
+assert_eq "HTML コメントが無ければ何も言わない" "prompt=" "$out"
+
 finish
