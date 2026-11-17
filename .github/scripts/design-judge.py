@@ -4,10 +4,11 @@
 作ったAIは自分の画面を甘く見る。そこで、機械で測れる事はこのスクリプトが測り（関門）、絵を見ないと分からない事は別のAI（審査役。.github/factory/judge.md）が
 「はい・いいえ」で答え、合格かどうかはこのスクリプトが決める（AIに自分で合格と言わせない）。入力から出力が決まる。テストは tests/test-design-judge.sh。
 
-  design-judge.py gate [--concept FILE [--part looks]] [--lint LINT.json] [--min-real N] [--credits FILE]... --out GATE.json 対象...
+  design-judge.py gate [--concept FILE [--part looks]] [--lint LINT.json] [--min-real N] [--phone-height PX] [--credits FILE]... --out GATE.json 対象...
       関門。対象は HTML のファイルか、画面のソースのフォルダ（src など）。
       ・設計メモ（concept.md）に、持ち物・考え・通し表があるか
       ・本物の絵（出どころの記録がある写真・古い地図・図版、撮った実在の画面）が何枚、画面で使われているか
+      ・--phone-height：390 幅で撮ったページ全体の高さ（測れたときだけ。5,000px 超なら short は「いいえ」）
       ・taste-skill の lint.mjs --json の FAIL
       結果を GATE.json に書き、直すAIが読む文（problems）も入れる。終了コードは常に 0。GITHUB_OUTPUT に ok=true|false
   design-judge.py brief --state STATE.json [--concept FILE] [--stage looks|mocks]
@@ -40,20 +41,24 @@ CHECKS = {
     "variety": ("同じ構図の欄が続いていない", False, "design", 7.0),
     "phone": ("スマホの画面が、PC を縮めただけでなく1画面として成立している", False, "use", 7.0),
     "beside": ("実例の隣に置いても、どれがAIの作った物か一目では分からない", False, "overall", 7.0),
+    "world": ("題材の世界観が最初の1画面で伝わる（白地・灰色の角丸・英字ロゴの無難な SaaS の見た目ではない）", True, "design", 6.5),
+    "sample": ("例の値が入力欄に見える（本物のような値が最初から入っていて入力欄と分からない、ということが無い。空欄・薄い例・「例」の表示は「はい」）", False, "use", 7.0),
+    "short": ("スマホのページが長すぎない（縦 5,000px 以下で、主な操作が最初の1画面に入っている）", False, "use", 7.0),
     "fits": ("新しく足した所が、このサービスらしさ（docs/design.md）の通し方で作られている", True, "idea", 6.5),
 }
 MODES = {
     # 見た目の方向の板（最初の1画面だけ）
-    "looks": ["one", "swap", "real", "full", "tells", "owner"],
+    "looks": ["one", "swap", "real", "full", "tells", "owner", "world", "sample"],
     # ざっくり画面・工場が作った本物の画面（ページの全部）
-    "screen": ["one", "swap", "real", "through", "full", "tells", "broken", "owner", "variety", "phone", "beside"],
+    "screen": ["one", "swap", "real", "through", "full", "tells", "broken", "owner", "variety", "phone", "beside", "world", "sample", "short"],
     # 今あるアプリへの変更（Issue の実装）
-    "change": ["fits", "full", "tells", "broken", "phone"],
+    "change": ["fits", "full", "tells", "broken", "phone", "world", "sample", "short"],
 }
 SET_CHECKS = {"looks": {"distinct": "3つの方向が、色違いではなく、考え（題材のどの持ち物を主役にするか）から違う"}}
 
 RASTER = (".jpg", ".jpeg", ".png", ".webp", ".avif")
 MIN_BYTES = 15 * 1024
+PHONE_MAX_HEIGHT = 5000
 
 
 def die(msg):
@@ -196,7 +201,7 @@ def resolve(ref, src, public_dirs):
 
 
 def gate(a):
-    opts, targets = args_of(a, ["concept", "part", "lint", "min-real", "out", "credits"], multi=("credits",))
+    opts, targets = args_of(a, ["concept", "part", "lint", "min-real", "phone-height", "out", "credits"], multi=("credits",))
     if not opts["out"] or not targets:
         die(__doc__)
     problems = []
@@ -256,7 +261,13 @@ def gate(a):
         ids = sorted({f["id"] for f in lint_fail})
         problems.append(f"lint.mjs の FAIL が {len(lint_fail)} 個（{'・'.join(ids)}）。消すだけにせず、消した所は大きい文字・色の面・本物の絵・中身で埋める："
                         + "；".join(f"{f['file']}:{f['line']} {f['match']}" for f in lint_fail[:8]))
-    result = {"ok": not problems, "kind": kind, "real": len(real), "min_real": want, "drawn": drawn, "uncredited": len(uncredited), "missing": missing[:20],
+    phone_height = 0
+    if opts["phone-height"]:
+        try:
+            phone_height = max(0, int(float(opts["phone-height"])))
+        except ValueError:
+            problems.append("--phone-height が数字でない（測れていない）")
+    result = {"ok": not problems, "kind": kind, "phone_height": phone_height, "real": len(real), "min_real": want, "drawn": drawn, "uncredited": len(uncredited), "missing": missing[:20],
               "lint_fail": lint_fail[:40], "problems": problems}
     with open(opts["out"], "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=1)
@@ -329,6 +340,10 @@ def judge_item(raw, mode, gate_result):
     # 関門で本物の絵が足りないときは、real は「いいえ」
     if "real" in answers and gate_result and gate_result.get("real", 0) < gate_result.get("min_real", 0) and answers["real"]["ok"]:
         answers["real"] = {"ok": False, "note": f"関門：本物の絵が {gate_result.get('real', 0)} 枚（{gate_result.get('min_real', 0)} 枚以上要る）"}
+    # スマホのページが 5,000px を超えていたら、審査役の答えにかかわらず short は「いいえ」（測れたときだけ）
+    height = gate_result.get("phone_height", 0) if gate_result else 0
+    if "short" in answers and isinstance(height, int) and height > PHONE_MAX_HEIGHT and answers["short"]["ok"]:
+        answers["short"] = {"ok": False, "note": f"関門：スマホのページの縦が {height}px（{PHONE_MAX_HEIGHT}px 以下にする）"}
     capped = dict(scores)
     overall_cap = 10.0
     failed = []
