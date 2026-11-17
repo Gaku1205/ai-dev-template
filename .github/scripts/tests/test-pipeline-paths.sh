@@ -13,7 +13,7 @@ assert_eq "似た名前（docs/pipeline.md.bak）" "no" "$(yes_no "docs/pipeline
 assert_eq "空" "no" "$(yes_no "")"
 
 echo "== vercel.json の ignoreCommand も同じ場所を除く"
-# テンプレート本体だけ（配り先のアプリの vercel.json は、アプリの物で、この形とは限らない。examples/ はテンプレートにしか無い）
+# テンプレート本体だけ（配り先のアプリの vercel.json は、アプリの物で、この形とは限らない。examples フォルダはテンプレートにしか無い）
 v=$(cat "$SCRIPTS_DIR/../../vercel.json" 2> /dev/null || true)
 if [ -n "$v" ] && [ -d "$SCRIPTS_DIR/../../examples" ]; then
   for p in .github .claude docs/pipeline.md docs/pipeline-setup.md; do
