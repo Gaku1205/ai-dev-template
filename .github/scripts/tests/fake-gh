@@ -98,6 +98,9 @@ if m and method=='PATCH':
     for c in st['comments']:
         if c['id']==int(m.group(1)): c['body']=fields['body']; c['updated_at']=now
     save(); print('{}'); sys.exit(0)
+# Issue・PR のイベント：st['events'] = {'20': [{'event':'labeled','label':{'name':'ai:hold'},'created_at':'…'}]}
+m=re.match(r'issues/(\d+)/events$',base)
+if m: paged(st.get('events',{}).get(m.group(1),[])); sys.exit(0)
 m=re.match(r'issues/(\d+)/labels$',base)
 if m:
     n=m.group(1); L=st['labels'].setdefault(n,[])

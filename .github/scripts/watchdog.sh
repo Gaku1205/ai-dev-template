@@ -335,7 +335,15 @@ ${relabel_mark}"
         '[.[] | select((.user.login == "claude[bot]" or .user.login == "github-actions[bot]") and (.body | startswith("## Code review")) and .created_at >= $since)] | length')
       # マージ待ち（ai:hold で、レビューまで済んでいる。または、レビューAIが動けないPRだと知らせてある）は、人間が押すのを待っている
       if has_label "$pr" "ai:hold" && { [ "$reviewed" -gt 0 ] ||
-        printf '%s' "$comments" | jq -e --arg mk "$REVIEW_UNAVAILABLE_MARK $head" 'any(.[]; .body | contains($mk))' > /dev/null; }; then continue; fi
+        printf '%s' "$comments" | jq -e --arg mk "$REVIEW_UNAVAILABLE_MARK $head" 'any(.[]; .body | contains($mk))' > /dev/null; }; then
+        # 人間を待っている間に main が進んで、コンフリクトしたら、AIに解消を頼む（待ちが長い PR を順番待ちが追い越すので、あとで入る変更とぶつかりやすい）。
+        # 同じ先頭コミットへの依頼は1回だけ
+        if [[ "$ref" != pipeline-sync/* ]] && [ "$(pr_merge_state "$pr")" = dirty ] &&
+          ! printf '%s' "$comments" | jq -e --arg mk "auto-fix-sha: $head" 'any(.[]; .body | contains($mk))' > /dev/null; then
+          request_fix_or_stop "$pr" "$head" "人間のマージ待ちの間に main が進み、コンフリクトしています。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し（docs/spec.md・docs/design.md も両方の決まりを残す）、どちらかを捨てるときはPRにコメントで理由を書いてください。"
+        fi
+        continue
+      fi
       nudge_mark="<!-- auto-nudge: ${head} -->"
       if printf '%s' "$comments" | jq -e --arg mk "$nudge_mark" 'any(.[]; .body | contains($mk))' > /dev/null; then
         stop_for_human "$pr" "CIは終わっています（結果：${ci_conclusion:-不明}）が、${m}分のあいだ何も進んでいません。見張り役が1回続きを動かしても進みませんでした（Actions の Pipeline・Claude Review・Claude Mention の実行と、CI以外のチェックを確かめてください）"
