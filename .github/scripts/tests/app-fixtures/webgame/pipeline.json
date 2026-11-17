@@ -1,0 +1,7 @@
+{
+  "checks": [
+    { "name": "型", "run": "npm run typecheck" },
+    { "name": "テスト", "run": "npm run test" },
+    { "name": "ビルド", "run": "npm run build" }
+  ]
+}
