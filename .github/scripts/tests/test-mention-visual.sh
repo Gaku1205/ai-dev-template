@@ -47,10 +47,11 @@ run_after > /dev/null
 assert_not_contains "visual:update は付けない" "$(labels_of 58)" "visual:update"
 assert_contains "ai:stuck" "$(labels_of 58)" "ai:stuck"
 
-echo "== PRの説明に撮り直しの依頼がある（CIは通っている）：撮り直す"
+echo "== PRの説明にだけ撮り直しの依頼がある（CIは通っている）：PRの説明は見ないので撮り直さない"
 setup_case 'うまくいきませんでした。' "$all_ok" success '見た目を変えたので visual:update ラベルで基準の画像を撮り直してください'
 run_after > /dev/null
-assert_contains "visual:update が付く" "$(labels_of 58)" "visual:update"
+assert_not_contains "visual:update は付けない" "$(labels_of 58)" "visual:update"
+assert_contains "ai:stuck" "$(labels_of 58)" "ai:stuck"
 
 echo "== 2回撮り直したあとに main を取り込んだ（基準の画像は main の側に戻った）：もう一度撮り直す（agent-desk #316）"
 setup_case '`visual:update` で撮り直してください。' "$visual_only"
