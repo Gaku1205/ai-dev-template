@@ -46,6 +46,7 @@ if [ "$1" = label ] && [ "$2" = create ]; then
   [ "$3" = "${LABEL_FAIL:-}" ] && { echo "HTTP 502" >&2; exit 1; }
   echo "$3" >> "$MOCK_DIR/made-labels"; exit 0
 fi
+case "$*" in *"is_template"*) echo "${IS_TEMPLATE:-false}"; exit 0 ;; esac
 case "$*" in *"/labels?"*) cat "$MOCK_DIR/made-labels" 2> /dev/null; exit 0 ;; esac
 echo "想定外：$*" >&2; exit 1
 GH
@@ -72,6 +73,20 @@ assert_contains "ラベルを作った" "$out" "✅ ラベルを作った"
 assert_eq "最後に ai:plan" "ai:plan" "$(tail -1 "$MOCK_DIR/made-labels")"
 assert_not_contains "CLAUDE.md の節を消す" "$(cat CLAUDE.md)" "ai-dev-template 自身の作業"
 assert_contains "コミットの目印" "$(cat "$work/env")" "CHANGED_CLAUDE_MD=1"
+
+echo "== 写しの .github/sync-targets：配り先を空にし、コメント行は残す（テンプレート本体では触らない）"
+mkdir -p .github
+printf '# 説明の行\n# もう1行\nGaku1205/agent-desk\n!x/y\n' > .github/sync-targets
+rm -f "$MOCK_DIR/made-labels" "$work/env"
+IS_TEMPLATE=true boot > /dev/null
+assert_contains "テンプレート本体では残す" "$(cat .github/sync-targets)" "Gaku1205/agent-desk"
+rm -f "$MOCK_DIR/made-labels" "$work/env"
+out=$(boot)
+assert_not_contains "配り先が残らない" "$(grep -v '^#' .github/sync-targets)" "/"
+assert_not_contains "除外の行も残らない" "$(cat .github/sync-targets)" "!x/y"
+assert_contains "コメント行は残る" "$(cat .github/sync-targets)" "# 説明の行"
+assert_contains "Summary に書く" "$out" "sync-targets"
+assert_contains "コミットの目印" "$(cat "$work/env")" "CHANGED_SYNC_TARGETS=1"
 
 echo "== 3回目：準備ずみなので何もしない"
 out=$(boot)
