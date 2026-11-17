@@ -5,6 +5,7 @@
 # README など）や、アプリごとに形の違う物（vercel.json・package.json・pipeline.json・CLAUDE.md）に頼るテストが混ざると、
 # 配ったとたんに全部のアプリの CI が落ちる。配る前（テンプレートの CI）に、ここで見つける。
 # 使い方：.github/scripts/tests/run-as-app.sh [見本の名前 ...]（テンプレート本体で動かす。rsync が要る。名前を省くと全部の見本）
+#         .github/scripts/tests/run-as-app.sh --canary-only（見本は回さず、SYNC_CANARY の実物だけ。CI は見本ごとに別のジョブで並べて回す）
 # 環境変数 SYNC_CANARY（空白区切りの owner/repo）があれば、その公開リポジトリを clone（トークンなし）して、同じ手順も回す。空なら何もしない。
 # 1つ落ちても残りは回し、最後に落ちた名前を出して失敗で終わる。
 set -uo pipefail
@@ -30,8 +31,10 @@ run_in_app() {
 
 failed=()
 
+canary_only=false
+if [ "${1:-}" = "--canary-only" ]; then canary_only=true; shift; fi
 fixtures=("$@")
-if [ ${#fixtures[@]} -eq 0 ]; then
+if [ "$canary_only" = false ] && [ ${#fixtures[@]} -eq 0 ]; then
   for d in "$here"/app-fixtures/*/; do
     [ -d "$d" ] && fixtures+=("$(basename "$d")")
   done

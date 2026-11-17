@@ -73,15 +73,32 @@ jobs:
 
   # 配り先の形でテストを動かす（テンプレート本体だけ）。テストは .github/ ごと全部のアプリに配られ、アプリの CI でも動く。
   # テンプレートにしか無い物（examples/ など）に頼るテストが混ざると、配ったとたんに全部のアプリの CI が落ちるので、配る前にここで見つける
+  # 配り先の形でテストを回す。見本（app-fixtures/）ごとに別のジョブで並べる（全部を1つのジョブで回すと、テスト全体×見本の数で15分を超えた。#146）。
+  # canary は、変数 SYNC_CANARY の実物のアプリ（公開リポジトリ）だけを回す
   script-tests-as-app:
     if: github.event.repository.is_template
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [next-vercel, webgame, electron, python, visual-keep, canary]
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v6
-      - name: 配る物だけを空のリポジトリに置いて、テストを動かす
+      - name: 配り先の形でテストを動かす（${{ matrix.app }}）
+        env:
+          APP: ${{ matrix.app }}
+          SYNC_CANARY: ${{ matrix.app == 'canary' && vars.SYNC_CANARY || '' }}
         run: |
-          if [ ! -f .github/scripts/tests/run-as-app.sh ]; then echo "run-as-app.sh がまだ無いので、飛ばします"; exit 0; fi
-          .github/scripts/tests/run-as-app.sh
+          s=.github/scripts/tests/run-as-app.sh
+          if [ ! -f "$s" ]; then echo "run-as-app.sh がまだ無いので、飛ばします"; exit 0; fi
+          if [ "$APP" = canary ]; then
+            [ -n "$SYNC_CANARY" ] || { echo "変数 SYNC_CANARY が無いので、実物のアプリでは回しません"; exit 0; }
+            bash "$s" --canary-only
+          elif [ -d ".github/scripts/tests/app-fixtures/$APP" ]; then
+            bash "$s" "$APP"
+          else
+            echo "見本 $APP がまだ無いので、飛ばします"
+          fi
