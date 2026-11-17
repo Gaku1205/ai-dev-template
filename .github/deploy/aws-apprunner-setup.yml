@@ -1,5 +1,5 @@
 # AWS App Runner に公開するための、AWS 側の準備（1つの AWS アカウントで1回だけ）。
-# AWS の画面 → CloudFormation → スタックの作成 → このファイルをアップロード で作る（docs/pipeline.md「AWS App Runner」）。
+# AWS の画面 → CloudFormation → スタックの作成 → このファイルをアップロード で作る（docs/pipeline-setup.md「AWS App Runner」）。
 # できる物：
 #   - GitHub の OIDC の受け口（アカウントに1つ。もうあれば CreateOidcProvider を false）
 #   - GitHub Actions が借りる役割（鍵を置かずに公開できる。指定したオーナーのリポジトリの main からだけ借りられる）

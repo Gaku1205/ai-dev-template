@@ -36,7 +36,7 @@ ai-dev-template を Next.js 以外で使う見本。`pipeline.json` で言語と
 
 4. **公開先を決める**（`pipeline.json` の `deploy`）
    - まず試すだけなら、`"deploy": [ { "kind": "none" } ]` にする（AWS の設定が無いと Doctor が ❌ を出すため）
-   - App Runner を使うなら、`service` をアプリの名前（小文字の英数字と `-`）にする。AWS 側の準備は `docs/pipeline.md`「AWS App Runner」
+   - App Runner を使うなら、`service` をアプリの名前（小文字の英数字と `-`）にする。AWS 側の準備は `docs/pipeline-setup.md`「AWS App Runner」
    - exe が要らなければ、`github-release` の行と一緒に `cli.py`・`pyproject.toml` の `files` の `"cli.py"`・`requirements-dev.txt` の `pyinstaller` も消す（`cli.py` だけ消すと mypy が「cli.py が読めない」で落ちる）
 5. **CLAUDE.md を Python 向けに直す**
    - 1行目：アプリの説明と「Python（FastAPI）」

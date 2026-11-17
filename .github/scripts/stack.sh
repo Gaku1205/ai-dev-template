@@ -7,7 +7,7 @@
 #     "tools":  { "node": "22", "python": "3.12", "go": "1.23", "java": "21", "dotnet": "8.0" },   入れる実行環境と版
 #     "setup":  [ "pip install -r requirements-dev.txt" ],                                       依存を入れるコマンド（AIの前・CIの前に動く）
 #     "checks": [ { "name": "テスト", "run": "pytest -q" } ],                                      CIで順に回し、AIにも許すコマンド
-#     "deploy": [ { "kind": "aws-apprunner", ... }, { "kind": "github-release", ... } ]           公開先（docs/pipeline.md「言語と公開先」）
+#     "deploy": [ { "kind": "aws-apprunner", ... }, { "kind": "github-release", ... } ]           公開先（docs/pipeline-setup.md「言語と公開先」）
 #   }
 #
 # 使い方（source して関数を呼ぶ。どれも pipeline.json の場所は STACK_FILE、既定はカレントの pipeline.json）：

@@ -3,7 +3,7 @@
 # Vercel の無料プランは「1日100回まで」なので、マージのたびに Vercel が自分で公開するのをやめ（vercel.json の
 # git.deploymentEnabled: false）、ここで最新の main を1回だけ公開する。
 #   - 最新の main が、もう公開に成功している（Vercel の状態が success）なら何もしない
-#   - 最後に公開に成功したコミットから、パイプラインの物（.github/・docs/pipeline.md）しか変わっていなければ何もしない
+#   - 最後に公開に成功したコミットから、パイプラインの物（.github/・docs/pipeline.md・docs/pipeline-setup.md）しか変わっていなければ何もしない
 #   - そうでなければ、Vercel の API で最新の main を本番に公開する（プロジェクトは、このリポジトリにつながっている物を探す）
 #   - VERCEL_TOKEN が無いのに、vercel.json で Vercel が自分で公開するのを止めていたら（どこからも公開されない）、失敗として知らせる
 #   - 頼めなかったら（鍵の期限切れ・プロジェクトが見つからない など）、スマホに知らせる（Vercel まで届いていないので、Vercel の結果を待つ
@@ -75,7 +75,7 @@ if [ "${VERCEL_FORCE:-}" != 1 ]; then
   fi
   if [ -n "$last_ok" ]; then
     changed=$(gh api "repos/$REPO/compare/$last_ok...$head" -q '.files[].filename' 2> /dev/null || true)
-    if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -vqE '^(\.github/|docs/pipeline\.md$)'; then
+    if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -vqE '^(\.github/|docs/pipeline(-setup)?\.md$)'; then
       echo "::notice::前の公開（${last_ok:0:7}）から、パイプラインの更新しか変わっていないので公開しません"
       exit 0
     fi

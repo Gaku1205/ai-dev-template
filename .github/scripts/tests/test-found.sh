@@ -56,7 +56,7 @@ FORCE=1 gate try
 assert_eq "run" "true" "$(val run)"
 
 echo "== 直近24時間の main の変更が、パイプラインの配布だけ（.github/・docs/pipeline.md・.claude/）→ 動かさない"
-SYNC_ONLY='{"homepage":"https://app.vercel.app","main_commit_date":"2026-11-16T03:00:00Z","main_commits":["h3","h2","h1"],"commit_dates":{"h1":"2026-11-10T03:00:00Z"},"commit_files":{"h3":[".github/scripts/a.sh","docs/pipeline.md"],"h2":[".claude/skills/x/SKILL.md",".github/workflows/ci.yml"],"h1":["src/app.ts"]},"statuses_by_sha":{"h3":[],"h2":[],"h1":[{"context":"Vercel","state":"success"}]}}'
+SYNC_ONLY='{"homepage":"https://app.vercel.app","main_commit_date":"2026-11-16T03:00:00Z","main_commits":["h3","h2","h1"],"commit_dates":{"h1":"2026-11-10T03:00:00Z"},"commit_files":{"h3":[".github/scripts/a.sh","docs/pipeline.md","docs/pipeline-setup.md"],"h2":[".claude/skills/x/SKILL.md",".github/workflows/ci.yml"],"h1":["src/app.ts"]},"statuses_by_sha":{"h3":[],"h2":[],"h1":[{"context":"Vercel","state":"success"}]}}'
 init_state "$SYNC_ONLY"
 gate try
 assert_eq "run" "false" "$(val run)"

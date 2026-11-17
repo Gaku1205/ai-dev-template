@@ -124,7 +124,7 @@ if [ -n "$ext" ]; then
 fi
 
 title=$(issue_title "$pr")
-# 仕組みそのもの（.github/・docs/pipeline.md・CLAUDE.md・AGENTS.md・pipeline.json）を変えるPRは、AIの判断だけでは自動でマージしない。
+# 仕組みそのもの（.github/・docs/pipeline.md・docs/pipeline-setup.md・CLAUDE.md・AGENTS.md・pipeline.json）を変えるPRは、AIの判断だけでは自動でマージしない。
 # 普通のIssue（アプリの作業）は今までどおり全自動。これらを触るPRだけ、マージを人間に任せて通知する
 # 変更ファイルの一覧を取れなかったら、マージせずに再試行へ回す（取れないまま「該当なし」と扱って自動でマージしない）
 if ! files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename'); then
@@ -133,7 +133,7 @@ if ! files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[
 fi
 # ai-dev-template 自身（main の CLAUDE.md に「pipeline-self-edit: auto」の印がある）は、スクリプト・テスト・docs/pipeline.md の変更を自動でマージしてよい。
 # ワークフロー・実行環境の部品（.github/actions/）・CLAUDE.md・AGENTS.md・pipeline.json（AIの許可とルール。pipeline.json の checks はAIに許すコマンドになる）は、どのリポジトリでも人間に任せる。印は main の物を見るので、PRの変更で印を足してもすり抜けられない
-hold_pattern='^(\.github/|docs/pipeline\.md$|CLAUDE\.md$|AGENTS\.md$|pipeline\.json$)'
+hold_pattern='^(\.github/|docs/pipeline(-setup)?\.md$|CLAUDE\.md$|AGENTS\.md$|pipeline\.json$)'
 if grep -q 'pipeline-self-edit: auto' "${CLAUDE_MD:-$(dirname "$0")/../../CLAUDE.md}" 2> /dev/null; then
   hold_pattern='^(\.github/workflows/|\.github/actions/|CLAUDE\.md$|AGENTS\.md$|pipeline\.json$)'
 fi

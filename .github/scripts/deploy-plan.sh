@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 公開の計画：pipeline.json の deploy から、どの公開先を動かすかを決めて GITHUB_OUTPUT に書く。deploy.yml から呼ぶ。
 #   apprunner=true/false、release=true/false、release_os=["windows-latest",...]、expo=true/false、pages=true/false、supabase=true/false、skip_reason=...
-# パイプラインの更新だけのコミット（.github/ と docs/pipeline.md だけ）は公開しない（Vercel の ignoreCommand と同じ考え）。手で動かしたとき（GITHUB_EVENT_NAME=workflow_dispatch）は、いつも公開する。
+# パイプラインの更新だけのコミット（.github/ と docs/pipeline.md・docs/pipeline-setup.md だけ）は公開しない（Vercel の ignoreCommand と同じ考え）。手で動かしたとき（GITHUB_EVENT_NAME=workflow_dispatch）は、いつも公開する。
 # 「パイプラインの更新だけ」かは、直前のコミットとの差だけで決めない：公開は1つずつ順に動き、待っている古い実行は、新しい実行が来ると
 # 取り消される（deploy.yml の concurrency）。アプリの変更のすぐあとに配布のコミット（.github/ だけ）が入ると、アプリの変更の公開は
 # 取り消され、配布のコミットは「更新だけ」で公開しないので、アプリの変更が公開されないまま残る。そこで、直前との差が更新だけのときは、
@@ -24,7 +24,7 @@ else
   changed=$(git diff --name-only HEAD^ HEAD 2> /dev/null || true)
 fi
 kinds=$(stack_deploy_kinds)
-pipeline_only() { [ -n "$1" ] && ! printf '%s\n' "$1" | grep -vqE '^(\.github/|docs/pipeline\.md$)'; }
+pipeline_only() { [ -n "$1" ] && ! printf '%s\n' "$1" | grep -vqE '^(\.github/|docs/pipeline(-setup)?\.md$)'; }
 
 # 最後に公開の結果が付いたコミットから、今のコミットまでに変わったファイル（調べられなければ 1 で終わる）
 changed_since_last_deploy() {

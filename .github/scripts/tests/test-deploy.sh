@@ -90,7 +90,7 @@ out=$(plan "$(printf '.github/workflows/ci.yml\napp/main.py')")
 assert_contains "アプリも変わっていれば公開する" "$out" "apprunner=true"
 
 echo "== 計画：配布のコミットの前に、まだ公開されていないアプリの変更があれば、ここで公開する（待っていた公開が取り消されて残るのを防ぐ）"
-pipeline_only="$(printf '.github/workflows/ci.yml\ndocs/pipeline.md')"
+pipeline_only="$(printf '.github/workflows/ci.yml\ndocs/pipeline.md\ndocs/pipeline-setup.md')"
 look() { GH_TOKEN=x SHA=h3 HIST="${HIST-h3:0 h2:0 h1:1}" SINCE="$1" plan "$pipeline_only"; }
 : > "$LOG"
 out=$(look "$(printf 'app/main.py\n.github/workflows/ci.yml')")

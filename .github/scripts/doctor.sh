@@ -47,13 +47,13 @@ check_secrets() {
     ng "GitHub App の鍵を作れない（PIPELINE_TOKEN で代わりに動いている）" "App ID（Variable PIPELINE_APP_ID）と秘密鍵（Secret PIPELINE_APP_PRIVATE_KEY：.pem の中身を -----BEGIN から -----END ... KEY----- まで全部）を確かめ、App をこのリポジトリに Install する"
   fi
   if [ "${HAS_PIPELINE_TOKEN:-}" != 1 ]; then
-    ng "パイプラインの鍵が無い" "GitHub App（Variable PIPELINE_APP_ID と Secret PIPELINE_APP_PRIVATE_KEY）か、Secret PIPELINE_TOKEN を登録（docs/pipeline.md の「必要な設定」）"
+    ng "パイプラインの鍵が無い" "GitHub App（Variable PIPELINE_APP_ID と Secret PIPELINE_APP_PRIVATE_KEY）か、Secret PIPELINE_TOKEN を登録（docs/pipeline-setup.md の「必要な設定」）"
   elif [ "${USING_APP:-0}" = 1 ]; then
     if app_installed_here; then ok "GitHub App の鍵でこのリポジトリを操作できる（回数制限はオーナーと別・期限切れなし）"
     else ng "GitHub App がこのリポジトリに入っていない" "App の設定（Install App → ⚙️）で、このリポジトリを選ぶ"; fi
   elif [ "$(token_can_push)" = true ]; then
     ok "PIPELINE_TOKEN でこのリポジトリに書き込める"; check_token_expiration
-    warn "GitHub App ではなく PIPELINE_TOKEN を使っている" "回数制限をオーナーと共有し、期限もある。GitHub App に切り替えるとよい（docs/pipeline.md）"
+    warn "GitHub App ではなく PIPELINE_TOKEN を使っている" "回数制限をオーナーと共有し、期限もある。GitHub App に切り替えるとよい（docs/pipeline-setup.md）"
   else ng "PIPELINE_TOKEN でこのリポジトリに書き込めない" "トークンの Repository access にこのリポジトリを足す"; fi
   check_deploy_required
   echo; echo "**任意（あとから足せる）**"; echo
@@ -131,7 +131,7 @@ check_stack() {
   if [ -f pipeline.json ]; then
     errs=$(bash -c "source '$(dirname "${BASH_SOURCE[0]}")/stack.sh'; stack_validate")
     if [ -n "$errs" ]; then
-      while IFS= read -r s; do ng "pipeline.json：$s" "docs/pipeline.md「言語と公開先」の形に直す"; done <<< "$errs"
+      while IFS= read -r s; do ng "pipeline.json：$s" "docs/pipeline-setup.md「言語と公開先」の形に直す"; done <<< "$errs"
       return
     fi
     n=$(jq '.checks | length' pipeline.json)
@@ -147,7 +147,7 @@ check_stack() {
     if grep -q "\"test\"[[:space:]]*:" package.json; then ok "npm run test がある"
     else warn "package.json に test のスクリプトが無い" "動くが、AIの変更を確かめにくい。vitest を入れて \"test\": \"vitest run\" を足す"; fi
   else
-    ng "pipeline.json も package.json も無い" "Next.js 以外なら、pipeline.json に言語・確認コマンド・公開先を書く（docs/pipeline.md「言語と公開先」）"
+    ng "pipeline.json も package.json も無い" "Next.js 以外なら、pipeline.json に言語・確認コマンド・公開先を書く（docs/pipeline-setup.md「言語と公開先」）"
   fi
 }
 
@@ -170,7 +170,7 @@ check_deploy() {
         if [ "${HAS_AWS_ROLE:-0}" = 1 ] && [ "${HAS_AWS_REGION:-0}" = 1 ] && [ "${HAS_APPRUNNER_ACCESS:-0}" = 1 ]; then
           ok "公開先：AWS App Runner（Variable の AWS_ROLE_ARN・AWS_REGION・AWS_APPRUNNER_ACCESS_ROLE_ARN がある）"
         else
-          ng "公開先 AWS App Runner の設定が足りない" "Settings → Secrets and variables → Actions → Variables に AWS_ROLE_ARN・AWS_REGION・AWS_APPRUNNER_ACCESS_ROLE_ARN（docs/pipeline.md「AWS App Runner」。CloudFormation で1回作れば出てくる）"
+          ng "公開先 AWS App Runner の設定が足りない" "Settings → Secrets and variables → Actions → Variables に AWS_ROLE_ARN・AWS_REGION・AWS_APPRUNNER_ACCESS_ROLE_ARN（docs/pipeline-setup.md「AWS App Runner」。CloudFormation で1回作れば出てくる）"
         fi ;;
       supabase) echo "- ➖ 公開先：Supabase の表の変更（Secret の SUPABASE_DB_URL が要る。工場が入れる。ここからは確かめられない）" ;;
       expo)

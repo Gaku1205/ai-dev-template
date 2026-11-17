@@ -4,7 +4,7 @@
 
 人間がやるのは「何を作るか決める」ことと、AIが判断に迷って止まったときの確認だけ。合否はAIではなくCI（確認コマンド。Next.js なら型チェック・リント・テスト・ビルド）が決めます。
 
-**言語も公開先も選べます。** 何も書かなければ Next.js＋Vercel。リポジトリ直下の `pipeline.json` に書けば、Python・Go・Java・.NET などで動き、公開先は AWS App Runner（Web・API）、GitHub Releases（exe などの配布物）、Expo（スマホアプリ）から選べます（`docs/pipeline.md`「言語と公開先」）。
+**言語も公開先も選べます。** 何も書かなければ Next.js＋Vercel。リポジトリ直下の `pipeline.json` に書けば、Python・Go・Java・.NET などで動き、公開先は AWS App Runner（Web・API）、GitHub Releases（exe などの配布物）、Expo（スマホアプリ）から選べます（`docs/pipeline-setup.md`「言語と公開先」）。
 
 ## 流れ
 
@@ -18,19 +18,22 @@
 止まったら自動で再開する
   使用量の上限・AIのエラー・時間切れ ─▶ ai:retry ─▶ 見張り役が30分以上あけてやり直す（10回まで）
   人間が ai:stuck を外す ─▶ 止まった所から続ける
+
+自分で問題を見つける
+  使ってみる役（公開があった日）・監査役（毎週）─▶ 壊れている所・仕様の食い違いを Issue（ai:found）にする ─▶ いつもの流れで直す
 ```
 
 - **自動**：清書、実装、PR作成、CI、レビュー、修正、マージ、公開、通知、一時的な失敗からのやり直し
 - **人間が判断**：何を作るか（メモを書く）。止まって通知が来たとき（`ai:stuck`）の確認。`ai:hold` を付けた大事な変更の最後のマージ
-- 順番待ち（`ai:queue`）を付けると、前の作業が終わってから番号順に始まります。まとめて頼んで寝ておけます
+- 順番待ち（`ai:queue`）を付けると、前の作業が終わってから順に始まります（`priority:high` が先）。触るファイルが重ならない物は2つまで並べて進むので、まとめて頼んで寝ておけます
 
-詳しい流れ・ラベル・止まる条件は [docs/pipeline.md](docs/pipeline.md)。
+詳しい流れ・ラベル・止まる条件は [docs/pipeline.md](docs/pipeline.md)（AIも読む）。最初の設定・言語と公開先は [docs/pipeline-setup.md](docs/pipeline-setup.md)、工場は [docs/factory.md](docs/factory.md)。
 
 ## 1行で新しいサービスを作る（工場）
 
-最初の1回だけ準備（[docs/pipeline.md「工場」](docs/pipeline.md#工場1行から新しいサービスを作る)）をしたら、あとはこのリポジトリに **「新サービス：〜」というタイトルのIssueを1行書くだけ**。リポジトリの作成・鍵の登録・main の保護・Vercel・最初のIssueまで自動で進み、そこからはいつものパイプラインが実装・公開まで進める。下の「使い方」は、手で1つずつ作るときの手順。
+最初の1回だけ準備（[docs/factory.md](docs/factory.md)）をしたら、あとはこのリポジトリに **「新サービス：〜」というタイトルのIssueを1行書くだけ**。リポジトリの作成・鍵の登録・main の保護・Vercel・最初のIssueまで自動で進み、そこからはいつものパイプラインが実装・公開まで進める。下の「使い方」は、手で1つずつ作るときの手順。
 
-見た目は、デザイン担当のAIが決めて、**本物の画面まで作る**。描く前に、題材に近い実在の良いサイトを探して本物のブラウザで撮り、それを参考にする（Issue にリールのスクショや好きなサイトの画像を貼れば、それがいちばん大事な実例になる）。作った画面を撮って実例と見比べて直し、確認コマンドが通った物が、そのまま新しいリポジトリの最初の中身になる。決まりは「読める・押せる・スマホで崩れない・ブランドを写さない」だけ。動き・3D の道具は [GSAP](https://gsap.com)・[Lenis](https://github.com/darkroomengineering/lenis)・[Motion](https://motion.dev)・[three.js](https://threejs.org)・[PixiJS](https://pixijs.com) から選べる。ゲームを頼めば、ブラウザの技術で作り、Electron で Windows の exe にして Releases に置くか（[examples/game](examples/game)）、Vercel に出してスマホでもすぐ遊べる Web のゲームにする（[examples/webgame](examples/webgame)）。会員登録と月額の有料プランがあるサービス（サブスク）を頼めば、ログイン（Supabase）と課金（Stripe のテストモード）の土台を入れ、Supabase のプロジェクト・Stripe の値段・Vercel の鍵まで工場が用意する（[examples/saas](examples/saas)）。写真は [Openverse](https://openverse.org) の CC0・パブリックドメインの物だけ（`docs/pipeline.md`「工場」）。
+見た目は、デザイン担当のAIが決めて、**本物の画面まで作る**。工場は作る前に、何を作るか・見た目の方向・ざっくり画面を Issue のコメントで相談する（選択肢を選ぶだけ。agent-desk からも答えられる）。見た目を作る所は全部「考え → 関門 → 審査」を通す：作るAIが、色や文字より先に、その題材にしか無い物から考えを決めて設計メモに書く。スクリプトが本物の絵の枚数などを測り、作ったAIとは別のAIが**画像だけ**を見て点を付ける。届かなければ1回だけ直し、直す前より悪くなったら直す前の物を使う（`docs/pipeline.md`「デザインの仕組み」）。Issue にリールのスクショや好きなサイトの画像を貼れば、それがいちばん大事な実例になる。確認コマンドが通った物が、そのまま新しいリポジトリの最初の中身になる。動き・3D の道具は [GSAP](https://gsap.com)・[Lenis](https://github.com/darkroomengineering/lenis)・[Motion](https://motion.dev)・[three.js](https://threejs.org)・[PixiJS](https://pixijs.com) から選べる。ゲームを頼めば、ブラウザの技術で作り、Electron で Windows の exe にして Releases に置くか（[examples/game](examples/game)）、Vercel に出してスマホでもすぐ遊べる Web のゲームにする（[examples/webgame](examples/webgame)）。会員登録と月額の有料プランがあるサービス（サブスク）を頼めば、ログイン（Supabase）と課金（Stripe のテストモード）の土台を入れ、Supabase のプロジェクト・Stripe の値段・Vercel の鍵まで工場が用意する（[examples/saas](examples/saas)）。写真・古い地図・図版は、商用で使えて出どころを記録できる物だけを使う（[docs/factory.md](docs/factory.md)）。
 
 ## 使い方
 
@@ -42,14 +45,14 @@ Next.js＋Vercel なら、必須は次の3つだけ。ほかの設定は既定�
    | --- | --- | --- |
    | `CLAUDE_CODE_OAUTH_TOKEN` | Secret | パソコンに Claude Code を入れ（入れ方は [Claude Code の説明](https://docs.claude.com/en/docs/claude-code/overview)）、ターミナル（Windows なら PowerShell）で `claude setup-token` を実行し、出てきたトークンを貼る。Claude のサブスクで AI を動かす |
 
-2. **パイプラインの鍵（GitHub App）を登録する**：[作り方](docs/pipeline.md#パイプライン用の-github-app-の作り方1回だけ)（10分・1回だけ。期限切れなし）。App ID を Variable `PIPELINE_APP_ID` に、秘密鍵を Secret `PIPELINE_APP_PRIVATE_KEY` に入れる
+2. **パイプラインの鍵（GitHub App）を登録する**：[作り方](docs/pipeline-setup.md#パイプライン用の-github-app-の作り方1回だけ)（10分・1回だけ。期限切れなし）。App ID を Variable `PIPELINE_APP_ID` に、秘密鍵を Secret `PIPELINE_APP_PRIVATE_KEY` に入れる
 3. **公開先をつなぎ、main を守る**
    - 公開先：Vercel でこのリポジトリを読み込む（main にマージされるたびに公開される）。まず試すだけなら、公開はつながなくてよい
    - main を守る：Settings → Branches → **Add classic branch protection rule** で、Branch name pattern に `main`、「Require a pull request before merging」（承認の人数は 0 のまま）と「Require status checks to pass」（検索欄で `check` を選ぶ。CI のジョブの名前）を付けて Create。無いと、AI が PR とレビューを通さずに main へ入れられてしまう
 
 あとは、`CLAUDE.md` の1行目と `docs/spec.md`・`docs/design.md` にアプリのことを書き、Actions の **Doctor** を手で実行して Summary の ✅／⚠️／❌ を確かめる（❌ は「→」のとおり直してもう一度実行）。そして Issue の「メモ（AIにおまかせ）」にやりたいことを書けば動く。
 
-通知や見張り役の設定、Python・AWS・スマホアプリ・ゲームなど、ほかの設定と上級者向けの使い方は [docs/pipeline.md「変えたい人向けの設定」](docs/pipeline.md#変えたい人向けの設定)と[「上級者向け」](docs/pipeline.md#上級者向け)にまとめてある。
+通知や見張り役の設定、Python・AWS・スマホアプリ・ゲームなど、ほかの設定と上級者向けの使い方は [docs/pipeline-setup.md「変えたい人向けの設定」](docs/pipeline-setup.md#変えたい人向けの設定)と[「上級者向け」](docs/pipeline-setup.md#上級者向け)にまとめてある。
 
 ### 言葉
 
@@ -64,16 +67,17 @@ Next.js＋Vercel なら、必須は次の3つだけ。ほかの設定は既定�
 **補足：Setup Labels（必要なら）**
 ラベルが足りないときだけ、Actions の **Setup Labels** を手で1回実行する。ただし、Bootstrap より先にこれを実行すると、Bootstrap は「ラベルがもうある」として何もしないので、`CLAUDE.md` の節の削除と診断も飛ばされる。その場合は、`CLAUDE.md` の「ai-dev-template 自身の作業」の節を手で消し、Doctor を手で実行する。
 
-テンプレート（本体）の更新は、本体の main でCIが通った版だけが、このテンプレートから作ったリポジトリ（自動）と、本体の `.github/sync-targets` に書いた配り先へ自動で配られる（この自動配布は本体だけが動かす）。
+テンプレート（本体）の更新（`.github/`・`docs/pipeline.md`・`docs/pipeline-setup.md`・`.claude/skills/`）は、本体の main でCIが通った版だけが、このテンプレートから作ったリポジトリ（自動）と、本体の `.github/sync-targets` に書いた配り先へ自動で配られる（この自動配布は本体だけが動かす）。
 
 ### Vercelの公開回数について
 
-Vercelの無料プランには、1日に公開できる回数の上限があります。AIは `claude/*` ブランチに何度もpushするので、そのたびにプレビューを作ると上限をすぐ使い切ってしまいます。`vercel.json` は、`claude/*` ブランチのプレビューを作らず、mainにマージされたときだけ公開するための設定です。また、直前のコミットが `.github/` と `docs/pipeline.md` の変更だけなら、アプリは変わらないので公開を飛ばします（`ignoreCommand`）。
+Vercelの無料プランには、1日に公開できる回数の上限があります。AIは `claude/*` ブランチに何度もpushするので、そのたびにプレビューを作ると上限をすぐ使い切ってしまいます。`vercel.json` は、`claude/*` ブランチのプレビューを作らず、mainにマージされたときだけ公開するための設定です。また、直前のコミットが `.github/` と `docs/pipeline.md`・`docs/pipeline-setup.md`・`docs/factory.md` の変更だけなら、アプリは変わらないので公開を飛ばします（`ignoreCommand`）。
 
 ## 安全のしくみ
 
 - 合否を決めるのはCI。AIの「できました」は信じない
-- `.github/`・`docs/pipeline.md`・`CLAUDE.md`・`AGENTS.md`・`pipeline.json` を変えるPRは、CIとレビューが通っても自動でマージせず、人間に任せて通知する。仕組みそのものがAIの判断だけで書き換わらないようにするため。例外はテンプレートから配られた更新の PR（人間が書いてテンプレートの CI を通った物なので、配り先の CI が通れば自動でマージする）
+- オーナー以外が作った Issue・コメントでは、AIは動かない
+- `.github/`・`docs/pipeline.md`・`docs/pipeline-setup.md`・`CLAUDE.md`・`AGENTS.md`・`pipeline.json` を変えるPRは、CIとレビューが通っても自動でマージせず、人間に任せて通知する。仕組みそのものがAIの判断だけで書き換わらないようにするため。例外はテンプレートから配られた更新の PR（人間が書いてテンプレートの CI を通った物なので、配り先の CI が通れば自動でマージする）
 - AIは `.github/`・`docs/pipeline.md`・`CLAUDE.md`・依存パッケージを触らない
 - 進行役（`pipeline.yml`）はmainにある版が動くので、PRの中身で判断を書き換えられない
 - 自動の修正は3回まで（最後の1回は opus）、自動のやり直しは10回まで。無限に回らない。超えたら `ai:stuck` で人間に回す
@@ -91,7 +95,9 @@ Vercelの無料プランには、1日に公開できる回数の上限があり�
 | `.github/workflows/` | 企画・実装・レビュー・修正のAI（[anthropics/claude-code-action](https://github.com/anthropics/claude-code-action)）、CI、進行役、公開通知 |
 | `.github/scripts/` | 進行役の判断（PR作成、CI後・レビュー後・修正後の次の一手、通知） |
 | `CLAUDE.md` | AIが守るルール（触ってはいけない場所、作業の終わらせ方、PRの書き方） |
-| `docs/` | 仕様書・デザイン仕様・パイプラインの説明 |
+| `docs/` | 仕様書（`spec.md`）・デザイン仕様（`design.md`）・パイプラインの説明（`pipeline.md`・`pipeline-setup.md`・`factory.md`） |
+| `.claude/skills/` | AIが使うスキル（AIが作った感を消す taste-skill など）。パイプラインと一緒に配る |
+| `examples/` | 工場の土台（ゲーム・Web のゲーム・Python・サブスク） |
 | `src/` | 最小の Next.js（App Router）＋TypeScript＋Vitest |
-| `vercel.json` | `claude/*` ブランチのVercelプレビューを作らない設定と、`.github/`・`docs/pipeline.md` だけの変更では公開を飛ばす設定（`ignoreCommand`） |
+| `vercel.json` | `claude/*`・`pipeline-sync/*` ブランチのVercelプレビューを作らない設定と、パイプラインの物だけの変更では公開を飛ばす設定（`ignoreCommand`） |
 | `LICENSE` | MIT License（Copyright (c) 2026 Gaku1205） |
