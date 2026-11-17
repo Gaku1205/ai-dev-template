@@ -653,6 +653,7 @@ start_next_in_queue() {
     if [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ]; then
       started=$((started + 1))
       startedlist="${startedlist}${n} "
+      idle=0 # 印のある物を始めたので、印の無い物は待つ
       inflight="$inflight
 $t"
     fi

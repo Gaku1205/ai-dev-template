@@ -105,6 +105,16 @@ next > /dev/null
 assert_contains "#3 が実装へ" "$(labels_of 3)" "ai:implement"
 assert_eq "#4 は待つ" "ai:queue" "$(labels_of 4)"
 
+echo "== 数えないPRしか開いていない：印のある物を始めたあとは、印の無い物は待つ"
+state_with "$(python3 -c "
+import json
+print(json.dumps({'labels':{'20':['ai:stuck'],'3':['ai:queue'],'4':['ai:queue']},
+ 'pulls':[{'number':20,'state':'open','head':{'ref':'pipeline-sync/abc','sha':'s'},'labels':[{'name':'ai:stuck'}]}],'files':['src/lib/a.ts'],
+ 'issues_meta':{'3':{'title':'b','body':'''$(body src/lib/b.ts)'''},'4':{'title':'c','body':'本文'}}}))")"
+next > /dev/null
+assert_contains "#3（印あり）は始める" "$(labels_of 3)" "ai:implement"
+assert_eq "#4（印なし）は待つ" "ai:queue" "$(labels_of 4)"
+
 echo "== 進行中の物の触るファイルが分からない：並べない"
 state_with "$(python3 -c "
 import json
