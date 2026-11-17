@@ -28,9 +28,11 @@ jobs:
   plan:
     # テンプレート本体の「新サービス：」のIssueは工場（factory.yml）が受け持つ。ラベルが付いても、テンプレート自身には作らない
     # ai:skip が付いた Issue（まだ動かさない物・オーナー以外が作って受付が止めた物）では、ラベルが付け直されても始めない
+    # 作者がオーナーかボット（パイプラインの App・github-actions）の Issue だけ。受付が落ちて ai:skip が付かなかった他人の Issue も企画しない（#151）
     if: >-
       github.event.label.name == 'ai:plan' &&
       github.event.issue.state == 'open' &&
+      (github.event.issue.user.login == github.repository_owner || github.event.issue.user.type == 'Bot') &&
       !contains(github.event.issue.labels.*.name, 'ai:skip') &&
       !(github.event.repository.is_template && (startsWith(github.event.issue.title, '新サービス：') || startsWith(github.event.issue.title, '新サービス:') || contains(github.event.issue.labels.*.name, 'factory')))
     runs-on: ubuntu-latest
