@@ -520,7 +520,7 @@ hold_prs() {
 
 # 進行中の作業が触っているファイル。1行目に「unknown」が出たら、分からない物がある（並列にしない）
 # 実装中の Issue は本文の印、open のPRは変えたファイル（AI以外のPR＝配布・依存の更新なども含む）
-# ただし、人間のマージ待ちが HOLD_BLOCK_MIN 分より長い ai:hold のPRは外す
+# ただし、人間のマージ待ちが HOLD_BLOCK_MIN 分より長い ai:hold のPRと、ai:stuck のPRは外す
 inflight_touches() {
   local n body t pr files impl pulls expired
   expired=$(hold_prs 2> /dev/null | awk '$2 == "expired" {print $1}') || expired=""
@@ -536,8 +536,11 @@ inflight_touches() {
   done
   for pr in $(printf '%s\n' "$pulls" | cut -d' ' -f1); do
     if printf '%s\n' "$expired" | grep -qx "$pr"; then continue; fi
+    # 止まっている（ai:stuck）PRも数えない
+    if has_label "$pr" "ai:stuck"; then continue; fi
     files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null) || { echo unknown; continue; }
-    printf '%s\n' "$files"
+    # 変えたファイルが無いPRも、数えるPRとして1行残す（進行中が空と見えないように）
+    if [ -z "$files" ]; then echo "(変更なしのPR #$pr)"; else printf '%s\n' "$files"; fi
   done
 }
 
@@ -580,7 +583,7 @@ sync_hold_blocking() {
 }
 
 start_next_in_queue() {
-  local busy stuck prs inflight queue n body t rc started=0 screen=0 holds pr state files blocks="" startedlist=" " limit_info limit
+  local busy stuck prs inflight queue n body t rc started=0 screen=0 holds pr state files blocks="" startedlist=" " limit_info limit idle=0 nomark_started=0
   busy=$(count_open_issues_with_label "ai:implement") || return 1
   stuck=$(count_open_issues_with_label "ai:stuck") || return 1
   prs=$(count_open_prs) || return 1
@@ -610,6 +613,8 @@ start_next_in_queue() {
     echo "進行中の物に、触るファイルが分からない物があるので、順番待ちは進めません"
     return 0
   fi
+  # 数える進行中の物が1つも無い（数えないPRしか開いていない）なら、印の無い Issue も1つ始められる
+  if [ -z "$(printf '%s\n' "$inflight" | tr -d '[:space:]')" ]; then idle=1; fi
   if repo_has_visual_tests; then screen=1; fi
   holds=$(hold_prs 2> /dev/null) || holds=""
   for n in $queue; do
@@ -619,8 +624,23 @@ start_next_in_queue() {
     fi
     body=$(gh api "repos/$REPO/issues/$n" -q '.body // ""') || continue
     t=$(touches_from_body "$body")
+    if [ "$nomark_started" -eq 1 ]; then
+      # 印の無い物を始めたあとは、その物が触るファイルが分からないので、この実行では続けない
+      echo "#$n：触るファイルが分からない物を始めたので、それが終わるまで待ちます"
+      continue
+    fi
     if [ -z "$t" ]; then
-      echo "#$n：触るファイルが分からないので、進行中の物が終わるまで待ちます"
+      if [ "$idle" -eq 0 ]; then
+        echo "#$n：触るファイルが分からないので、進行中の物が終わるまで待ちます"
+        continue
+      fi
+      rc=0
+      start_queued_issue "$n" "（進行中に数える作業が無いので、始めます）" || rc=$?
+      if [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ]; then
+        started=$((started + 1))
+        startedlist="${startedlist}${n} "
+        nomark_started=1
+      fi
       continue
     fi
     if paths_overlap "$t" "$inflight" "$screen"; then

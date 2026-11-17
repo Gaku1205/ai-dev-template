@@ -73,6 +73,38 @@ print(json.dumps({'labels':{'1':['ai:implement'],'3':['ai:queue']},
 next > /dev/null
 assert_eq "#3 は待つ" "ai:queue" "$(labels_of 3)"
 
+echo "== 数えないPRしか開いていない：印の無い Issue も始める（ai:stuck のPR）"
+state_with '{"labels":{"20":["ai:stuck"],"3":["ai:queue"]},
+ "pulls":[{"number":20,"state":"open","head":{"ref":"pipeline-sync/abc","sha":"s"},"labels":[{"name":"ai:stuck"}]}],"files":["src/lib/a.ts"],
+ "issues_meta":{"3":{"title":"b","body":"本文"}}}'
+next > /dev/null
+assert_contains "#3 が実装へ" "$(labels_of 3)" "ai:implement"
+
+echo "== 数えないPRしか開いていない：印の無い Issue も始める（待ちが長い ai:hold のPR）"
+review='{"id":901,"issue":"20","user":{"login":"github-actions[bot]"},"created_at":"2026-11-17T00:00:00Z","updated_at":"2026-11-17T00:00:00Z","body":"## Code review\n\nNo issues found."}'
+state_with '{"labels":{"20":["ai:hold"],"3":["ai:queue"]},
+ "events":{"20":[{"event":"labeled","label":{"name":"ai:hold"},"created_at":"'"$(ago 90)"'"}]},
+ "pulls":[{"number":20,"state":"open","mergeable_state":"clean","head":{"ref":"claude/issue-9-x","sha":"abc"},"labels":[{"name":"ai:hold"}]}],
+ "files":["src/lib/a.ts"],"comments":['"$review"'],
+ "issues_meta":{"3":{"title":"b","body":"本文"}}}'
+next > /dev/null
+assert_contains "#3 が実装へ" "$(labels_of 3)" "ai:implement"
+
+echo "== 数えるPRが開いている：印の無い Issue は今までどおり待つ"
+state_with '{"labels":{"20":[],"3":["ai:queue"]},
+ "pulls":[{"number":20,"state":"open","head":{"ref":"pipeline-sync/abc","sha":"s"},"labels":[]}],"files":["src/lib/a.ts"],
+ "issues_meta":{"3":{"title":"b","body":"本文"}}}'
+next > /dev/null
+assert_eq "#3 は待つ" "ai:queue" "$(labels_of 3)"
+
+echo "== 印の無い Issue が2つ待っている：1つだけ始める"
+state_with '{"labels":{"20":["ai:stuck"],"3":["ai:queue"],"4":["ai:queue"]},
+ "pulls":[{"number":20,"state":"open","head":{"ref":"pipeline-sync/abc","sha":"s"},"labels":[{"name":"ai:stuck"}]}],"files":["src/lib/a.ts"],
+ "issues_meta":{"3":{"title":"b","body":"本文"},"4":{"title":"c","body":"本文"}}}'
+next > /dev/null
+assert_contains "#3 が実装へ" "$(labels_of 3)" "ai:implement"
+assert_eq "#4 は待つ" "ai:queue" "$(labels_of 4)"
+
 echo "== 進行中の物の触るファイルが分からない：並べない"
 state_with "$(python3 -c "
 import json
