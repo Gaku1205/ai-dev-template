@@ -48,7 +48,9 @@ main() {
   comments=$(gh api --paginate --slurp "repos/$repo/issues/$n/comments?per_page=100") || { echo "#$n のコメントを読めなかった" >&2; return 1; }
   # 先に全部組み立ててから出す（途中で失敗したら、何も出さない）
   local result
-  result=$(jq -n --argjson i "$issue" --argjson c "$comments" '{issue: $i, comments: ($c | if (.[0] | type) == "array" then add else . end // [])}' \
+  # JSON は引数ではなく標準入力で渡す（引数1つは約128KBまでで、コメントが多いと超える）
+  result=$( { printf '%s\n' "$issue"; printf '%s\n' "$comments"; } \
+    | jq -s '{issue: .[0], comments: (.[1] | if (.[0] | type) == "array" then add else . end // [])}' \
     | trusted_render "${PIPELINE_APP_ID:-}") || { echo "#$n の文章を組み立てられなかった" >&2; return 1; }
   [ -n "$result" ] || { echo "#$n の文章が空" >&2; return 1; }
   printf '%s\n' "$result"

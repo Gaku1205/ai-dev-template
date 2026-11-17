@@ -68,6 +68,15 @@ init_state '{"issues_meta":{"4":{"title":"自動の題","body":"自動の説明"
 APP='' out=$(run_tc 4)
 assert_contains "ボットの本文" "$out" "自動の説明"
 
+echo "== コメントのJSONが128KBを超える（引数では渡せない大きさ）"
+init_state '{"issues_meta":{"7":{"title":"t","body":"b"}},"issue_extra":{"7":{"author_association":"OWNER"}}}'
+state_py "
+for k in range(200):
+    s['comments'].append({'id': 2000 + k, 'issue': '7', 'body': 'x' * 2000 + '-大-' + str(k), 'user': {'login': 'o'}, 'author_association': 'OWNER', 'created_at': '2026-11-17T10:00:00Z', 'performed_via_github_app': None})"
+APP=777 out=$(run_tc 7); rc=$?
+assert_eq "大きくても成功" "0" "$rc"
+assert_contains "最後のコメントまで出る" "$out" "-大-199"
+
 echo "== 取得に失敗：何も出さず失敗"
 init_state '{"read_fail":["5"],"read_fail_comments":["6"],"issues_meta":{"6":{"title":"t","body":"b"}},"issue_extra":{"6":{"author_association":"OWNER"}}}'
 add_comment 6 o OWNER
