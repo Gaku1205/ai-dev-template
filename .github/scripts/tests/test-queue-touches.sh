@@ -25,15 +25,35 @@ next > /dev/null
 assert_contains "#9 が実装へ" "$(labels_of 9)" "ai:implement"
 assert_eq "#3 は待ち" "ai:queue" "$(labels_of 3)"
 
-echo "== 実装中の物と触るファイルが重ならない：並べて始める（上限 2）"
+echo "== 実装中の物と触るファイルが重ならない：並べて始める（上限 2 を明示）"
 state_with "$(python3 -c "
 import json
 print(json.dumps({'labels':{'1':['ai:implement'],'3':['ai:queue'],'4':['ai:queue']},
  'issues_meta':{'1':{'title':'a','body':'''$(body src/lib/a.ts)'''},'3':{'title':'b','body':'''$(body src/lib/b.ts)'''},'4':{'title':'c','body':'''$(body src/lib/c.ts)'''}}}))")"
-out=$(next)
+out=$(MAX_PARALLEL=2 next)
 assert_contains "#3 を始める" "$(labels_of 3)" "ai:implement"
 assert_eq "上限なので #4 は待つ" "ai:queue" "$(labels_of 4)"
 assert_contains "理由" "$(comments_of 3)" "重ならないので、並べて始めます"
+
+echo "== 既定の上限は3：進行中が2件なら3件目は並べて始め、進行中が3件なら重ならなくても待つ"
+assert_eq "既定は3" "3" "$(env -u MAX_PARALLEL bash -c "source '$SCRIPTS_DIR/pipeline-lib.sh'; echo \"\$MAX_PARALLEL\"" 2>&1 | tail -1)"
+assert_eq "after-plan.sh の既定も3" "1" "$(grep -c 'MAX_PARALLEL:-3' "$SCRIPTS_DIR/after-plan.sh")"
+state_with "$(python3 -c "
+import json
+print(json.dumps({'labels':{'1':['ai:implement'],'2':['ai:implement'],'3':['ai:queue'],'4':['ai:queue']},
+ 'issues_meta':{'1':{'title':'a','body':'''$(body src/lib/a.ts)'''},'2':{'title':'a2','body':'''$(body src/lib/a2.ts)'''},'3':{'title':'b','body':'''$(body src/lib/b.ts)'''},'4':{'title':'c','body':'''$(body src/lib/c.ts)'''}}}))")"
+out=$(next)
+assert_contains "3件目の #3 を並べて始める" "$(labels_of 3)" "ai:implement"
+assert_eq "4件目の #4 は待つ" "ai:queue" "$(labels_of 4)"
+assert_contains "上限の表示は3" "$out" "並列の上限（3）"
+echo "== MAX_PARALLEL を環境変数で指定すれば、その値が優先される（4なら4件目も始める）"
+state_with "$(python3 -c "
+import json
+print(json.dumps({'labels':{'1':['ai:implement'],'2':['ai:implement'],'3':['ai:queue'],'4':['ai:queue']},
+ 'issues_meta':{'1':{'title':'a','body':'''$(body src/lib/a.ts)'''},'2':{'title':'a2','body':'''$(body src/lib/a2.ts)'''},'3':{'title':'b','body':'''$(body src/lib/b.ts)'''},'4':{'title':'c','body':'''$(body src/lib/c.ts)'''}}}))")"
+MAX_PARALLEL=4 next > /dev/null
+assert_contains "#3 を始める" "$(labels_of 3)" "ai:implement"
+assert_contains "#4 も始める" "$(labels_of 4)" "ai:implement"
 
 echo "== 重なる物は待ち、重ならない次の物を始める"
 state_with "$(python3 -c "
