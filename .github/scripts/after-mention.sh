@@ -11,7 +11,8 @@
 #   分類できない               → 人間に回す（ai:stuck）
 #
 # 環境変数：RUN_STARTED（対応が始まった時刻）、CONCLUSION（対応のワークフローの結果）、READ_TOKEN（ワークフローのトークン、actions: read）、
-#           EXECUTION_FILE（あれば。修正AIの実行記録。拒否された操作を読む）
+#           EXECUTION_FILE（あれば。修正AIの実行記録。拒否された操作を読む）、
+#           PR_NUMBER（あれば。対応したPRの番号。無ければ EXECUTION_FILE と同じフォルダの pr.txt。どちらも無ければ全PRを見る）
 # 直してpushされていれば、そのCIが承認待ちで止まっていないかも確かめる
 source "$(dirname "$0")/pipeline-lib.sh"
 set -e
@@ -20,7 +21,25 @@ has_pipeline_token || { echo "PIPELINE_TOKEN が無いので何もしません";
 
 started=$(date -d "$RUN_STARTED" +%s)
 
-for pr in $(gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate -q '.[].number'); do
+# どのPRの対応か：PR_NUMBER（環境変数）、無ければ EXECUTION_FILE と同じフォルダの pr.txt（中身はPR番号だけ）。
+# 数字だけでなければ無視する。どちらも無ければ、今までどおり180秒以内の依頼がある全PRを見る
+# （別のPRの対応の結果を取り違えて、作業中のPRまで止めないために、分かるときはそのPRだけを見る）
+target_pr="${PR_NUMBER:-}"
+if ! [[ "$target_pr" =~ ^[0-9]+$ ]]; then
+  target_pr=""
+  if [ -n "${EXECUTION_FILE:-}" ] && [ -f "$(dirname "$EXECUTION_FILE")/pr.txt" ]; then
+    target_pr=$(tr -d '[:space:]' < "$(dirname "$EXECUTION_FILE")/pr.txt")
+    [[ "$target_pr" =~ ^[0-9]+$ ]] || target_pr=""
+  fi
+fi
+
+if [ -n "$target_pr" ]; then
+  prs="$target_pr"
+else
+  prs=$(gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate -q '.[].number')
+fi
+
+for pr in $prs; do
   has_label "$pr" "ai:stuck" && continue
   # やり直しの依頼（auto-fix-retry）も含めて、いちばん新しい依頼を見る
   last=$(all_comments "$pr" | jq -c 'map(select(.body | test("<!-- auto-fix(-retry)? -->"))) | last // empty')
