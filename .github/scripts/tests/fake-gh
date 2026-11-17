@@ -79,10 +79,16 @@ if m:
     if method=='POST':
         st['next_id']+=1
         c={'id':st['next_id'],'body':fields['body'],'user':{'login':'github-actions[bot]'},'created_at':now,'updated_at':now,'issue':n}
-        st['comments'].append(c); save(); print('{}'); sys.exit(0)
+        st['comments'].append(c); save(); out(c); sys.exit(0)
     cs=[c for c in st['comments'] if c['issue']==n]
     paged(cs); sys.exit(0)
 m=re.match(r'issues/comments/(\d+)$',base)
+if m and method=='GET':
+    for c in st['comments']:
+        if c['id']==int(m.group(1)): out(c); sys.exit(0)
+    sys.stderr.write('HTTP 404: Not Found\n'); sys.exit(1)
+if m and method=='DELETE':
+    st['comments']=[c for c in st['comments'] if c['id']!=int(m.group(1))]; save(); sys.exit(0)
 if m and method=='PATCH':
     for c in st['comments']:
         if c['id']==int(m.group(1)): c['body']=fields['body']; c['updated_at']=now
