@@ -910,26 +910,48 @@ permission_hints_from_text() {
     | while IFS= read -r c; do permission_key_for_command "$c"; done | sort -u | sed 's/^/KEY: /' || true
 }
 
+# 題名が完全に同じIssueの番号を、小さい順に1行ずつ出す。使い方：find_issues_by_title 題名 open|all
+# search API（題名と repo: で絞る。Issueが100件を超えても見つかる）を先に使い、見つからなければ新しい一覧でも探す
+# （search は作った直後に出ないことがある）。一覧が読めなかったときだけ失敗で終わる（「無い」と取り違えない）
+find_issues_by_title() {
+  local title="$1" state="$2" q found
+  q=$(jq -rn --arg t "\"$title\" in:title repo:$REPO type:issue$([ "$state" = open ] && echo ' is:open')" '$t | @uri')
+  found=$(gh api "search/issues?q=${q}&per_page=100" -q ".items[] | select(.title == \"$title\") | .number" 2> /dev/null | sort -n) || found=""
+  if [ -z "$found" ]; then
+    found=$(gh api "repos/$REPO/issues?state=${state}&per_page=100" -q ".[] | select(.title == \"$title\") | .number" | sort -n) || return 1
+  fi
+  printf '%s\n' "$found" | awk 'NF'
+}
+
 # 許可の不足を、記録用のIssue（閉じたまま）にコメントで残し、同じ不足が2回目なら、直すためのIssueを自動で作る
 #   使い方：report_permission_gap 番号 "許可の書き方（改行区切り）"
 report_permission_gap() {
-  local from="$1" keys key ledger n title existing created
+  local from="$1" keys key ledger ledgers l n n1 title existing created
   # 1回に記録するのは最初の PERM_REPORT_MAX 件まで（多すぎると、1件ずつのAPI呼び出しでジョブが時間切れになる）
   keys=$(printf '%s\n' "$2" | awk 'NF' | head -n "${PERM_REPORT_MAX:-3}")
   while IFS= read -r key; do
     [ -z "$key" ] && continue
-    ledger=$(gh api "repos/$REPO/issues?state=all&per_page=100" -q ".[] | select(.title == \"$PERM_LEDGER_TITLE\") | .number" | head -1) || return 0
+    # 記録のIssueは、search API → 新しい一覧の順で探す。重なって作られた物があれば、最小の番号を正とする
+    ledgers=$(find_issues_by_title "$PERM_LEDGER_TITLE" all) || return 0
+    ledger=$(printf '%s\n' "$ledgers" | head -1)
     if [ -z "$ledger" ]; then
       ledger=$(gh api -X POST "repos/$REPO/issues" -f title="$PERM_LEDGER_TITLE" \
         -f body="AIが「許可されていない操作」で止まったときの記録です（自動）。同じ不足が2回起きたら、直すためのIssueを自動で作ります。このIssueは閉じたままにしてください。" -q .number) || return 0
       gh api -X PATCH "repos/$REPO/issues/$ledger" -f state=closed > /dev/null || true
+      ledgers="$ledger"
     fi
     comment "$ledger" "<!-- perm-gap: ${key} -->
 #${from} で、AIが許可されていない操作を試して止まりました：\`${key}\`" || true
-    n=$(all_comments "$ledger" | jq --arg k "<!-- perm-gap: ${key} -->" '[.[] | select(.body | contains($k))] | length')
-    if [ "${n:-0}" -ge 2 ]; then
+    # 回数は、見つかった記録のIssue全部のコメントを合わせて数える（重なって作られた分を失わない）
+    n=0
+    while IFS= read -r l; do
+      [ -z "$l" ] && continue
+      n1=$(all_comments "$l" | jq --arg k "<!-- perm-gap: ${key} -->" '[.[] | select(.body | contains($k))] | length') || n1=0
+      n=$((n + ${n1:-0}))
+    done <<< "$ledgers"
+    if [ "$n" -ge 2 ]; then
       title="AIの許可が足りない：${key}"
-      existing=$(gh api "repos/$REPO/issues?state=open&per_page=100" -q ".[] | select(.title == \"$title\") | .number" | head -1)
+      existing=$(find_issues_by_title "$title" open) || return 0
       if [ -z "$existing" ]; then
         created=$(gh api -X POST "repos/$REPO/issues" -f title="$title" -f 'labels[]=ai:skip' \
           -f body="### 背景

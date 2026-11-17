@@ -66,6 +66,16 @@ def paged(lst):
     if slurp: out(pages); return
     for pg in pages: out(pg)
 base=path.split('?')[0]
+# search API（search/issues）：題名の "…" と is:open で絞る。st['search_hidden'] の番号は出ない（作った直後で、まだ索引に無い）。
+# search_fail があれば 502。本物と同じく {"items":[…]} を返す
+if base=='search/issues':
+    from urllib.parse import unquote
+    if st.get('search_fail'): sys.stderr.write('HTTP 502\n'); sys.exit(1)
+    _q=unquote(re.search(r'[?&]q=([^&]+)',path).group(1))
+    _t=re.search(r'"([^"]*)" in:title',_q).group(1)
+    _meta=st.get('issues_meta',{})
+    out({'items':[{'number':int(n),'title':mt.get('title',''),'state':mt.get('state','open')} for n,mt in _meta.items()
+        if mt.get('title')==_t and n not in st.get('search_hidden',[]) and (' is:open' not in _q or mt.get('state','open')=='open')]}); sys.exit(0)
 if re.match(r'repos/[^/]+/[^/]+$',base): out({'is_template':st.get('is_template',False),'homepage':st.get('homepage')}); sys.exit(0)
 # 公開（deployments）：st['deployments'] = [{'id':1,'environment':'github-pages','url':'https://…'}]
 if base=='deployments':
