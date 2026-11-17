@@ -69,6 +69,75 @@ run_lib "report_permission_gap 7 'Bash(git merge:*)'" > /dev/null
 run_lib "report_permission_gap 7 'Bash(gh pr edit:*)'" > /dev/null
 assert_not_contains "別の不足なので、直すIssueは作らない" "$(python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print(' '.join(m['title'] for m in s['issues_meta'].values()))")" "AIの許可が足りない："
 
+count_py() { python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print($1)"; }
+LEDGER_TITLE="AIの許可の不足（自動の記録）"
+# 記録のコメントを足す（ledger 番号, 件数）。state_py の中で使う Python を返す
+gap_comments() { echo "
+for i in range($2):
+    s['next_id']+=1
+    s['comments'].append({'id':s['next_id'],'issue':'$1','body':'<!-- perm-gap: Bash(git merge:*) -->\\n#1','user':{'login':'x'},'created_at':'$(ago 5)','updated_at':'$(ago 5)'})"; }
+
+echo "== 記録Issueが一覧の100件目より後ろにあっても、search で見つかる（新しく作らない）"
+init_state '{"issues_meta":{}}'
+state_py "
+for n in range(200,320):
+    s['labels'][str(n)]=[]; s['issues_meta'][str(n)]={'title':'t%d'%n,'state':'open'}
+s['labels']['400']=[]; s['issues_meta']['400']={'title':'$LEDGER_TITLE','state':'closed'}
+s['next_id']=10
+$(gap_comments 400 1)"
+run_lib "report_permission_gap 7 'Bash(git merge:*)'" > /dev/null
+assert_eq "記録Issueは増えない" "1" "$(count_py "sum(m['title']=='$LEDGER_TITLE' for m in s['issues_meta'].values())")"
+assert_eq "既存の記録に回数が積まれて、2回目で直すIssueができる" "1" "$(count_py "sum('許可が足りない' in m['title'] for m in s['issues_meta'].values())")"
+
+echo "== 作った直後で search に出ないときは、新しい一覧で見つかり、重ねて作らない"
+init_state '{"issues_meta":{}}'
+state_py "
+s['labels']['300']=[]; s['issues_meta']['300']={'title':'$LEDGER_TITLE','state':'closed'}
+s['search_hidden']=['300']
+s['next_id']=10
+$(gap_comments 300 1)"
+run_lib "report_permission_gap 7 'Bash(git merge:*)'" > /dev/null
+assert_eq "記録Issueは増えない" "1" "$(count_py "sum(m['title']=='$LEDGER_TITLE' for m in s['issues_meta'].values())")"
+assert_eq "回数が割れず、直すIssueができる" "1" "$(count_py "sum('許可が足りない' in m['title'] for m in s['issues_meta'].values())")"
+
+echo "== search が読めなくても、新しい一覧で探す"
+init_state '{"issues_meta":{}}'
+state_py "
+s['labels']['300']=[]; s['issues_meta']['300']={'title':'$LEDGER_TITLE','state':'closed'}
+s['search_fail']=True
+s['next_id']=10
+$(gap_comments 300 1)"
+run_lib "report_permission_gap 7 'Bash(git merge:*)'" > /dev/null
+assert_eq "記録Issueは増えない" "1" "$(count_py "sum(m['title']=='$LEDGER_TITLE' for m in s['issues_meta'].values())")"
+
+echo "== 記録Issueが2つあっても、回数は合算される。直すIssueは1つだけ。余分な記録は閉じたまま残る"
+init_state '{"issues_meta":{}}'
+state_py "
+for n in ('300','301'):
+    s['labels'][n]=[]; s['issues_meta'][n]={'title':'$LEDGER_TITLE','state':'closed'}
+s['next_id']=10
+$(gap_comments 301 1)"
+run_lib "report_permission_gap 7 'Bash(git merge:*)'" > /dev/null
+assert_eq "各1回で合わせて2回：直すIssueができる" "1" "$(count_py "sum('許可が足りない' in m['title'] for m in s['issues_meta'].values())")"
+assert_contains "コメントは最小番号の記録に付く" "$(comments_of 300)" "perm-gap"
+state_py "
+s['comments'].append({'id':900,'issue':'301','body':'<!-- perm-gap: Bash(git merge:*) -->\\n#2','user':{'login':'x'},'created_at':'$(ago 4)','updated_at':'$(ago 4)'})"
+run_lib "report_permission_gap 7 'Bash(git merge:*)'" > /dev/null
+assert_eq "3回目以降も、直すIssueは増えない（重ならない）" "1" "$(count_py "sum('許可が足りない' in m['title'] for m in s['issues_meta'].values())")"
+assert_eq "余分な記録Issueは閉じたまま" "closed" "$(count_py "s['issues_meta']['301']['state']")"
+assert_eq "記録Issueは増えない" "2" "$(count_py "sum(m['title']=='$LEDGER_TITLE' for m in s['issues_meta'].values())")"
+
+echo "== 直すIssueが作った直後で search に出なくても、重ねて作らない"
+init_state '{"issues_meta":{}}'
+state_py "
+s['labels']['300']=[]; s['issues_meta']['300']={'title':'$LEDGER_TITLE','state':'closed'}
+s['labels']['310']=[]; s['issues_meta']['310']={'title':'AIの許可が足りない：Bash(git merge:*)','state':'open'}
+s['search_hidden']=['310']
+s['next_id']=10
+$(gap_comments 300 2)"
+run_lib "report_permission_gap 7 'Bash(git merge:*)'" > /dev/null
+assert_eq "直すIssueは1つのまま" "1" "$(count_py "sum('許可が足りない' in m['title'] for m in s['issues_meta'].values())")"
+
 echo "== 修正AIが「許可されていない」と報告して、変更が入らなかった（自動のやり直しは済み）：足りない許可の候補を書いて人間に回す"
 pr='{"number":58,"body":"x","state":"open","head":{"sha":"abc","ref":"claude/issue-54-x"},"updated_at":"2026-01-01T00:00:00Z"}'
 init_state '{"labels":{"58":[]},"pulls":['"$pr"']}'
