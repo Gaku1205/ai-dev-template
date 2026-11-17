@@ -552,7 +552,7 @@ done <<< "$closed_items"
 # ---- 4. 順番待ちを進める ----
 start_next_in_queue || echo "順番待ちを進められませんでした"
 
-# ---- 8. 次のやり直しの時刻に、見張り役を起こす目覚ましをかける ----
+# ---- 8. 次のやり直しの時刻（と、マージ待ちのPRが順番待ちを止めなくなる時刻）に、見張り役を起こす目覚ましをかける ----
 # GitHub の定期の起動（30分ごと）は、混んでいると数時間遅れる。待ちが明ける時刻が分かっているので、
 # その時刻に retry-timer.yml（待ってから見張り役を動かすだけ）を動かしておく。目覚ましは1つだけ（新しい物が古い物を止める）。
 # 公開していないリポジトリでは待つあいだも Actions の時間を使うので、変数 RETRY_TIMER に off を入れれば止められる
@@ -566,6 +566,20 @@ set_retry_timer() {
     [ "$t" -gt "$now_s" ] || continue
     if [ -z "$earliest" ] || [ "$t" -lt "$earliest" ]; then earliest="$t"; fi
   done
+  # 順番待ちがあるとき、人間のマージ待ち（ai:hold）のPRが進行中から外れる時刻（ai:hold が付いて HOLD_BLOCK_MIN 分）にも起こす。
+  # 外れる時刻には何のイベントも起きないので、定期の起動が遅れると、順番待ちが何時間も止まる（PR #162 で、60分のはずが止まり続けた）
+  local queued pr state w
+  queued=$(gh api "repos/$REPO/issues?state=open&per_page=1&labels=ai%3Aqueue" -q 'length' 2> /dev/null) || queued=0
+  if [ "${queued:-0}" -gt 0 ]; then
+    while read -r pr state; do
+      [ "$state" = waiting ] || continue
+      w=$(hold_wait_min "$pr")
+      [ -n "$w" ] || continue
+      t=$(( now_s + (HOLD_BLOCK_MIN - w) * 60 + 60 ))
+      [ "$t" -gt "$now_s" ] || continue
+      if [ -z "$earliest" ] || [ "$t" -lt "$earliest" ]; then earliest="$t"; fi
+    done < <(hold_prs 2> /dev/null)
+  fi
   [ -z "$earliest" ] && return 0
   # 1回の待ちは最大 RETRY_TIMER_MAX_MIN 分（ジョブの時間の上限 6時間に収める）。それより先なら、起きた見張り役がかけ直す
   local cap=$(( now_s + ${RETRY_TIMER_MAX_MIN:-340} * 60 ))

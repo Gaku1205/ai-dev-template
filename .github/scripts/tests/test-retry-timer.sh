@@ -53,4 +53,20 @@ state_py "s['labels']['7'].append('ai:stuck')"
 run_script watchdog.sh > /dev/null
 assert_eq "ai:stuck の物" "" "$(dispatches)"
 
+echo "== 順番待ちを止めている ai:hold のPRは、進行中から外れる時刻（付いて60分）に目覚ましをかける（PR #162）"
+review='{"id":901,"issue":"20","user":{"login":"github-actions[bot]"},"created_at":"2026-11-17T00:00:00Z","updated_at":"2026-11-17T00:00:00Z","body":"## Code review\n\nNo issues found."}'
+pr20='{"number":20,"state":"open","mergeable_state":"clean","head":{"ref":"claude/issue-9-x","sha":"abc"},"labels":[{"name":"ai:hold"}]}'
+init_state '{"labels":{"20":["ai:hold"],"3":["ai:queue"]},"events":{"20":[{"event":"labeled","label":{"name":"ai:hold"},"created_at":"'"$(ago 30)"'"}]},"pulls":['"$pr20"'],"files":["src/lib/a.ts"],"comments":['"$review"'],
+  "issues_meta":{"3":{"title":"b","body":"本文\n<!-- ai-touches: src/lib/a.ts -->"}}}'
+run_script watchdog.sh > /dev/null
+assert_eq "#3 はまだ待つ" "ai:queue" "$(labels_of 3)"
+at=$(dispatches | grep retry-timer.yml | awk '{print $2}')
+expect=$(( $(date +%s) + 31 * 60 ))
+assert_eq "あと約30分の時刻" "ok" "$([ -n "$at" ] && [ "$at" -ge $((expect - 120)) ] && [ "$at" -le $((expect + 120)) ] && echo ok || echo "${at:-なし}")"
+
+echo "== 順番待ちが無ければ、ai:hold のPRがあっても目覚ましはかけない"
+state_py "s['labels']['3']=[]; s['dispatches']=[]"
+run_script watchdog.sh > /dev/null
+assert_eq "かけない" "" "$(dispatches)"
+
 finish
