@@ -72,7 +72,12 @@ if base=='deployments':
 m=re.match(r'deployments/(\d+)/statuses$',base)
 if m: out([{'state':'success','environment_url':d.get('url')} for d in st.get('deployments',[]) if str(d['id'])==m.group(1)]); sys.exit(0)
 # main のコミットの一覧：st['main_commit_date']
-if base=='commits': out([{'sha':x,'commit':{'committer':{'date':st.get('main_commit_date','2026-01-01T00:00:00Z')}}} for x in st.get('main_commits',['h'])]); sys.exit(0)
+# 1件ずつ日付を変えるときは st['commit_dates'] = {sha: 日付}。since= があれば、それより前のコミットは返さない。読んだ回数を commit_list_calls に足す
+if base=='commits':
+    st['commit_list_calls']=st.get('commit_list_calls',0)+1; save()
+    cd=lambda x: st.get('commit_dates',{}).get(x, st.get('main_commit_date','2026-01-01T00:00:00Z'))
+    sm=re.search(r'since=([^&]+)',path)
+    out([{'sha':x,'commit':{'committer':{'date':cd(x)}}} for x in st.get('main_commits',['h']) if not sm or cd(x)>=sm.group(1)]); sys.exit(0)
 m=re.match(r'issues/(\d+)/comments$',base)
 if m:
     n=m.group(1)
@@ -186,6 +191,8 @@ if m and method=='POST':
 if base=='actions/runs': out({'workflow_runs':st.get('runs',[])}); sys.exit(0)
 if base.startswith('compare/'): out({'ahead_by':0}); sys.exit(0)
 m=re.match(r'commits/([^/]+)$',base)
+if m and m.group(1) in st.get('commit_fail',[]): sys.stderr.write('HTTP 502\n'); sys.exit(1)
+if m: st['commit_calls']=st.get('commit_calls',0)+1; save()
 if m: out({'commit':{'committer':{'date':'2026-01-01T00:00:00Z'}},'files':[{'filename':f} for f in st.get('commit_files',{}).get(m.group(1),[])]}); sys.exit(0)
 if base=='pulls':
     paged(st.get('pulls',[])); sys.exit(0)

@@ -55,6 +55,43 @@ init_state '{"homepage":"https://app.vercel.app","main_commit_date":"2026-11-16T
 FORCE=1 gate try
 assert_eq "run" "true" "$(val run)"
 
+echo "== 直近24時間の main の変更が、パイプラインの配布だけ（.github/・docs/pipeline.md・.claude/）→ 動かさない"
+SYNC_ONLY='{"homepage":"https://app.vercel.app","main_commit_date":"2026-11-16T03:00:00Z","main_commits":["h3","h2","h1"],"commit_dates":{"h1":"2026-11-10T03:00:00Z"},"commit_files":{"h3":[".github/scripts/a.sh","docs/pipeline.md"],"h2":[".claude/skills/x/SKILL.md",".github/workflows/ci.yml"],"h1":["src/app.ts"]},"statuses_by_sha":{"h3":[],"h2":[],"h1":[{"context":"Vercel","state":"success"}]}}'
+init_state "$SYNC_ONLY"
+gate try
+assert_eq "run" "false" "$(val run)"
+assert_contains "理由" "$(val reason)" "パイプラインの更新"
+assert_eq "URL は出す" "https://app.vercel.app" "$(val url)"
+echo "== 手で動かしたら（FORCE=1）、配布だけの日でも動かす"
+FORCE=1 gate try
+assert_eq "run" "true" "$(val run)"
+echo "== 配布のコミットに混じって、アプリのコミットが1つでもある → 動かす（本番も追いついている）"
+init_state '{"homepage":"https://app.vercel.app","main_commit_date":"2026-11-16T03:00:00Z","main_commits":["h3","h2","h1"],"commit_dates":{"h1":"2026-11-10T03:00:00Z"},"commit_files":{"h3":["docs/pipeline.md"],"h2":["src/app.ts","docs/pipeline.md"],"h1":["src/app.ts"]},"statuses_by_sha":{"h3":[],"h2":[{"context":"Vercel","state":"success"}]}}'
+gate try
+assert_eq "run" "true" "$(val run)"
+assert_eq "同じコミットの中身は1回しか読まない（h3・h2 の2回）" "2" "$(python3 -c "import json,os;print(json.load(open(os.environ['MOCK_STATE'])).get('commit_calls',0))")"
+echo "== アプリのコミットはあるが、本番が追いついていない → 動かさない（#102 の確かめはそのまま）"
+init_state '{"homepage":"https://app.vercel.app","main_commit_date":"2026-11-16T03:00:00Z","main_commits":["h3","h2","h1"],"commit_dates":{"h1":"2026-11-10T03:00:00Z"},"commit_files":{"h3":["docs/pipeline.md"],"h2":["src/app.ts"],"h1":["src/app.ts"]},"statuses_by_sha":{"h3":[],"h2":[],"h1":[{"context":"Vercel","state":"success"}]}}'
+gate try
+assert_eq "run" "false" "$(val run)"
+assert_contains "理由は追いつき" "$(val reason)" "追いついていない"
+echo "== docs/pipeline.md に似た名前のアプリのファイル（docs/pipeline.md.bak・docs/spec.md）は、アプリの変更"
+init_state '{"homepage":"https://app.vercel.app","main_commit_date":"2026-11-16T03:00:00Z","main_commits":["h2"],"commit_files":{"h2":["docs/spec.md"]},"statuses_by_sha":{"h2":[]}}'
+gate try
+assert_eq "run" "true" "$(val run)"
+echo "== 変わったファイルを読めなかった（API の失敗）→ アプリの変更として動かす（黙って試さなくならない）"
+init_state "$SYNC_ONLY"
+state_py "s['commit_fail']=['h3','h2']; s['statuses_by_sha']['h3']=[{'context':'Vercel','state':'success'}]"
+gate try
+assert_eq "run" "true" "$(val run)"
+echo "== 直近24時間のコミットが30件以上 → 中身を読まずに動かす（API の回数を増やさない）"
+init_state "$(python3 -c "
+import json
+c=['c%d'%i for i in range(30)]
+print(json.dumps({'homepage':'https://app.vercel.app','main_commit_date':'2026-11-16T03:00:00Z','main_commits':c,'commit_files':{x:['docs/pipeline.md'] for x in c},'statuses_by_sha':{'c0':[{'context':'Vercel','state':'success'}]}}))")"
+gate try
+assert_eq "run" "true" "$(val run)"
+
 echo "== 監査役：進行中の作業が無い → 動かす"
 init_state '{"labels":{"5":[]}}'
 gate audit
