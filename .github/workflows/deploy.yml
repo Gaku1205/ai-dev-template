@@ -211,7 +211,7 @@ jobs:
         id: token
         run: |
           if [ -z "$EXPO_TOKEN" ]; then
-            echo "::error::Secret の EXPO_TOKEN が無い（docs/pipeline.md「Expo」の手順）"
+            echo "::error::Secret の EXPO_TOKEN が無い（docs/pipeline-setup.md「Expo」の手順）"
             .github/scripts/deploy-status.sh expo error "Expo の設定がまだです（Secret：EXPO_TOKEN）"
             exit 1
           fi

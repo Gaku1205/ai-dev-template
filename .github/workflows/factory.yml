@@ -479,7 +479,7 @@ jobs:
           ISSUE: ${{ github.event.issue.number || inputs.issue }}
         run: |
           if [ "$HAS_FACTORY" != true ]; then
-            gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" -f body="⚠️ 新しいサービスを作るには、最初の1回だけ、Environment「factory」の Secret に FACTORY_TOKEN が要ります（作り方は docs/pipeline.md の「工場」）。登録したら、このIssueを閉じて、同じ1行でもう一度作ってください。" > /dev/null
+            gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" -f body="⚠️ 新しいサービスを作るには、最初の1回だけ、Environment「factory」の Secret に FACTORY_TOKEN が要ります（作り方は docs/factory.md）。登録したら、このIssueを閉じて、同じ1行でもう一度作ってください。" > /dev/null
             echo "::error::FACTORY_TOKEN がありません"; exit 1
           fi
       - name: 新しいサービスを作る
