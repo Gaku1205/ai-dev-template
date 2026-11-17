@@ -129,6 +129,14 @@ Issue の `ai:stuck` を外したときは、付いているラベルで続き�
 - レビューAIは変えない（必要な所を自分で読む）
 - 効いているかは、`ai-report.sh` が実行ごとに出す「使った量」（入力・キャッシュから・出力のトークン）で比べる
 
+## Issue に貼った画像を、企画AI・実装AIに見せる
+
+企画AI（`claude-plan.yml`）・実装AI（`claude-implement.yml`）の前に、`issue-images-prompt.sh` が Issue の本文の画像（`![..](https://…)`・`<img src="https://…">`）を取ってきて置く（企画は `issue-images/`、実装は `.shots/issue/`。コミットしない）。AIはネットに出ずに `Read` で見る。取るのは `fetch-issue-images.sh`（工場のデザイン担当と同じ。10枚まで・1枚10MBまで・JPEG・PNG・WebP・GIF だけ）。
+
+- このリポジトリのファイルの画像（agent-desk が `issue-images` ブランチに置くスクショ。`github.com/<o>/<r>/raw/<ref>/<path>`・`raw.githubusercontent.com/…`）は Contents API で取る。非公開のリポジトリでも見られ、鍵は api.github.com にだけ送る。ほかの github.com の画像は鍵を付けて、それ以外のサイトは鍵なしで取る
+- AIへの指示には、枚数と置き場所だけを足す（URL や本文の文字は混ぜない）。企画AIには、清書した本文にも画像の行を残すよう頼む（実装AIも同じ画像を見るため）
+- 取れなかった画像があっても止めない（取れなかった枚数を伝える）。画像が無ければ何も足さない
+
 ## 指示を部品で組む（`compose-prompt.sh`）
 
 実装AI・修正AI（mention）に渡す指示（`--append-system-prompt`）は、部品に分けて `.github/scripts/prompts/` に1ファイル1部品で置く。`.github/scripts/compose-prompt.sh` が、要る部品だけを順に連結して標準出力に出す。見た目のテストが無いリポジトリに基準画像の注意を読ませない、などで読む量とぶれを減らす。企画AI・レビューAIの指示は対象外。
