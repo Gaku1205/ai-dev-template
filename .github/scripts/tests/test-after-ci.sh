@@ -37,6 +37,11 @@ assert_eq "落ちたジョブをやり直す" "1" "$(reruns)"
 assert_not_contains "AIには直させない" "$(comments_of 58)" "auto-fix"
 assert_contains "印つきで知らせる" "$(comments_of 58)" "auto-pipeline-test-rerun"
 
+rerun_tokens() { python3 -c "import json,os;print(','.join(json.load(open(os.environ['MOCK_STATE'])).get('rerun_tokens',[])))"; }
+echo "== やり直しは READ_TOKEN（Actions を書けるトークン）で呼ぶ（App の鍵 GH_TOKEN は Actions が Read のため）"
+READ_TOKEN=readtok GH_TOKEN=apptok run_case "Closes #1" "スクリプトのテスト"
+assert_eq "READ_TOKEN で呼ぶ" "readtok" "$(rerun_tokens)"
+
 echo "== やり直しても落ちた（印がもうある） → 人間に回す"
 run_case "Closes #1" "shellcheck"
 state_py "s['reruns']=[]; s['comments']=[{'id':9,'issue':'58','body':'x <!-- auto-pipeline-test-rerun -->','user':{'login':'p'},'created_at':'$(ago 5)','updated_at':'$(ago 5)'}]"
