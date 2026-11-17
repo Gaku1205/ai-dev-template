@@ -6,6 +6,7 @@
 # コミットが増えず、PRの説明も変わっていなければ、理由を分けて動く（classify_no_change）：
 #   基準の画像の撮り直しが要る → visual:update を付ける（main を最後に取り込んだ後で2回まで）
 #   ツールの許可が拒否された   → 拒否された操作を書いて、1回だけ同じ依頼を出し直す（2回目は人間に回す）
+#   レビューの指摘がワークフローの所（.github/workflows/・.github/actions/）を指す → 人間（マネージャー）に回す（理由は「ワークフローの指摘が残っている」）
 #   指摘は誤り・前の対応で直し済みと返した → もう一度レビューに回す（直す回数の上限に数える）
 #   撮り直しを頼まれたが、main とのコンフリクトが残っている → 撮り直しは動かないので付けない。拒否された操作があれば出し直し、無ければ人間に回す
 #   分類できない               → 人間に回す（ai:stuck）
@@ -77,6 +78,15 @@ for pr in $prs; do
         '[.[] | select((.user.login == "claude[bot]" or .user.login == "github-actions[bot]") and (.body | startswith("## Code review")) and .created_at >= $since) | .body] | join("\n")')
       inline_text=$(gh api "repos/$REPO/pulls/$pr/comments?per_page=100" --paginate --slurp 2> /dev/null \
         | jq -r --arg sha "$head" 'add // [] | map(select(.user.login == "claude[bot]" and .original_commit_id == $sha) | .body) | join("\n")') || inline_text=""
+      # 指摘がワークフローの所（AIは直せない）を指す物を含むか：行への指摘の path と、まとめ中のパスから
+      inline_paths=$(gh api "repos/$REPO/pulls/$pr/comments?per_page=100" --paginate --slurp 2> /dev/null \
+        | jq -r --arg sha "$head" 'add // [] | map(select(.user.login == "claude[bot]" and .original_commit_id == $sha) | .path // empty) | .[]') || inline_paths=""
+      # 「No issues found」のまとめは、確かめた内容にパスが出てくるだけなので読まない（指摘のあるまとめだけ読む）
+      findings_text=$(printf '%s' "$comments" | jq -r --arg since "$head_date" \
+        '[.[] | select((.user.login == "claude[bot]" or .user.login == "github-actions[bot]") and (.body | startswith("## Code review")) and (.body | contains("No issues found") | not) and .created_at >= $since) | .body] | join("\n")')
+      review_targets=$({ printf '%s\n' "$inline_paths"; printf '%s' "$findings_text" | review_paths_from_text; } | awk 'NF' | sort -u)
+      wf_flag=""
+      [ "$(printf '%s\n' "$review_targets" | review_paths_kind)" != other ] && wf_flag=1
       # 拒否された操作：実行記録（EXECUTION_FILE。あれば）と、AIの報告の文から
       denied=$(denied_tools "${EXECUTION_FILE:-}")
       hints=$(printf '%s' "$ai_text" | permission_hints_from_text)
@@ -84,7 +94,7 @@ for pr in $prs; do
       denied_note=""
       [ -n "$denied" ] && denied_note="（この実行で拒否された操作：$(permission_list_short "$(denied_raw "${EXECUTION_FILE:-}")")）"
       failed=$(ci_failed_steps "$head")
-      kind=$(printf '%s' "$ai_text" | classify_no_change "$(printf '%s\n%s' "$review_text" "$inline_text")" "$denied")
+      kind=$(printf '%s' "$ai_text" | classify_no_change "$(printf '%s\n%s' "$review_text" "$inline_text")" "$denied" "$wf_flag")
       # main とのコンフリクトが残っているPRでは、撮り直し（visual-update.yml は pull_request で動く）もCIも、GitHub が動かさない。
       # visual:update を付けても何も起きず、誰も動かなくなる。撮り直しにはせず、コンフリクトの解消を先にさせる：
       # 拒否された操作があれば、それを手がかりに1回だけ出し直す（permission）。無ければ、理由を書いて人間に回す（conflict）
@@ -146,6 +156,9 @@ ${PERM_RETRY_MARK}
             stop_for_human "$pr" "AIが許可されていない操作で止まったようです（1回自動でやり直しても同じでした）。AIの報告：${report:-（なし）}／足りない許可の候補：${what}（docs/pipeline.md の「AIの許可」の表を見てください）"
             report_permission_gap "$pr" "$keys"
           fi
+          ;;
+        workflow)
+          stop_for_human "$pr" "AIに直すよう頼みましたが、変更が入りませんでした。ワークフローの指摘が残っています（\`.github/workflows/\`・\`.github/actions/\` の中）。AIは直せないので、マネージャーが直してください。指摘の場所：$(printf '%s' "$review_targets" | grep -E '^\.github/(workflows|actions)/' | paste -sd '、' - || true)${denied_note}"
           ;;
         conflict)
           stop_for_human "$pr" "AIに直すよう頼みましたが、main とのコンフリクトを解消できず、変更が入りませんでした。コンフリクトが残っている間は、CIも基準の画像の撮り直しも動きません（AIのコメントを確認してください）${denied_note}"
