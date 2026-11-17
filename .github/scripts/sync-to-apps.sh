@@ -17,7 +17,8 @@ src_root="$(cd "$(dirname "$0")/../.." && pwd)"
 copy_pipeline() { # 配り先のルート
   local dir="$1" name
   # テンプレート本体だけの物（配り先では動かない）：工場のIssueの雛形
-  local excludes=(--exclude=sync-keep --exclude=sync-targets --exclude=ISSUE_TEMPLATE/new-service.yml)
+  # app-fixtures：配る前のテスト用の見本（配り先に入ると、見本の中でさらに見本を回してしまう）
+  local excludes=(--exclude=sync-keep --exclude=sync-targets --exclude=ISSUE_TEMPLATE/new-service.yml --exclude=app-fixtures)
   if [ -f "$dir/.github/sync-keep" ]; then
     while IFS= read -r name || [ -n "$name" ]; do
       name="${name%$'\r'}"

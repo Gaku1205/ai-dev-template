@@ -1,0 +1,4 @@
+{
+  "checks": [ { "name": "テスト", "run": "npm run test" } ],
+  "deploy": [ { "kind": "github-release", "os": ["windows-latest"], "build": "npm run build", "files": "dist/*" } ]
+}

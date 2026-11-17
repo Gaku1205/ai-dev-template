@@ -392,7 +392,7 @@ AIの実行記録から、許可されず拒否された操作（`permission_den
 - 全部実行：`.github/scripts/tests/run-all.sh`（CIの `script-tests`、`shellcheck` も同じ物を見る）
 - 書き方は `tests/lib.sh` の冒頭。スクリプトを変えたら、場面に合うテストを足す
 - 変更を入れる前にテストを壊してみて（わざとバグを入れる）、テストが落ちることを確かめると確実
-- テストは `.github/` ごと全部のアプリに配られ、アプリの CI でも動く。テンプレートにしか無い物（`examples/` など）に頼るテストは、先頭で「無ければ飛ばす」と書く（`test-factory.sh` の先頭と同じ書き方。`test-sync-to-apps.sh` が書き忘れを見つける）。配り先の形で全部のテストが通るかは、`.github/scripts/tests/run-as-app.sh` で確かめられる（配る物だけを空のリポジトリに置いて `run-all.sh` を動かす）。テンプレート本体の CI も同じ物を動かし（`script-tests-as-app`）、配る前に見つける
+- テストは `.github/` ごと全部のアプリに配られ、アプリの CI でも動く。テンプレートにしか無い物（`examples/` など）に頼るテストは、先頭で「無ければ飛ばす」と書く（`test-factory.sh` の先頭と同じ書き方。`test-sync-to-apps.sh` が書き忘れを見つける）。配り先の形で全部のテストが通るかは、`.github/scripts/tests/run-as-app.sh` で確かめられる。アプリごとに形の違うファイル（`vercel.json`・`package.json`・`pipeline.json`・`CLAUDE.md`）を読むテストを見逃さないよう、形の違う見本のアプリを5つ（`.github/scripts/tests/app-fixtures/` の `next-vercel`・`webgame`・`electron`・`python`・`visual-keep`）置いてあり、見本ごとに「一時フォルダに見本を写す → `git init` → `sync-to-apps.sh --local` → コミット → `run-all.sh` と `shellcheck`（CI と同じ書き方）」を回す。1つ落ちても残りは回し、最後に落ちた見本の名前を出して失敗で終わる（`app-fixtures/` は配り先には配らない。`test-run-as-app.sh` が仕組みを確かめる）。環境変数 `SYNC_CANARY`（空白区切りの `owner/repo`。例 `Gaku1205/agent-desk Gaku1205/tap-stack-rush`）があれば、その公開リポジトリを `git clone --depth 1`（トークンなし）して同じ手順も回す（空なら何もしない）。テンプレート本体の CI も同じ物を動かし（`script-tests-as-app`。`SYNC_CANARY` はリポジトリの変数で渡す）、配る前に見つける
 
 ## ほかの文書（必要なときだけ読む）
 
