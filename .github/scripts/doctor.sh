@@ -131,7 +131,7 @@ check_stack() {
   if [ -f pipeline.json ]; then
     errs=$(bash -c "source '$(dirname "${BASH_SOURCE[0]}")/stack.sh'; stack_validate")
     if [ -n "$errs" ]; then
-      while IFS= read -r s; do ng "pipeline.json：$s" "docs/pipeline.md「言語と公開先」の形に直す"; done <<< "$errs"
+      while IFS= read -r s; do ng "pipeline.json：$s" "docs/pipeline-setup.md「言語と公開先」の形に直す"; done <<< "$errs"
       return
     fi
     n=$(jq '.checks | length' pipeline.json)
@@ -147,7 +147,7 @@ check_stack() {
     if grep -q "\"test\"[[:space:]]*:" package.json; then ok "npm run test がある"
     else warn "package.json に test のスクリプトが無い" "動くが、AIの変更を確かめにくい。vitest を入れて \"test\": \"vitest run\" を足す"; fi
   else
-    ng "pipeline.json も package.json も無い" "Next.js 以外なら、pipeline.json に言語・確認コマンド・公開先を書く（docs/pipeline.md「言語と公開先」）"
+    ng "pipeline.json も package.json も無い" "Next.js 以外なら、pipeline.json に言語・確認コマンド・公開先を書く（docs/pipeline-setup.md「言語と公開先」）"
   fi
 }
 
@@ -170,7 +170,7 @@ check_deploy() {
         if [ "${HAS_AWS_ROLE:-0}" = 1 ] && [ "${HAS_AWS_REGION:-0}" = 1 ] && [ "${HAS_APPRUNNER_ACCESS:-0}" = 1 ]; then
           ok "公開先：AWS App Runner（Variable の AWS_ROLE_ARN・AWS_REGION・AWS_APPRUNNER_ACCESS_ROLE_ARN がある）"
         else
-          ng "公開先 AWS App Runner の設定が足りない" "Settings → Secrets and variables → Actions → Variables に AWS_ROLE_ARN・AWS_REGION・AWS_APPRUNNER_ACCESS_ROLE_ARN（docs/pipeline.md「AWS App Runner」。CloudFormation で1回作れば出てくる）"
+          ng "公開先 AWS App Runner の設定が足りない" "Settings → Secrets and variables → Actions → Variables に AWS_ROLE_ARN・AWS_REGION・AWS_APPRUNNER_ACCESS_ROLE_ARN（docs/pipeline-setup.md「AWS App Runner」。CloudFormation で1回作れば出てくる）"
         fi ;;
       supabase) echo "- ➖ 公開先：Supabase の表の変更（Secret の SUPABASE_DB_URL が要る。工場が入れる。ここからは確かめられない）" ;;
       expo)

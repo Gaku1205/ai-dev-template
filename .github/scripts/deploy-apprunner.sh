@@ -25,7 +25,7 @@ wait_max="${APPRUNNER_WAIT_MAX:-80}"
 
 [ -n "$service" ] || { echo "::error::pipeline.json の aws-apprunner に service（サービス名）が無い"; exit 1; }
 [ -f "$dockerfile" ] || { echo "::error::$dockerfile が無い（App Runner はコンテナで動かすので、Dockerfile が要る）"; exit 1; }
-[ -n "${ACCESS_ROLE_ARN:-}" ] || { echo "::error::Variable の AWS_APPRUNNER_ACCESS_ROLE_ARN が無い（docs/pipeline.md「AWS App Runner」の手順）"; exit 1; }
+[ -n "${ACCESS_ROLE_ARN:-}" ] || { echo "::error::Variable の AWS_APPRUNNER_ACCESS_ROLE_ARN が無い（docs/pipeline-setup.md「AWS App Runner」の手順）"; exit 1; }
 
 account=$(aws sts get-caller-identity --query Account --output text)
 region=$(aws configure get region 2> /dev/null || true)

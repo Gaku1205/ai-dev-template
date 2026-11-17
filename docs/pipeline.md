@@ -157,7 +157,7 @@ Issue の `ai:stuck` を外したときは、付いているラベルで続き�
 | 画面案（`claude-mocks.yml`） | `Read`、`Write`、`Edit`、`Glob`、`Grep`、`WebSearch`、`WebFetch`、`Bash(node .github/scripts/shot.mjs:*)`、`Bash(node .claude/skills/taste-skill/scripts/draw.mjs:*)`、`Bash(node .claude/skills/taste-skill/scripts/lint.mjs:*)`、`Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*)`、`Bash(node .claude/skills/taste-skill/scripts/assets.mjs:*)` | git・gh・npm（今の画面とデザイン仕様を見て、設計メモを書き、実例と本物の素材を探して、`mocks/` にざっくり画面の HTML を書いて撮って測るだけ。Issue は前のステップが `mocks/issue.txt` に書いておく。鍵は持たない。同じジョブの審査役は `Read`・`Glob`・`Write` だけで、画像を見て `.judge/verdict.json` を書く。直す役は作る役と同じ許可） |
 | 使ってみる役（`claude-try.yml`） | `Read`、`Write`、`Glob`、`Grep`、`Bash(node .github/scripts/shot.mjs:*)` | git・gh・npm（本番のサイトを撮って試し、見つけた問題を `.try/result.json` に書くだけ。Issue は鍵を持つ別のジョブが作る） |
 | 監査役（`claude-audit.yml`） | `Read`、`Write`、`Glob`、`Grep` | コマンドは全部（仕様書とコードを読んで、食い違いを `.audit/result.json` に書くだけ。Issue は鍵を持つ別のジョブが作る） |
-| 実装AI（`claude-implement.yml`） | pipeline.json の checks のコマンド（無ければ npm run typecheck・lint・test・build。下の「言語と公開先」）、`Bash(.github/scripts/tests/run-all.sh)`、`Bash(git status:*)`、`Bash(git diff:*)`、`Bash(git add:*)`、`Bash(git commit:*)`、`Bash(git fetch:*)`、`Bash(git merge:*)`、`Bash(git checkout --ours:*)`、`Bash(git checkout --theirs:*)`、`Bash(git push:*)`、`Bash(bash .github/scripts/tests/run-all.sh)`、`Bash(shellcheck:*)`、見た目のテストがあるアプリでは `Bash(npm run test:visual)`・`Bash(npm run test:visual -- -g:*)`・`Bash(npx playwright test:*)`（手元で動かして、位置や数値を確かめるため。基準の画像の撮り直し（--update-snapshots・-u）は許さない）、画面のあるアプリでは `Bash(npm run build)`・`Bash(node .github/scripts/shot.mjs:*)`・`Bash(.github/scripts/fetch-photos.sh:*)`（作った画面を本物のブラウザで 390・1440・1920 の幅で撮り、画像を見て直すため。下の「撮って見て直す」）、`Skill`（.claude/skills/ のスキル。画面を作るときの frontend-design・taste-skill・web-design-guidelines、GSAP・Lenis が入っているアプリでの motion-gsap-lenis。taste-skill のスクリプトは、測る inspect.mjs だけ動かしてよい） | `gh`（PRやコメントは進行役が作る）、`npm run readme:shots` などの重い物（README の撮影はCIのワークフローでやる）。ファイルの編集は、このツールの標準で許可される。gitは、標準に任せると拒否されて止まったことがあるので、明示して許可している。`git push --force`・`git rebase` は許可しない |
+| 実装AI（`claude-implement.yml`） | pipeline.json の checks のコマンド（無ければ npm run typecheck・lint・test・build。docs/pipeline-setup.md「言語と公開先」）、`Bash(.github/scripts/tests/run-all.sh)`、`Bash(git status:*)`、`Bash(git diff:*)`、`Bash(git add:*)`、`Bash(git commit:*)`、`Bash(git fetch:*)`、`Bash(git merge:*)`、`Bash(git checkout --ours:*)`、`Bash(git checkout --theirs:*)`、`Bash(git push:*)`、`Bash(bash .github/scripts/tests/run-all.sh)`、`Bash(shellcheck:*)`、見た目のテストがあるアプリでは `Bash(npm run test:visual)`・`Bash(npm run test:visual -- -g:*)`・`Bash(npx playwright test:*)`（手元で動かして、位置や数値を確かめるため。基準の画像の撮り直し（--update-snapshots・-u）は許さない）、画面のあるアプリでは `Bash(npm run build)`・`Bash(node .github/scripts/shot.mjs:*)`・`Bash(.github/scripts/fetch-photos.sh:*)`（作った画面を本物のブラウザで 390・1440・1920 の幅で撮り、画像を見て直すため。下の「撮って見て直す」）、`Skill`（.claude/skills/ のスキル。画面を作るときの frontend-design・taste-skill・web-design-guidelines、GSAP・Lenis が入っているアプリでの motion-gsap-lenis。taste-skill のスクリプトは、測る inspect.mjs だけ動かしてよい） | `gh`（PRやコメントは進行役が作る）、`npm run readme:shots` などの重い物（README の撮影はCIのワークフローでやる）。ファイルの編集は、このツールの標準で許可される。gitは、標準に任せると拒否されて止まったことがあるので、明示して許可している。`git push --force`・`git rebase` は許可しない |
 | レビューAI（`claude-review.yml`） | `Bash(gh pr view:*)`、`Bash(gh pr diff:*)`、`Bash(gh issue view:*)`、`Bash(gh pr comment:*)`、`Read`、`Glob`、`Grep`、`Write`、`mcp__github_inline_comment__create_inline_comment` | コードの変更・git操作・npm（レビューは読むだけ。コードは直さない） |
 | 修正AI（`claude-mention.yml`） | `Bash(gh pr view:*)`、`Bash(gh pr edit:*)`、`Bash(gh issue view:*)`、`Bash(gh pr comment:*)`、`Bash(git fetch:*)`、`Bash(git merge:*)`、`Bash(git checkout --ours:*)`、`Bash(git checkout --theirs:*)`、`Bash(git status:*)`、`Bash(git diff:*)`、`Bash(git add:*)`、`Bash(git commit:*)`、`Bash(git push:*)`、pipeline.json の checks のコマンド（無ければ npm run typecheck・lint・test・build）、`Bash(.github/scripts/tests/run-all.sh)`、`Bash(bash .github/scripts/tests/run-all.sh)`、`Bash(shellcheck:*)`、見た目のテストがあるアプリでは `Bash(npm run test:visual)`・`Bash(npm run test:visual -- -g:*)`・`Bash(npx playwright test:*)`（基準の画像の撮り直しは許さない）、`Skill` | `git rebase`・`git push --force`（履歴を書き換えない）、`gh pr merge`（マージは進行役だけ）。`gh pr edit` はPRの説明の直し（本文はファイルに書いて `--body-file` で渡す）、`gh issue view` はIssueを読むため、`git merge` はコンフリクトの解消のために許可している |
 
@@ -183,7 +183,7 @@ AIのアクションは作業フォルダをPRのブランチに切り替える�
 
 - 撮るのは `.github/scripts/shot.mjs`（依存なし。Chrome の操作は `.github/scripts/lib/cdp.mjs`（taste-skill から写した物、MIT）で、ubuntu-latest に入っている Chrome で撮る。Node 22 以上）。`--serve` でビルド済みのアプリを立ち上げてパス（`/` など）を撮るか、URL（実在のサイト）か HTML のファイルを撮る。幅は 390・1440・1920。`--scrolls N` で1画面ずつスクロールしながら N 枚撮る（スクロールで出てくる物・動きの途中が見える）。`--scale 2 --format webp` でサイトに載せる用の高精細で軽い画像にする。`--links` でページにあるリンクを出す（ギャラリーの一覧から、載っているサイトを拾う）。押す・入力する・localStorage にデータを入れるなどの操作をしてから撮る場面は `--steps` の JSON で書く（使い方はファイルの先頭）
 - **実装AI**（`claude-implement.yml`）：画面のあるアプリ（package.json に `start` がある Node のアプリ）では、確認コマンドが通ったあと `npm run build` → `node .github/scripts/shot.mjs --serve /` で撮り、画像を全部見て、`docs/design-ref/` の目標の絵があれば見比べ、目立つ問題の上位3つを直して撮り直す（最大3回）。撮った画像は `.shots/` にでき、コミットされない（`.git/info/exclude`）。そのあと、**別のAI（審査役）**が、ワークフローが撮り直した画像（下へスクロールした続きも）と目標の絵だけを見て答え（コードは見ない）、合格（下の「デザインの仕組み」。今あるアプリへの変更は、足した所が `docs/design.md` の「このサービスらしさ」に沿っているか・崩れ・スマホ・足した所の型と地味さ）に届かなければ、指摘をつけて実装AIにもう1回だけ直させる。結果はPRの本文に入る。そのぶん時間の上限を 75 分にしている
-- **デザイン担当**（工場）：実在の良いサイトを撮って参考にしてから、本物の画面を作り、撮って実例と見比べて直す（下の「工場」）
+- **デザイン担当**（工場）：実在の良いサイトを撮って参考にしてから、本物の画面を作り、撮って実例と見比べて直す（`docs/factory.md`）
 
 ## デザインの仕組み（考え → 関門 → 審査）
 
@@ -218,140 +218,6 @@ AIのアクションは作業フォルダをPRのブランチに切り替える�
 **既存アプリの作り直し**：画面全体の見た目を作り直す Issue（`ai:mocks`）では、画面案のAIは今の色・文字・部品の形に縛られない（今の画面は「何を載せているか」を知るためだけに見る）。最初に今の画面を審査役の問いで診断し、持ち物から考えを決め、組み方を配ってもらって2案を作る。オーナーが選ぶと、設計メモ（`ai-mocks` ブランチの `concept.md`）が実装AIに渡り、実装AIは `docs/design.md` の「このサービスらしさ」を書き直して、目標の画面に無い画面も同じ考えで作り直す。
 
 相談の2つの段階の間では、設計メモと使った絵の出どころ（`credits.json`）を `factory-talk` ブランチに置いて引き継ぎ、作り始めるときはデザイン担当に渡す（`factory-refs/issue/chosen-concept.md`・`chosen-credits.json`）。オーナーに見せるコメントには、ざっくり画面の下の欄（2画面目）の絵と、審査役の点の行が付く。
-
-## 言語と公開先（`pipeline.json`）
-
-リポジトリ直下の `pipeline.json` に、言語・確認コマンド・公開先を書く。**無ければ今までどおりの Next.js（Node 22・`npm ci`・型チェック／リント／テスト／ビルド・Vercel）**として動くので、既存のアプリは何もしなくてよい。読み取りは `.github/scripts/stack.sh`、実行環境を入れるのは `.github/actions/setup-stack`（CI・実装AI・修正AI・公開で共通）。
-
-```json
-{
-  "tools":  { "python": "3.12" },
-  "setup":  [ "pip install -r requirements-dev.txt" ],
-  "checks": [
-    { "name": "リント", "run": "ruff check ." },
-    { "name": "テスト", "run": "pytest -q" }
-  ],
-  "deploy": [
-    { "kind": "aws-apprunner", "service": "hello-api", "port": 8000, "health": "/health" },
-    { "kind": "github-release", "os": ["windows-latest", "macos-latest"], "build": "pyinstaller --onefile cli.py", "files": "dist/*" }
-  ]
-}
-```
-
-| 項目 | 内容 |
-| --- | --- |
-| `tools` | 入れる実行環境と版。`node`・`python`・`go`・`java`（Temurin）・`dotnet`。Rust・C/C++ などはランナーに最初から入っている物を使う |
-| `setup` | 依存を入れるコマンド（CIとAIの前に1回ずつ動く） |
-| `checks` | CIで順に**全部**回すコマンド（1つ落ちても最後まで回し、落ちた物をまとめて出す）。**実装AI・修正AIに許すコマンドもこれになる**（`"`・`,`・`(`・`)`・`` ` ``・`$`・`\` は許可の書き方を壊すので使えない。複雑な物はスクリプトにまとめて呼ぶ） |
-| `deploy` | 公開先の配列。同じ種類は最初の1つだけ使う |
-
-AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions/` を触るPRは、どのリポジトリでも自動でマージしない（`ai:hold`）。書き間違いは、CI・公開の最初で `::error::` になり、Doctor でも ❌ で出る。
-
-公開先（`deploy.yml`。main の CI が通ったら動く。パイプラインの更新だけのコミットでは動かない。ただし、その前のアプリの変更がまだ公開されていなければ動く：公開は1つずつ順に動き、待っている古い公開は新しい公開が来ると取り消されるので、アプリの変更のすぐあとに配布のコミットが入ると、アプリの変更が公開されないまま残る。`deploy-plan.sh` が、公開の結果（`deploy/*` の success・failure・error）が付いた一番新しいコミットからの差で決め直す）：
-
-| `kind` | 公開のしかた | 要る設定 | 書く物 |
-| --- | --- | --- | --- |
-| `vercel` | `deploy-vercel.yml` が、main の CI が通ってから3分（変数 `VERCEL_DEPLOY_DELAY_MIN`）待ち、その間にまたマージされたら新しい方だけが、最新の main を1回だけ本番に公開する（Vercel の無料プランは「1日100回まで」なので、マージのたびに公開しない）。最後に公開に成功したコミットから、パイプラインの物（`.github/`・`docs/pipeline.md`）しか変わっていなければ公開しない。Secret `VERCEL_TOKEN` が無いときは何もせず、Vercel が自分で公開する（今までの形）。`VERCEL_TOKEN` が無いのに `vercel.json` が `deploymentEnabled: false` のままだと、どこからも公開されないので、失敗としてスマホに知らせる。公開を頼めなかったとき（鍵の期限切れ・プロジェクトが見つからない など）は、スマホに知らせる（`deploy_failed`）。3時間ごとに、最新の main が公開されているかを確かめ、まだなら頼み直す（回数の上限に当たったときのため。同じコミットの公開が3回失敗していたら、頼み直しても直らないので、次のマージか手で動かすまで頼まない）。`pipeline.json` が無いときの既定 | Vercel でリポジトリを読み込み、`vercel.json` を `"git": { "deploymentEnabled": false }` にし、`ignoreCommand` を消す（Vercel が自分で公開するのを止める。`ignoreCommand` は直前のコミットとの差しか見ないので、まとめて公開すると間の変更を見落として公開が飛ばされる）。`VERCEL_TOKEN` は工場（新しいサービス）と配布（`sync.yml` の vercel-token。`vercel.json` があるリポジトリだけ）が入れる | `VERCEL_TOKEN`（任意）、変数 `VERCEL_TEAM_ID`（チームのとき） |
-| `github-pages` | 静的なサイトを作って GitHub Pages に出す（`<ユーザー名>.github.io` という名前のリポジトリなら、そのアドレスのトップに出る）。Next.js なら `next.config` で `output: "export"`・`images: { unoptimized: true }` にする（サーバーで動く機能は使えない） | Settings → Pages の Source を **GitHub Actions** にする。工場が作るサービスは、工場が `FACTORY_TOKEN` で自動で有効にする（`build_type=workflow`）。それ以外は手で1回だけ。Doctor が、有効で Source が GitHub Actions かを確かめる（無効や別の Source は ❌ と直し方、読めないときは ⚠️）。公開が失敗したときの知らせ（`deploy/pages`）には、設定のページの URL が付く | `build`（作るコマンド。既定 `npm run build`）、`dir`（出すフォルダ。既定 `out`） |
-| `aws-apprunner` | Docker のイメージを作って ECR に置き、App Runner で動かす。最初の公開でサービスを作り、2回目から差し替える。言語を選ばない（Web・API） | 下の「AWS App Runner」 | `service`（サービス名・小文字の英数字と `-` `_`。ECR の名前にも使う）、`port`（既定 8080）、`dockerfile`（既定 `Dockerfile`）、`cpu`（既定 256）、`memory`（既定 512）、`health`（HTTPのヘルスチェックのパス。省くとTCP） |
-| `github-release` | OS ごとに配布物（exe など）を作り、GitHub Releases に置く。ファイル名に OS が付く（`hello.exe` → `hello-windows.exe`）。同じ名前のファイルが別のフォルダにあれば、浅い方はそのまま、ぶつかった方にフォルダの名前を付ける（`sub/README.txt` → `sub-README-windows.txt`。上書きしない）。タグは `build-<日時>-<コミット>`（同じ分にやり直してタグがもうあれば、`-2`・`-3` … を付けて別のリリースにする） | なし | `build`（作るコマンド）、`files`（置くファイル。例 `dist/*`）、`os`（既定 `["windows-latest"]`。`macos-latest`・`ubuntu-latest` も） |
-| `expo` | スマホアプリを Expo（EAS）で配る。既定は `eas update`（アプリを入れ直さずに中身を更新） | Secret の `EXPO_TOKEN` | `command`（既定 `npx --yes eas-cli@latest update --auto --non-interactive`。ストアに出すなら `eas build --auto-submit ...`） |
-| `supabase` | `supabase/migrations/*.sql` のうち、まだ流していない物を番号の順に1ファイルずつ流す（`deploy-supabase.sh`。流した印は `app_meta.migrations`。1ファイル1まとまりで、失敗したら後ろは流さない）。Vercel の公開より先に動く | Secret の `SUPABASE_DB_URL`（工場が saas を作るときに入れる） | なし |
-| `none` | 公開しない | なし | なし |
-
-結果はコミットの状態（`deploy/<kind>`）に書き、スマホに通知する（`deploy-status.sh`。説明は GitHub の上限の140文字まで。通知の題は PR のタイトル：マージコミットなら3行目、まとめてマージ（squash）や直接のコミットなら1行目）。
-
-### AWS App Runner（1つの AWS アカウントで1回だけ）
-
-鍵（アクセスキー）は GitHub に置かない。GitHub の OIDC で、main からの実行だけが AWS の役割を一時的に借りる。
-
-1. AWS の画面 → **CloudFormation** → **スタックの作成**（新しいリソースを使用）→ **テンプレートファイルのアップロード** で `.github/deploy/aws-apprunner-setup.yml` を選ぶ
-2. スタックの名前は好きに（例：`github-apprunner`）。`GitHubOwner` は自分の GitHub のユーザー名。このアカウントに GitHub の OIDC（`token.actions.githubusercontent.com`）をもう作ってあれば `CreateOidcProvider` を `false`
-3. 「IAM リソースが作成される場合があることを承認します」にチェックして作成。数十秒で終わる
-4. スタックの **出力** に出る3つを、公開するリポジトリの Settings → Secrets and variables → Actions → **Variables** に入れる：`AWS_ROLE_ARN`・`AWS_APPRUNNER_ACCESS_ROLE_ARN`・`AWS_REGION`
-5. Doctor を実行して「✅ 公開先：AWS App Runner」が出れば完了。次に main にマージされたとき、最初の公開でサービスができる（数分）。URL は通知と agent-desk に出る
-
-料金：App Runner は動いている間（いちばん小さい 0.25 vCPU・0.5 GB）と、イメージの置き場（ECR）の分がかかる。使わないサービスは App Runner の画面で「一時停止」すると、置き場の分だけになる。
-
-### Expo（スマホアプリ）
-
-1. expo.dev にログインし、アプリを作る（`npx eas-cli init` をパソコンで1回）
-2. expo.dev → Account settings → **Access tokens** で作り、Secret の `EXPO_TOKEN` に入れる
-3. `pipeline.json` の `deploy` に `{ "kind": "expo" }`（ストアに出すときは `command` を書く）
-
-## 工場（1行から新しいサービスを作る）
-
-ai-dev-template に、タイトルが **`新サービス：`** で始まるIssueを書くと（例：「新サービス：毎朝の天気と予定を1枚で見られるページ」）、`factory.yml` が新しいサービスのリポジトリを作って、いつものパイプラインに渡す。テンプレート本体で、オーナーが書いたIssueでだけ動く。Issue の本文は「詳しいメモ」として、名前決め・デザイン担当・最初のIssueに渡る（載せたい中身や、見た目の雰囲気。3000文字まで）。本文に**画像（リールのスクショ・好きなサイトの画面など）を貼ると**、デザイン担当がいちばん大事な実例として見る（`.github/scripts/fetch-issue-images.sh` が AI の前に取ってくる。10 枚まで）。URL を書けば、それも撮って見る。
-
-### 相談してから作る（`factory-talk.yml`。ふつうはこちら）
-
-いきなり作らず、オーナーに選んでもらいながら、作る物と見た目を最初に大まかに決める（あとの作り直しを減らすため）。AIの決まりは `.github/factory/talk.md`、形の確かめとコメントは `.github/scripts/factory-talk.py`・`factory-talk-publish.sh`。
-
-1. **案**：AIが、作る物の案を5つ（名前・種類・使う人・新しい所・有料の分け方・画面）と、選択式の質問を Issue のコメントに書く
-2. **見た目の方向**：選んだ案の方向を3つ。色違いではなく、題材の持ち物から作った考えが3つ。それぞれ、本物の素材で組んだ「最初の1画面」を、色・文字の見本と実例と一緒に1枚の板の画像にする（審査あり。上の「デザインの仕組み」）
-3. **ざっくり画面**：選んだ方向で、トップの画面を下の欄まで全部、2案（1枚の HTML。PC とスマホを撮る。審査あり）
-4. **最終確認**：名前・説明・無料と有料・値段・最初に作る画面・決まった事を1枚にまとめる。「作る」と返事すると、`factory.yml` を動かす（相談で決めた事をそのまま使い、名前をAIに決め直させない。デザイン担当は、選んだざっくり画面と方向の板を土台に本物を作る）
-
-- 各段階で、コメントの最後に選択式の質問を付ける。オーナーの返事（番号・「全部ちがう。もっと〇〇」・注文）は、AIが「選んだ物・質問の答え・注文」に読み替える（agent-desk のボタンからの返事は、印 `<!-- factory-answer:… -->` の形が決まっているので、AIを通さない）
-- 返事を待つ間は `factory:wait` が付く（答えるまで待つ。スマホに通知 `question`）。今までに決まった事はコメントの印 `<!-- factory-talk:v1:… -->` に入れて、毎回そこから読む
-- 板とざっくり画面の画像・HTML は、テンプレートの `factory-talk` ブランチの `issue-<番号>/r<回>-<段階>/` に置く（コメントの画像と、作り始めたときのデザイン担当が使う）
-- 作れなかったときは、そう書いて待つ。「もう一回」と返事すると、同じ段階をやり直す
-- 案はいくつかを1つのサービスにまとめて選べる（`1,3`・`1〜4`）。前の段階の選び直し（「やっぱり案は 1,2」）もでき、その段階から先を作り直す
-- AIが作っている途中に書いた返事も捨てない（同じ Issue の実行は順番待ちになり、出る前の選択肢への返事として読む）。作り始めた後（`factory.yml` を動かした後）のコメントは、相談の返事として読まない
-- Issue に「全部おまかせ」とある（Issue のテンプレートのチェック）と、相談せずに下の流れで全部決めて作る
-
-### 全部おまかせ（`factory.yml`）
-
-1. AIが、名前（英語の小文字と -）・種類（画面のあるWebなら Next.js、会員登録と月額の有料プランがあるWebなら saas、処理が中心なら Python、exe のゲームなら game、ブラウザで遊ぶゲームなら webgame）・1行の説明を決める（AIは名前を書くだけで、鍵は持たない）。メモが中身を任せているときは、ありきたりでない案を10個考えて1つ選ぶ（ToDo・家計簿・タイマー・割り勘・サブスク管理などは選ばない）
-2. **デザイン担当**（Next.js とゲームのとき。細かい決まりは `.github/factory/design-department.md`）：AIが見た目を決めて、**本物の Next.js の画面を最後まで作る**。それがそのまま新しいリポジトリの最初の中身になる（別のAIに作り直させない。伝言で質が落ちるため）
-   - **設計メモから始める**：色や文字を選ぶ前に `factory-refs/concept.md`（題材の持ち物・考え・埋める物・通し表）を書く。作った画面は、確認コマンドが通ったあと、関門と審査役が見る（上の「デザインの仕組み」。作った本人だけでは「最初の1画面だけ凝る」「本物と答えたのに描いた絵で済ます」を止められないので、合格はスクリプトが決める）。結果の点は、できたときのコメントに載る
-   - **実例から作る**：描く前に、題材と雰囲気に近い実在のサイトを 8〜15 個探して（日本のギャラリー（SANKOU! など）から先に。Issue にギャラリーの URL を書けば、そこから拾う） `shot.mjs --scrolls` で撮り、良い所と、どれのどこを混ぜるかを `factory-refs/board.md` に書く（言葉だけで考えると平均的な画面になるため）。Issue に貼った画像がいちばん大事な実例
-   - **決まりは最低限＋AI感を出す前に弾く**：読める・押せる・スマホで崩れない・動きを止められる・目的が果たせる・実在のブランドを写さない。そのうえで、`.claude/skills/taste-skill/`（方向を配り、AIが作った感を測って弾くスキル）を使う：方向は `draw.mjs` に配ってもらう（ページは `--options 3`、道具の画面は `--app`）、AIが作った感の一覧（`references/tells.md`）を使わない、本物の写真・古い地図・図版を `assets.mjs` で探して使う、出す前に `lint.mjs`・`inspect.mjs` で測って FAIL を直す。工場の相談（見た目の方向・ざっくり画面）でも同じ（`.github/factory/talk.md`）。禁止を足すだけにせず、飾りを消した分を、大きい文字・色の面・本物の写真・中身で埋める（地味にしない）
-   - **作って、撮って、実例と見比べて直す**（最低3回）。写真は `.github/scripts/fetch-photos.sh "<英語の検索語>" <枚数>` で Openverse（届かなければ Wikimedia Commons）から CC0・パブリックドメインの物だけを `public/photos/` に取る（鍵は要らない。画面のあるアプリの実装AIも使える。合わせて 20 枚まで、出どころは CREDITS.md。画面で使った写真だけが入る）。動き・3D の道具は `.github/scripts/factory-add-lib.sh <名前>` で、決まった物（`gsap`・`lenis`・`motion`・`three`・`pixi.js` など。一覧は `.github/scripts/factory-libs.sh`）だけをその場で入れ、新しいリポジトリにも同じ物が入る（アプリのAIは依存を足せないため）
-   - 最後に `docs/design.md`（あとのIssueで同じ見た目を作るための決まり）を書き直す。ワークフローが確認コマンド（typecheck・lint・test・build）をAIとは別に動かし（`.github/scripts/factory-checks.sh`）、通らなければ1回だけ直させる。**通った物だけ**を、`.github/scripts/factory-site.py` が形を確かめてから新しいリポジトリの `src/`・`public/` に入れ、最後に撮った画像を `docs/design-ref/` に入れる。通らなかったときは、メモの1行を最初のIssueにして、実装AIが作る
-   - **ゲームのとき**：design ジョブは最初に `.github/scripts/factory-game.sh` で見本（`examples/game`。TypeScript・Vite・Canvas／WebGL・Vitest・Electron）に切り替えてから、デザイン担当に渡す。デザイン担当はタイトル → 遊ぶ → 終わりまで作り、`/?scene=play` のように途中の場面を URL で開けるようにして、1280・1920 の幅で撮る。確認コマンドは `pipeline.json` にある物だけ（lint は無い）。exe は、新しいリポジトリの公開（`github-release`、Windows のランナーで `npm run dist`）が作って Releases に置く
-   - **ゲームはありきたりにしない**：作る前に遊び方の案を 10 個出し、有名なゲームの遊び方そのまま（積み上げ・Flappy・ランナー・2048・マッチ3 など）や、見た目を変えただけの物は捨てて、見たことのない一ひねりがある物を選ぶ（`board.md` の「## アイデア」。結果のコメントに畳んで載せる）
-   - **会員と課金（saas）のとき**：design ジョブは最初に `.github/scripts/factory-saas.sh . install` で、ログイン（Supabase）と有料プラン（Stripe）の土台（`examples/saas`）を入れてから、デザイン担当に渡す。デザイン担当は無料と有料の違いを決め、トップ・料金（`/pricing`）・ログイン・アカウントの画面を作り、月額の値段を `factory-price.txt` に書く（課金の土台のファイルは変えない。下の「会員と課金」）
-   - **Web のゲーム（webgame）のとき**：見本は `examples/webgame`（Electron を入れない）。スマホの縦画面をいちばん大事にして、タッチで遊べ、結果を共有できるように作る（`design-department.md`「Web のゲームのとき」）。390・1440 の幅で撮る。公開は Next.js と同じく Vercel（プロジェクトの種類は Vite）
-   - **ゲームの日本語の書体**（game・webgame とも）：`factory-game.sh` が M PLUS 1 の可変フォント（`examples/game-fonts/`。OFL）を `assets/fonts/` に入れる。`npm run build`・`npm run dev` の前に `npm run fonts`（`scripts/subset-fonts.mjs`、開発用の依存 `subset-font`）が、`src/` と `index.html` に出る文字と、かな・記号・英数字だけを抜き出して `public/fonts/mplus1.woff2` を作る（300KB を超えたら失敗。`public/fonts/` は git に入れない）。見本の `index.html` に `@font-face`（"GameJP"、太さ 100〜900）、`src/main.ts` に `JP_FONT` と読み込み待ちがある。実装AIは `curl`・`python3` を使えず書体を作れないので、最初から入れておく（文言を変えても作り直し不要。どの PC・ブラウザでも同じ見た目になる）
-3. `factory.sh` が、テンプレートからリポジトリを作る（同じ名前があれば `-2` …）。作った直後に、どの Issue のために作ったかの印（新しいリポジトリの変数 `FACTORY_ISSUE`＝`テンプレート#Issueの番号`）を付ける
-4. パイプラインの秘密（`CLAUDE_CODE_OAUTH_TOKEN`・`PIPELINE_APP_PRIVATE_KEY`・`PIPELINE_TOKEN`・`NTFY_TOPIC`）と変数（`PIPELINE_APP_ID`・`NOTIFY_EVENTS`・`AGENT_DESK_URL`）を、テンプレートの物から写す
-5. Next.js・saas・Web のゲームで `VERCEL_TOKEN` があれば、Vercel のプロジェクトを作ってつなぐ。saas なら続けて、Supabase のプロジェクト・Stripe の商品と値段を作り、鍵を Vercel の環境変数に入れる（`factory-saas-provision.sh init`。最初の公開より前）
-6. `CLAUDE.md` の1行目・仕様書の「目的」・README に説明を書き、デザイン担当が作った画面とデザイン仕様と道具を入れ、種類に合う見本に切り替えて（Python：`examples/python`・公開先は none／ゲーム：`examples/game`・GitHub Releases の exe／Web のゲーム：`examples/webgame`・Vercel／saas：会員と課金の土台・Vercel と、表の変更の supabase）、main に push する。この push で Bootstrap が動く。そのあと、新しいリポジトリの `pipeline.json` の公開先に `github-pages` があれば、`FACTORY_TOKEN` で GitHub Pages を有効にする（`POST repos/<新しいリポジトリ>/pages`、`build_type=workflow`。もう有効（409）なら成功として扱い、失敗したら結果のコメントに設定のページの URL 付きで直し方を書く。ワークフローのトークンでは有効にできないため、ここで行う）。`github-pages` が無ければ呼ばない
-7. main を守る（PRと CI の `check` を必須にする。管理者は通れる）
-8. 最初のIssueを作る（自動で企画に回る）。デザイン担当が画面を作れていれば、作りきれなかった残り（`factory-todo.md`、3つまで）だけをIssueにする（無ければ作らない）。作れていなければ、1行のメモを最初のIssueにする（最初の画面を一から作るので `size:L`＝強いモデルで実装する）。Vercel につないだときは、本番の公開アドレスを調べて報告に書き、リポジトリの Website 欄にも入れる（同じ名前がほかの人に使われていると、アドレスの後ろに文字が付く）。saas なら、公開アドレスで Stripe の通知の受け口とログインの戻り先を登録し（`factory-saas-provision.sh url`）、環境変数を効かせるため公開をやり直す。元のIssueに結果を書いて閉じる（デザイン担当が撮った画面の画像も貼るので、公開を待たずにどんな画面か見られる）
-
-途中で止まったとき（リポジトリを作れない・push できない・時間切れ・取り消し・スクリプトのエラー）は、元の Issue に、できた所までと、何が残っているかを書き、スマホに知らせる（`stuck`）。中身を push する前に止まったら「作りかけのリポジトリが残っている。要らなければ消す。消さずに同じ Issue でもう一度作ると、続きから作る」、push のあとに止まったら「リポジトリは使える。❌ の所だけ手で続きをする」と書く（工場は、作りかけのリポジトリを自分では消さない）。
-
-同じ Issue でもう一度動かしたとき（Actions の Factory の実行を Re-run する、など）、同じ名前のリポジトリが、前の実行の作りかけなら、新しく作らずに続きから作る（`-2` を増やさない）。続きにするのは、次の全部が確かなときだけ（`factory.sh` の `is_my_leftover`）。1つでも違えば、`-2` … の別の名前で作る（人が作ったリポジトリ・もう中身のあるリポジトリには触らない）：
-
-- 印 `FACTORY_ISSUE` が、この Issue の物（変数はリポジトリの管理者しか書けないので、外の人は作れない）
-- main の `CLAUDE.md` が、まだテンプレートのまま（最初の準備を push していない）
-- saas ではない（Supabase・Stripe の物を二重に作らないため。saas は今までどおり `-2`）
-
-テンプレートの受付（intake）は、`新サービス：` のIssueを企画に回さない。工場は最初にIssueへ `factory` の印を付け、企画AI・実装AIは、題が `新サービス：` で始まるか、この印があるIssueを、テンプレート自身では受けない（題が書き換えられても止まる）。
-
-### 会員と課金（saas）
-
-会員登録・ログインと、月額の有料プランがあるサービス。Next.js に、Supabase（ログインとデータベース）と Stripe（課金）の土台（`examples/saas`。説明は新しいリポジトリの `docs/billing.md`）が入る。
-
-- 最初の1回だけ、Environment「factory」の Secret に2つ入れる
-  - `SUPABASE_ACCESS_TOKEN`：supabase.com → Account preferences → Access Tokens。Resource access は **Organization**（自分の組織。新しく作るプロジェクトにも効く）。Permissions は Project Settings（Read and write。ログインの設定を変えるのに Auth Config と両方要る）・Database と Migrations（Read and write）・Connection Pooling（Read）・API Keys（Read and write）・API Key Secrets（Read）・Auth Config（Read and write）・Organizations（Read）・Organization Projects（Read and write）・Projects (account-wide)（Read）。ほかは None
-  - `STRIPE_SECRET_KEY`：Stripe のダッシュボード（テスト環境）→ 開発者 → API キーのシークレットキー（**`sk_test_` だけ**。本番の鍵は工場が使わない）
-- 工場がサービスごとに作る物：Supabase のプロジェクト（東京。最初の表と、確認メールを送らない設定）、Stripe の商品・月額の値段（デザイン担当が決めた円。既定 500 円）・会員ページの設定・通知の受け口（`<公開アドレス>/api/stripe/webhook`）、Vercel の環境変数（`docs/billing.md` の表）、新しいリポジトリの Secret `SUPABASE_DB_URL`（あとで表を足す公開が使う）
-- あとのIssueで表を足すときは、AIが `supabase/migrations/0002_〜.sql` を足し、マージ後の公開（`supabase`）が流す。RLS は必須
-- Supabase の無料プランは、動いているプロジェクトが2つまで。3つ目を作るときは、使わないプロジェクトを一時停止する（工場は作れなかった理由を Issue に書く）
-- 本物の課金にするのは人間の作業：Stripe の本人確認と口座、特定商取引法に基づく表記・利用規約・プライバシーポリシーのページ、Vercel の `STRIPE_SECRET_KEY`・`STRIPE_PRICE_ID`・`STRIPE_WEBHOOK_SECRET` を本番の物に差し替え
-
-### 最初の1回だけの準備
-
-- **Environment「factory」**を作る：ai-dev-template の Settings → Environments → New environment で名前 `factory`。Deployment branches and tags を **Selected branches and tags** にして `main` だけを足す（強い鍵を、main のワークフローからだけ使えるようにする。AIが作ったブランチからは読めない）。下の2つの Secret は、リポジトリではなくこの Environment の Secrets に入れる
-- **`FACTORY_TOKEN`**：リポジトリを作れる鍵。github.com → Settings → Developer settings → Fine-grained tokens で作る。Resource owner は自分、Expiration は **90日くらい**（切れたら作り直して入れ直す）、Repository access は **All repositories**、Permissions（Repository）は **Administration・Contents・Secrets・Variables・Issues を Read and write**（Metadata は自動で Read）。Administration は、リポジトリの削除までできる強い権限なので、この鍵はほかに使わない
-- **パイプラインの GitHub App** を、**All repositories** に入れておく（新しいリポジトリでも、すぐ鍵が使えるように）。App の画面 → Install App → 自分のアカウントの Configure
-- **Next.js を公開するなら**：`VERCEL_TOKEN`（Environment「factory」の Secret。Vercel → Account Settings → Tokens）と、Vercel の GitHub 連携を **All repositories** にしておく。チームで使うなら変数 `VERCEL_TEAM_ID`
-- **会員と課金（saas）を作るなら**：Environment「factory」の Secret に `SUPABASE_ACCESS_TOKEN` と `STRIPE_SECRET_KEY` を入れる（上の「会員と課金」）
-- 無い物があっても、作れる所までは作り、元のIssueに「何が無くて何をしなかったか」を書く
-- あとから Vercel につなぐとき（作ったときに VERCEL_TOKEN が無かった物など）：Actions → **Factory Vercel** → Run workflow で、リポジトリの名前を入れる（つないだあと、今の main で本番の公開を1回始め、公開アドレスを Website 欄に入れる。もうつないであるリポジトリなら、公開とアドレスの調べ直しだけ）
 
 ## 進捗ログ
 
@@ -466,8 +332,8 @@ AIの実行記録から、許可されず拒否された操作（`permission_den
 | 使ってみる役（`claude-try.yml`） | 毎日 21:13（日本時間）。ただし公開しているサイトの URL があり、直近24時間の main に、アプリの中身が変わったコミットがある日だけ（＝公開があった日。1日1回まで） | 初めて使う利用者として、本番のサイトを本物のブラウザ（`shot.mjs`）で 390・1440 の幅で開き、`docs/spec.md` の主な使い方を試す。壊れている・迷う・崩れている所を探す（好みの問題は書かない。ログインが要るサービスでは、ログインの手前の画面だけ） | 1回に最大3件 |
 | 監査役（`claude-audit.yml`） | 毎週月曜 3:41（日本時間）。ただし進行中の作業（`ai:plan`・`ai:implement`・`ai:review`・`ai:queue` の Issue、`claude/` のPR）が無いときだけ。`docs/spec.md` が無いリポジトリでは動かない | 仕様書の中・仕様書とデザイン仕様・仕様書とコードの食い違いを探す。どちらに合わせるかと、直すときに触るファイルも書く（誤字・好み・まだ作っていない機能は書かない） | 1回に最大3件 |
 
-- 使ってみる役は、本番が main の最新に追いついているときだけ動く（main の先頭に公開のステータス（`Vercel`・`deploy/…`）が無く、それより前のコミットにある＝追いついていない。先頭の公開が公開中・失敗のときも待つ。パイプラインの物（`.github/`・`docs/pipeline.md`・`.claude/`）しか変わっていないコミットは公開されないので、飛ばして見る）。公開はマージが落ち着いてからまとめて行うので、追いつく前に試すと、main ではもう直った不具合を Issue にしてしまうため（tochi-rirekisho #9・#11）
-- 使ってみる役は、パイプラインの配布だけの日は動かない。直近24時間の main のコミット（30件まで）で変わったファイルが、どれも `.github/`・`docs/pipeline.md`・`.claude/` だけなら見送る（本番は変わっていないのに、毎日AIを動かさないため）。変わったファイルを読めなかったコミットは、アプリの変更として数える（試さない方へは倒さない）。30件以上あれば、中身を読まずに動かす
+- 使ってみる役は、本番が main の最新に追いついているときだけ動く（main の先頭に公開のステータス（`Vercel`・`deploy/…`）が無く、それより前のコミットにある＝追いついていない。先頭の公開が公開中・失敗のときも待つ。パイプラインの物（`.github/`・`docs/pipeline.md`・`docs/pipeline-setup.md`・`.claude/`）しか変わっていないコミットは公開されないので、飛ばして見る）。公開はマージが落ち着いてからまとめて行うので、追いつく前に試すと、main ではもう直った不具合を Issue にしてしまうため（tochi-rirekisho #9・#11）
+- 使ってみる役は、パイプラインの配布だけの日は動かない。直近24時間の main のコミット（30件まで）で変わったファイルが、どれも `.github/`・`docs/pipeline.md`・`docs/pipeline-setup.md`・`.claude/` だけなら見送る（本番は変わっていないのに、毎日AIを動かさないため）。変わったファイルを読めなかったコミットは、アプリの変更として数える（試さない方へは倒さない）。30件以上あれば、中身を読まずに動かす
 - 動かすかは `found-gate.sh try|audit` が決める。公開先の URL は、GitHub Pages の公開があればその URL、無ければリポジトリの「Website」（工場が公開先を書く）。Actions の画面から手で動かすと（`force`）、日付・進行中の条件を見ずに動く
 - AIは結果を `.try/result.json`・`.audit/result.json`（`{"findings":[{"title","body"}]}`）に書くだけ。Issue は、別のジョブ（`report`）が main の版の `found-report.sh` で作る（AIのジョブにはパイプラインの鍵を渡さない）。同じ題名の `ai:found` の Issue が開いていれば作らない（空白の違いは無視）。開いている `ai:found` の Issue が6件（`FOUND_OPEN_MAX`）以上あるときは、新しく作らない（AIは同じ問題にも毎回ちがう題名を付けるので、直る前に積み上がるのを止める。人間の返事待ちの `ai:skip` は数えない）
 - AIを動かす前に、もう報告してある問題（開いている `ai:found` の Issue と、直近14日に閉じた物）の題名を `.try/known.md`・`.audit/known.md` に書いて渡す（`found-known.sh`）。AIは同じ問題にも毎回ちがう題名を付けるので、「言い方が違っても同じ物なら書かない」と頼む
@@ -501,73 +367,8 @@ AIの実行記録から、許可されず拒否された操作（`permission_den
 - 変更を入れる前にテストを壊してみて（わざとバグを入れる）、テストが落ちることを確かめると確実
 - テストは `.github/` ごと全部のアプリに配られ、アプリの CI でも動く。テンプレートにしか無い物（`examples/` など）に頼るテストは、先頭で「無ければ飛ばす」と書く（`test-factory.sh` の先頭と同じ書き方。`test-sync-to-apps.sh` が書き忘れを見つける）。配り先の形で全部のテストが通るかは、`.github/scripts/tests/run-as-app.sh` で確かめられる（配る物だけを空のリポジトリに置いて `run-all.sh` を動かす）。テンプレート本体の CI も同じ物を動かし（`script-tests-as-app`）、配る前に見つける
 
-## セットアップの診断
+## ほかの文書（必要なときだけ読む）
 
-新しいリポジトリを作ったら、Actions の「Doctor」を1回実行する。Secret・ラベル・設定・`CLAUDE.md` やスクリプトの名前を調べて、✅／⚠️／❌ で、直し方つきで Summary に出す（`.github/scripts/doctor.sh`）。❌ が無くなれば Issue を書くだけで動く。要るラベルは `labels.sh` に書いてある物の全部（診断は別の一覧を持たない）。`labels.sh` は目印の `ai:plan` を最後に作る：Bootstrap と Setup Labels は「`ai:plan` があれば最初の準備は済んでいる」とみなすので、途中で失敗しても「準備ずみ」にならず、次の push でやり直せる。
+- `docs/pipeline-setup.md`：言語と公開先（`pipeline.json`）・必要な設定（Secrets と Variables）・変えたい人向けの設定・上級者向け・セットアップの診断。最初に入れるときと、公開先を変えるときに読む
+- `docs/factory.md`：工場（1行から新しいサービスを作る。テンプレート本体でだけ動く）
 
-## 必要な設定（リポジトリの Settings → Secrets and variables → Actions）
-
-| 名前 | 種類 | 内容 |
-| --- | --- | --- |
-| `CLAUDE_CODE_OAUTH_TOKEN` | Secret | `claude setup-token` で作るトークン（Claudeのサブスクで動かす） |
-| `PIPELINE_APP_ID` | Variable | パイプライン用の GitHub App の App ID（おすすめ）。これと下の鍵があれば、`PIPELINE_TOKEN` の代わりに App の1時間だけの鍵を使う。回数制限がオーナーと別になり、期限切れが無く、操作が「App名[bot]」の名義になる |
-| `PIPELINE_APP_PRIVATE_KEY` | Secret | その App の秘密鍵（.pem の中身をそのまま） |
-| `PIPELINE_TOKEN` | Secret | オーナーのFine-grained トークン。ラベル・コメント・PR作成・マージに使う。これで操作すると次のワークフローが動く（Actions標準のトークンだと動かない）。無い間は、PR作成とマージを人間がする |
-| `NTFY_TOPIC` | Secret | スマホ通知（ntfyアプリ）のトピック名。無ければ通知しない |
-| `AWS_ROLE_ARN`・`AWS_APPRUNNER_ACCESS_ROLE_ARN`・`AWS_REGION` | Variable | 公開先が `aws-apprunner` のとき（上の「AWS App Runner」） |
-| `EXPO_TOKEN` | Secret | 公開先が `expo` のとき |
-| `FACTORY_TOKEN`・`VERCEL_TOKEN` | Environment「factory」の Secret | 工場（1行から新しいサービスを作る）。ai-dev-template にだけ入れる（上の「工場」） |
-
-入れなくても動く設定（`NOTIFY_EVENTS`・`RETRY_TIMER`・`AGENT_DESK_URL`・`VERCEL_DEPLOY_DELAY_MIN` など）は、下の「変えたい人向けの設定」。
-
-ほかに、Settings → General → Pull Requests の「Automatically delete head branches」をオンにする（マージ後のブランチが溜まらない。オンにしなくても、進行役がマージ後に `claude/*` ブランチを消し、見張り役が古い物を掃除する）。
-
-ほかに、GitHubの Claude アプリをこのリポジトリに入れる。テンプレートから作った最初の push で「Bootstrap」が自動で動き、ラベルを作り、`CLAUDE.md` から「ai-dev-template 自身の作業」の節を消し、診断（Doctor）の結果を実行画面の Summary に出す（ラベルがもうあれば何もしない）。❌ が出たら、Summary の「→」のとおり直し、Actions の「Doctor」をもう一度実行する。
-
-### パイプライン用の GitHub App の作り方（1回だけ）
-
-1. GitHub の Settings → Developer settings → GitHub Apps → **New GitHub App**
-2. 名前は好きに（例：`gaku-pipeline`）。Homepage URL はリポジトリのURLでよい。**Webhook の Active は外す**
-3. Repository permissions：Actions（Read）、Checks（Read）、Commit statuses（Read）、Contents（Read and write）、Issues（Read and write）、Pull requests（Read and write）、Workflows（Read and write）。Administration（Read）は任意（Doctor がブランチ削除の設定を見るのに使う）
-4. Where can this GitHub App be installed? は **Only on this account** → Create
-5. 出てきた **App ID** を、リポジトリの Variable `PIPELINE_APP_ID` に入れる
-6. ページ下の **Generate a private key** で .pem をダウンロードし、中身を Secret `PIPELINE_APP_PRIVATE_KEY` に入れる
-7. 左の **Install App** → このアカウントに Install → 使うリポジトリを選ぶ（ai-dev-template と、自動で配る先も全部）
-8. Doctor を実行して「GitHub App の鍵でこのリポジトリに書き込める」が出れば完了。`PIPELINE_TOKEN` は消してよい（残っていても App が優先）
-
-### 従来の方法：`PIPELINE_TOKEN`
-
-README の手順は GitHub App に一本化している。すでに Secret `PIPELINE_TOKEN` で動いている人は、そのまま動く（コードは変えていない。Doctor は ⚠️ で App への切り替えを勧めるだけ）。作るなら、GitHub の Settings → Developer settings → Fine-grained tokens で、このリポジトリだけを選び、Actions・Checks・Commit statuses を Read、Contents・Issues・Pull requests・Workflows を Read and write にする。回数制限をオーナーと共有し、期限がある。
-
-## 変えたい人向けの設定
-
-README には載せていない。どれも**入れなくても既定値で動く**。変えたいときだけ、Settings → Secrets and variables → Actions に入れる。
-
-| 名前 | 種類 | 既定値 | 意味 |
-| --- | --- | --- | --- |
-| `NOTIFY_EVENTS` | Variable | `stuck,question,hold,manual,deployed,deploy_failed,limit,intake,repeat_fail` | 鳴らす通知の種類（カンマ区切り）。ほかに `merged`・`ci_failed` がある。意味は `.github/scripts/notify.sh` |
-| `RETRY_TIMER` | Variable | 未設定＝on | `off` にすると、やり直しの目覚まし（`retry-timer.yml`）を使わず、定期の見張りだけでやり直す。目覚ましは待つあいだランナーを使うので、公開していないリポジトリで Actions の時間を節約したいとき |
-| `VERCEL_DEPLOY_DELAY_MIN` | Variable | `3`（分） | main の CI が通ってから Vercel に公開するまで待つ分。待つ間にまたマージされれば新しい方だけ公開する（無料プランの「1日100回」対策） |
-| `SYNC_DELAY_MIN` | Variable | `15`（分） | テンプレート本体が、配り先への更新を配るまで待つ分（本体だけが使う） |
-| `AGENT_DESK_URL` | Variable | なし | 通知を押したときに開く画面（agent-desk）のアドレス。無ければ Issue・PR を開く |
-
-ほかに、Vercel をチームで使うときは Variable `VERCEL_TEAM_ID`（チーム ID。個人のアカウントなら要らない）。スマホ通知の `NTFY_TOPIC`（上の「必要な設定」）は、好きな英数字のトピック名を ntfy アプリで購読する（無くても動く。Doctor は ⚠️ を出す）。
-
-## 上級者向け
-
-README の3つ（Claude のトークン・GitHub App・Vercel）だけで動く。次の機能は消していない。要るときだけ読む。
-
-- 別の言語（Python・Go・Java・.NET など）と公開先の選び方：上の「言語と公開先（`pipeline.json`）」。Python（FastAPI）の見本は [examples/python/README.md](../examples/python/README.md)
-- AWS App Runner（Variable `AWS_ROLE_ARN` ほか）：「AWS App Runner」
-- Expo（スマホアプリ、Secret `EXPO_TOKEN`）：「Expo」
-- exe などの配布（`github-release`）とゲーム：「言語と公開先」の表と、「工場」の「ゲームのとき」（見本は [examples/game](../examples/game)・[examples/webgame](../examples/webgame)）
-- 会員と課金（Supabase・Stripe の saas）：「会員と課金（saas）」（見本は [examples/saas](../examples/saas)）
-- 1行から新しいサービスを作る工場（`FACTORY_TOKEN`・`VERCEL_TOKEN`）：「工場」と「最初の1回だけの準備」
-
-## main の保護を Bootstrap で自動化できるか（調べた結果。実装はしない）
-
-**結論：技術的には可能だが、自動化しない。README の手順（手で1回。Settings → Branches で1分）に残す。** 工場で作るリポジトリだけ、`FACTORY_TOKEN` で自動で保護する。
-
-- 保護の設定（`PUT /repos/{owner}/{repo}/branches/main/protection`）には Administration（Read and write）が要るが、パイプラインの鍵（GitHub App・`PIPELINE_TOKEN`）には無い（任意で Read を足せるだけ）
-- パイプラインの App に足す案は取らない：保護は「AI を PR とレビューに通すための柵」で、柵を外せる鍵を AI の近くに置くことになる
-- 別の強い鍵を Environment に入れて main のワークフローからだけ使う案（工場と同じ形）は安全だが、初めての人に「強い鍵をもう1つ作る」手順が増え、必須3つの方針に反する。付け忘れは Doctor が ⚠️ で教える

@@ -27,7 +27,7 @@ copy_pipeline() { # 配り先のルート
   mkdir -p "$dir/.github"
   rsync -a --delete "${excludes[@]}" "$src_root/.github/" "$dir/.github/"
   mkdir -p "$dir/docs"
-  cp "$src_root/docs/pipeline.md" "$dir/docs/pipeline.md"
+  cp "$src_root/docs/pipeline.md" "$src_root/docs/pipeline-setup.md" "$dir/docs/"
   # 共通のスキル（.claude/skills/）も配る。配り先だけのスキルは消さない（同じ名前の物だけ上書き）
   if [ -d "$src_root/.claude/skills" ]; then
     mkdir -p "$dir/.claude/skills"
@@ -81,7 +81,7 @@ for repo in "$@"; do
   fi
   if [ "$open" = 0 ]; then
     gh api "repos/$repo/pulls" -f title="パイプラインの更新を取り込む（${src_sha}）" -f head="$branch" -f base=main \
-      -f body="ai-dev-template の main（${src_sha}）で CI が通ったパイプラインの更新（\`.github/\` と \`docs/pipeline.md\`）です。このリポジトリの CI が通ったら、進行役が自動でマージします。<!-- pipeline-sync -->" > /dev/null \
+      -f body="ai-dev-template の main（${src_sha}）で CI が通ったパイプラインの更新（\`.github/\`・\`docs/pipeline.md\`・\`docs/pipeline-setup.md\`）です。このリポジトリの CI が通ったら、進行役が自動でマージします。<!-- pipeline-sync -->" > /dev/null \
       && echo "配った（PR）: $repo" || { echo "::error::$repo にPRを作れません"; fail=1; }
   else
     echo "配った（PRを更新）: $repo"

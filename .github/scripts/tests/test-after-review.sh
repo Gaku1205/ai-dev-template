@@ -28,7 +28,7 @@ assert_eq "ai:hold が付く" "ai:hold" "$(labels_of 58)"
 assert_contains "通知が出る" "$(cat "$MOCK_DIR/curl.log")" "マージできます"
 
 echo "== docs/pipeline.md・CLAUDE.md・AGENTS.md を触るPR：同じ"
-for f in docs/pipeline.md CLAUDE.md AGENTS.md; do
+for f in docs/pipeline.md docs/pipeline-setup.md CLAUDE.md AGENTS.md; do
   run_case "$f" ""
   assert_eq "$f：マージされず、ai:hold が付く" ":ai:hold" "$(merged):$(labels_of 58)"
 done
