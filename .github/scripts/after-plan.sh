@@ -11,8 +11,7 @@
 # 環境変数：ISSUE、PLAN_OUTCOME、GITHUB_TOKEN_FOR_LABELS（ワークフローのトークン）、EXECUTION_FILE（AIの実行記録。失敗の原因の分類に使う）、
 #           PLAN_TURNS_RAISED（true：作業回数の上限に届いたので、ワークフローが上限を増やしてもう1回動かした）
 source "$(dirname "$0")/pipeline-lib.sh"
-# 同時に実装してよい数（使用量を増やしすぎないため）
-MAX_PARALLEL="${MAX_PARALLEL:-3}"
+# 同時に実装してよい数は、pipeline-lib.sh の current_parallel（時間帯・手の上書き・MAX_PARALLEL の既定 3）で決める
 
 # 作業中に Issue が閉じられた（人間が別のPRで片付けた・やめた）ときは、続きを進めない（ラベルも Issue も作らない）。
 # 閉じた Issue の企画の結果で実装が始まり、同じ作業のPRがもう1つできたことがある（ai-dev-template #71・#84）
@@ -77,11 +76,13 @@ case "$result" in
     fi
     if [ -n "$pipeline_token" ]; then
       # 並列にしてよいかは企画AIが2行目で判断（PARALLEL / WAIT）。止まっている物があるとき、
-      # すでに上限（MAX_PARALLEL）の数だけ動いているときは、AIの判断にかかわらず待つ
+      # すでに今の上限の数だけ動いているときは、AIの判断にかかわらず待つ
       parallel=$(sed -n 2p plan-result.txt 2> /dev/null | tr -d '\r ' || true)
       busy=$(GH_TOKEN="$pipeline_token" count_open_issues_with_label "ai:implement")
       stuck=$(GH_TOKEN="$pipeline_token" count_open_issues_with_label "ai:stuck")
-      echo "企画AIの判断：${parallel:-なし} / 実装中 ${busy} / 停止中 ${stuck}（並列の上限 ${MAX_PARALLEL}）"
+      limit_info=$(current_parallel)
+      limit="${limit_info%% *}"
+      echo "企画AIの判断：${parallel:-なし} / 実装中 ${busy} / 停止中 ${stuck}（並列の上限 ${limit}：${limit_info#* }）"
       # 企画AIの「並列でよい」は、企画を始めた時点の進行中の作業を見た判断。企画の間に別の Issue の実装が始まっていると
       # （まとめて Issue を書いたとき）、その作業とは見比べていない。触るファイルの印（ai-touches）が両方にあって重なるなら、待つ
       overlap=no
@@ -97,7 +98,7 @@ case "$result" in
           fi
         fi
       fi
-      if [ "$busy" -gt 0 ] && { [ "$parallel" != "PARALLEL" ] || [ "$stuck" -gt 0 ] || [ "$busy" -ge "$MAX_PARALLEL" ] || [ "$overlap" = yes ]; }; then
+      if [ "$busy" -gt 0 ] && { [ "$parallel" != "PARALLEL" ] || [ "$stuck" -gt 0 ] || [ "$busy" -ge "$limit" ] || [ "$overlap" = yes ]; }; then
         # 終われば queue.yml が始める
         GH_TOKEN="$pipeline_token" add_label "$ISSUE" "ai:queue"
         echo "#$ISSUE：進行中の作業とぶつかる・上限なので、順番待ちに入れました"

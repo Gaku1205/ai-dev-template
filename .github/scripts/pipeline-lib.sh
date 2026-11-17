@@ -395,6 +395,49 @@ ${text}
 TOUCHES_MARK_RE='<!-- ai-touches: ([^>]*) -->'
 # 同時に動かす実装の上限（after-plan.sh と同じ）
 MAX_PARALLEL="${MAX_PARALLEL:-3}"
+
+# 今の並列の上限を決める（純粋な関数。gh は呼ばず、現在時刻は呼ぶ側が引数で渡す）。
+# 引数：現在時刻（epoch 秒）。設定は環境変数：PARALLEL_DAY（昼。無ければ MAX_PARALLEL）・PARALLEL_NIGHT（夜。既定 1）・
+#   PARALLEL_NIGHT_HOURS（"01-08"＝1時から8時になる前まで。"22-06" は日またぎ。空・形が違えば夜は無し）・
+#   PARALLEL_TZ（既定 Asia/Tokyo）・PARALLEL_OVERRIDE（"night until 2026-11-18T08:00+09:00" / "day until …"。期限切れ・形が違えば無視）
+# 出力：「上限の数 説明」（1行）。上限は1以上の整数で、数でない・0以下は既定値に戻す
+parallel_limit_decide() {
+  local now="$1" tz="${PARALLEL_TZ:-Asia/Tokyo}" day night s e h until_s is_night=0
+  day="${PARALLEL_DAY:-${MAX_PARALLEL:-3}}"
+  if [[ "$day" =~ ^[0-9]+$ ]] && [ "$((10#$day))" -ge 1 ]; then day=$((10#$day)); else day=3; fi
+  night="${PARALLEL_NIGHT:-1}"
+  if [[ "$night" =~ ^[0-9]+$ ]] && [ "$((10#$night))" -ge 1 ]; then night=$((10#$night)); else night=1; fi
+  [[ "$now" =~ ^[0-9]+$ ]] || now=0
+  local ov="${PARALLEL_OVERRIDE:-}"
+  if [[ "$ov" =~ ^[[:space:]]*(night|day)[[:space:]]+until[[:space:]]+([^[:space:]]+)[[:space:]]*$ ]]; then
+    local which="${BASH_REMATCH[1]}" ts="${BASH_REMATCH[2]}"
+    if [[ "$ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?(Z|[+-][0-9]{2}:?[0-9]{2})?$ ]] \
+      && until_s=$(TZ="$tz" date -d "$ts" +%s 2> /dev/null) && [ "$now" -lt "$until_s" ]; then
+      if [ "$which" = night ]; then echo "$night 夜の上限（手で上書き中）"; else echo "$day 昼の上限（手で上書き中）"; fi
+      return 0
+    fi
+  fi
+  if [[ "${PARALLEL_NIGHT_HOURS:-}" =~ ^([0-9]{1,2})-([0-9]{1,2})$ ]]; then
+    s=$((10#${BASH_REMATCH[1]})); e=$((10#${BASH_REMATCH[2]}))
+    if [ "$s" -le 24 ] && [ "$e" -le 24 ] && [ "$s" -ne "$e" ]; then
+      h=$(TZ="$tz" date -d "@$now" +%H 2> /dev/null) || h=""
+      if [[ "$h" =~ ^[0-9]+$ ]]; then
+        h=$((10#$h))
+        if [ "$s" -lt "$e" ]; then
+          if [ "$h" -ge "$s" ] && [ "$h" -lt "$e" ]; then is_night=1; fi
+        else
+          if [ "$h" -ge "$s" ] || [ "$h" -lt "$e" ]; then is_night=1; fi
+        fi
+      fi
+    fi
+  fi
+  if [ "$is_night" = 1 ]; then echo "$night 夜の上限"; else echo "$day 昼の上限"; fi
+}
+
+# 上限の数だけ（呼ぶ側が現在時刻を渡す）
+parallel_limit() { parallel_limit_decide "$1" | cut -d' ' -f1; }
+# 画面は、今の時刻で上限を決める（ここだけが現在時刻を読む）
+current_parallel() { parallel_limit_decide "$(date +%s)"; }
 # 画面のファイル：見た目のテストがあるリポジトリでは、ここを触る物どうしは基準の画像がぶつかるので、1つずつにする
 SCREEN_PATHS_RE='^(src/)?(app|components|styles|pages)/'
 
@@ -532,11 +575,13 @@ sync_hold_blocking() {
 }
 
 start_next_in_queue() {
-  local busy stuck prs inflight queue n body t rc started=0 screen=0 holds pr state files blocks="" startedlist=" "
+  local busy stuck prs inflight queue n body t rc started=0 screen=0 holds pr state files blocks="" startedlist=" " limit_info limit
   busy=$(count_open_issues_with_label "ai:implement") || return 1
   stuck=$(count_open_issues_with_label "ai:stuck") || return 1
   prs=$(count_open_prs) || return 1
-  echo "実装中 ${busy} / 停止中 ${stuck}（数えない） / openのPR ${prs}（並列の上限 ${MAX_PARALLEL}）"
+  limit_info=$(current_parallel)
+  limit="${limit_info%% *}"
+  echo "実装中 ${busy} / 停止中 ${stuck}（数えない） / openのPR ${prs}（並列の上限 ${limit}：${limit_info#* }）"
   # 並べ替えは全体でする（ページごとに並べると、2ページ目の急ぎ・番号の小さい物が後ろに回る）
   queue=$(api_list "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aqueue" \
     | jq -r '[.[] | select(.pull_request | not) | {n: .number, p: ([.labels[].name] | index("priority:high") != null)}] | sort_by((if .p then 0 else 1 end), .n) | .[].n') || return 1
@@ -563,8 +608,8 @@ start_next_in_queue() {
   if repo_has_visual_tests; then screen=1; fi
   holds=$(hold_prs 2> /dev/null) || holds=""
   for n in $queue; do
-    if [ $((busy + started)) -ge "$MAX_PARALLEL" ]; then
-      echo "並列の上限（${MAX_PARALLEL}）なので、ここまでにします"
+    if [ $((busy + started)) -ge "$limit" ]; then
+      echo "並列の上限（${limit}）なので、ここまでにします"
       break
     fi
     body=$(gh api "repos/$REPO/issues/$n" -q '.body // ""') || continue
