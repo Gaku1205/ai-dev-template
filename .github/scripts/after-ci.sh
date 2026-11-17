@@ -59,7 +59,10 @@ case "$sync_pr" in
     else
       add_label "$pr" "ai:stuck"
       comment "$pr" "⚠️ テンプレートから配られたパイプラインの更新で、このリポジトリのCIが落ちました。マネージャーに確認してもらってください（AIには直させません）。"
-      notify stuck "パイプラインの更新が入りません" "PR #${pr}：配られた更新でCIが落ちました" 4
+      # 同じ配布が複数のアプリで落ちたときは、通知を最初の1件だけにする（まとめ先はテンプレートの Issue。読み書きできなければ送る）
+      if HEAD_BRANCH="$HEAD_BRANCH" bash "$(dirname "$0")/sync-failure-report.sh" "$pr"; then
+        notify stuck "パイプラインの更新が入りません" "PR #${pr}：配られた更新でCIが落ちました" 4
+      fi
       echo "PR #$pr（パイプラインの更新）：CIが落ちたので人間に回しました"
     fi
     exit 0

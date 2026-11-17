@@ -82,7 +82,7 @@ for repo in "$@"; do
   fi
   if [ "$open" = 0 ]; then
     gh api "repos/$repo/pulls" -f title="パイプラインの更新を取り込む（${src_sha}）" -f head="$branch" -f base=main \
-      -f body="ai-dev-template の main（${src_sha}）で CI が通ったパイプラインの更新（\`.github/\`・\`docs/pipeline.md\`・\`docs/pipeline-setup.md\`）です。このリポジトリの CI が通ったら、進行役が自動でマージします。<!-- pipeline-sync -->" > /dev/null \
+      -f body="ai-dev-template の main（${src_sha}）で CI が通ったパイプラインの更新（\`.github/\`・\`docs/pipeline.md\`・\`docs/pipeline-setup.md\`）です。このリポジトリの CI が通ったら、進行役が自動でマージします。<!-- pipeline-sync --><!-- pipeline-sync-src: ${GITHUB_REPOSITORY:-}@${src_sha} -->" > /dev/null \
       && echo "配った（PR）: $repo" || { echo "::error::$repo にPRを作れません"; fail=1; }
   else
     echo "配った（PRを更新）: $repo"

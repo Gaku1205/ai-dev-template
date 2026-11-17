@@ -36,7 +36,7 @@ if fields or flist:
     if method=='GET': method='POST'
 # 別のリポジトリ（GITHUB_REPOSITORY ではない所）の Issue・PR：状態だけを other_repos から返す（無ければ 404。非公開で読めない待ち先を表す）
 _m=re.match(r'^repos/([^/]+/[^/]+)/issues/(\d+)$',path.split('?')[0])
-if _m and _m.group(1).lower()!=os.environ.get('GITHUB_REPOSITORY','o/r').lower():
+if _m and method=='GET' and _m.group(1).lower()!=os.environ.get('GITHUB_REPOSITORY','o/r').lower():
     _o=st.get('other_repos',{}).get(_m.group(1),{}).get(_m.group(2))
     if _o is None: sys.stderr.write('HTTP 404: Not Found\n'); sys.exit(1)
     if q:
