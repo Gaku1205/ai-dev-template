@@ -72,6 +72,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number }}
         run: bash .github/scripts/step-log.sh --issue "$ISSUE" --step plan --model sonnet --result running
+      # Issue の本文に貼られた画像（スクショなど）を、AIが動く前に取ってくる（AIはネットに出ずに Read で見られる。
+      # このリポジトリの画像は Contents API で取るので、非公開でも見られる。鍵は github.com・api.github.com にだけ送る）
+      - name: Issue の画像を取る
+        id: images
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BODY: ${{ github.event.issue.body }}
+        run: bash .github/scripts/issue-images-prompt.sh issue-images plan
       - uses: anthropics/claude-code-action@v1
         id: claude
         continue-on-error: true
@@ -83,6 +92,7 @@ jobs:
           prompt: |
             あなたはこのリポジトリ（${{ github.repository }}）の企画担当です。
             Issue #${{ github.event.issue.number }} は、オーナーがスマホで書いた短いメモです。これを、実装AIがそのまま作業できるIssueに清書してください。
+            ${{ steps.images.outputs.prompt }}
 
             手順：
             1. `gh issue view ${{ github.event.issue.number }} --comments` でメモとコメントを読む
@@ -170,6 +180,7 @@ jobs:
           prompt: |
             あなたはこのリポジトリ（${{ github.repository }}）の企画担当です。
             Issue #${{ github.event.issue.number }} は、オーナーがスマホで書いた短いメモです。これを、実装AIがそのまま作業できるIssueに清書してください。
+            ${{ steps.images.outputs.prompt }}
 
             手順：
             1. `gh issue view ${{ github.event.issue.number }} --comments` でメモとコメントを読む

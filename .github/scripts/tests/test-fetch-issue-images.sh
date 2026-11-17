@@ -12,6 +12,8 @@ while [ $# -gt 0 ]; do
   case "$1" in -o) out="$2"; shift 2 ;; https://*) url="$1"; shift ;; *) shift ;; esac
 done
 case "$url" in
+  "https://api.github.com/repos/me/app/contents/images/2026-11/abc.png?ref=issue-images") { printf '\x89PNG\r\n\x1a\n'; head -c 2000 /dev/zero; } > "$out" ;;
+  "https://api.github.com/repos/me/app/contents/images/2026-11/s%20p.jpg?ref=issue-images") { printf '\xff\xd8\xff\xe0'; head -c 2000 /dev/zero; } > "$out" ;;
   */reel.png) { printf '\x89PNG\r\n\x1a\n'; head -c 2000 /dev/zero; } > "$out" ;;
   */site.jpg) { printf '\xff\xd8\xff\xe0'; head -c 2000 /dev/zero; } > "$out" ;;
   */anim.gif) { printf 'GIF89a'; head -c 2000 /dev/zero; } > "$out" ;;
@@ -20,7 +22,7 @@ case "$url" in
 esac
 SH
 chmod +x "$T/bin/curl"
-run() { (cd "$T/work" && env PATH="$T/bin:$PATH" FT="$T" GH_TOKEN=secret-token BODY="$1" bash "$SCRIPTS_DIR/fetch-issue-images.sh" 2>&1); }
+run() { (cd "$T/work" && env PATH="$T/bin:$PATH" FT="$T" GH_TOKEN=secret-token GITHUB_REPOSITORY=me/app BODY="$1" bash "$SCRIPTS_DIR/fetch-issue-images.sh" 2>&1); }
 
 echo "== 貼られた画像を順に取る。github.com にだけ鍵を付ける"
 body='こういう雰囲気にしたい
@@ -49,5 +51,23 @@ assert_eq "置き場を作らない" "no" "$([ -d "$T/work/factory-refs" ] && ec
 many=""; for i in $(seq 1 14); do many="$many ![a](https://github.com/user-attachments/assets/$i/reel.png)"; done
 out=$(run "$many")
 assert_contains "10 枚まで" "$out" "10 枚取りました"
+
+echo "== このリポジトリのファイルの画像（issue-images ブランチ）は Contents API で取る（非公開でも取れる）"
+rm -rf "$T/work/factory-refs"; : > "$T/calls.log"
+body='![スクショ](https://github.com/me/app/raw/issue-images/images/2026-11/abc.png)
+![b](https://raw.githubusercontent.com/me/app/issue-images/images/2026-11/s%20p.jpg)
+![blob](https://github.com/me/app/blob/issue-images/images/2026-11/abc.png?raw=true)
+![other](https://github.com/someone/else/raw/main/x.png)
+![up](https://github.com/me/app/raw/issue-images/../secret.png)'
+out=$(run "$body")
+assert_contains "3 枚取れる（同じ画像も URL が違えば取る）" "$out" "3 枚取りました"
+assert_eq "Contents API で取る（鍵は api.github.com へ）" "3" "$(grep 'https://api.github.com/repos/me/app/contents/' "$T/calls.log" | grep -c 'Bearer secret-token')"
+assert_eq "このリポジトリの画像は、貼られた URL を直接は取らない" "0" "$(grep '^curl' "$T/calls.log" | grep -v secret.png | grep -c 'github.com/me/app\|raw.githubusercontent.com/me/app')"
+assert_eq "ほかのリポジトリの画像は今までどおり curl" "1" "$(grep '^curl' "$T/calls.log" | grep -c 'someone/else')"
+assert_eq "../ を含む道は Contents API に渡さない" "0" "$(grep 'api.github.com' "$T/calls.log" | grep -c 'secret.png')"
+: > "$T/calls.log"
+out=$(run '![x](https://github.com/me/app/raw/issue-images/images/2026-11/missing.png)'); code=$?
+assert_eq "取れなくても成功" "0" "$code"
+assert_contains "取れなかったと書く" "$out" "取れませんでした：https://github.com/me/app/raw/issue-images/images/2026-11/missing.png"
 
 finish

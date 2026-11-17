@@ -592,4 +592,10 @@ for pair in "claude-try.yml:.try" "claude-audit.yml:.audit"; do
   assert_eq "$f：1回目とやり直しの両方のプロンプトにある" "2" "$(grep -c "\`$d/known.md\` があれば Read で読む" "$WORKFLOWS/$f")"
 done
 
+echo "== 企画AI・実装AIの前に、Issue の画像を取る"
+assert_contains "企画：画像を取る" "$(cat "$WORKFLOWS/claude-plan.yml")" "issue-images-prompt.sh issue-images plan"
+assert_eq "企画：2つの指示とも一言を入れる" "2" "$(grep -c 'steps.images.outputs.prompt' "$WORKFLOWS/claude-plan.yml")"
+assert_contains "実装：画像を取る" "$(cat "$WORKFLOWS/claude-implement.yml")" "issue-images-prompt.sh .shots/issue implement"
+assert_eq "実装：2か所とも一言を入れる" "2" "$(grep -c 'steps.images.outputs.prompt' "$WORKFLOWS/claude-implement.yml")"
+
 finish

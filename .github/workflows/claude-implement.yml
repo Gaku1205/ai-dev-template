@@ -107,6 +107,15 @@ jobs:
             fi
           fi
           echo "prompt=" >> "$GITHUB_OUTPUT"
+      # Issue の本文に貼られた画像（スクショなど）を .shots/issue/ に取ってくる（AIはネットに出ずに Read で見られる。
+      # このリポジトリの画像は Contents API で取るので、非公開でも見られる。鍵は github.com・api.github.com にだけ送る）
+      - name: Issue の画像を取る
+        id: images
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BODY: ${{ github.event.issue.body }}
+        run: bash .github/scripts/issue-images-prompt.sh .shots/issue implement
       # パイプラインの App（ボット）がラベル・コメントで起こした実行を、AIのアクションが断らないようにする。
       # AI自身（claude[bot]）は許さない（自分のコメントで自分を呼ぶ繰り返しを防ぐ）。Secret は使わない
       - name: 起こしたボットを許可に入れる
@@ -141,7 +150,7 @@ jobs:
           allowed_bots: ${{ steps.bots.outputs.list }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           label_trigger: "ai:implement"
-          claude_args: "--model ${{ env.MODEL }} --max-turns ${{ env.MAX_TURNS }} --allowedTools \"${{ steps.stack.outputs.allowed }},${{ steps.visual.outputs.allowed }},${{ steps.shots.outputs.allowed }},Bash(.github/scripts/tests/run-all.sh),Bash(git status:*),Bash(git diff:*),Bash(git add:*),Bash(git commit:*),Bash(git fetch:*),Bash(git merge:*),Bash(git checkout --ours:*),Bash(git checkout --theirs:*),Bash(git push:*),Bash(bash .github/scripts/tests/run-all.sh),Bash(shellcheck:*),Skill\" --disallowedTools \"Bash(npm run test:visual -- --update-snapshots:*),Bash(npm run test:visual -- -u:*),Bash(npx playwright test --update-snapshots:*),Bash(npx playwright test -u:*),Bash(git push --force:*),Bash(git push -f:*),Bash(git push --force-with-lease:*),Bash(git rebase:*)\" --append-system-prompt \"${{ steps.prompt.outputs.text }}${{ steps.shots.outputs.prompt }}${{ steps.target.outputs.prompt }}\""
+          claude_args: "--model ${{ env.MODEL }} --max-turns ${{ env.MAX_TURNS }} --allowedTools \"${{ steps.stack.outputs.allowed }},${{ steps.visual.outputs.allowed }},${{ steps.shots.outputs.allowed }},Bash(.github/scripts/tests/run-all.sh),Bash(git status:*),Bash(git diff:*),Bash(git add:*),Bash(git commit:*),Bash(git fetch:*),Bash(git merge:*),Bash(git checkout --ours:*),Bash(git checkout --theirs:*),Bash(git push:*),Bash(bash .github/scripts/tests/run-all.sh),Bash(shellcheck:*),Skill\" --disallowedTools \"Bash(npm run test:visual -- --update-snapshots:*),Bash(npm run test:visual -- -u:*),Bash(npx playwright test --update-snapshots:*),Bash(npx playwright test -u:*),Bash(git push --force:*),Bash(git push -f:*),Bash(git push --force-with-lease:*),Bash(git rebase:*)\" --append-system-prompt \"${{ steps.prompt.outputs.text }}${{ steps.shots.outputs.prompt }}${{ steps.target.outputs.prompt }}${{ steps.images.outputs.prompt }}\""
       # 審査役：実装AIとは別のAIが、ワークフローが撮った画面の画像だけを見て、目標の絵（docs/design-ref/）と比べて採点する。
       # 作った本人の「試作とほぼ同じ」をうのみにしない。合格（.github/scripts/design-judge.py が決める）に届かなければ、指摘をつけて実装AIにもう1回だけ直させる
       - name: 審査用に画面を撮る
@@ -212,7 +221,7 @@ jobs:
             2. 「必ず通す」の「いいえ」を先に、次に「直し」を上から直す。消すだけにしない（消した所は、大きい文字・色の面・本物の素材・中身で埋める。`.github/factory/concept.md` の 3）。直したら確認コマンドを全部通し、`npm run build` → `node .github/scripts/shot.mjs --serve /` で撮り直して、画像を全部 Read で見る
             3. いまのブランチにコミットして `git push origin HEAD` する（push の前に git fetch origin main と git merge origin/main）
             4. Issue へは何も書かなくてよい（審査の結果はPRの本文に自動で入る）
-          claude_args: "--model ${{ env.MODEL }} --max-turns 50 --allowedTools \"${{ steps.stack.outputs.allowed }},${{ steps.visual.outputs.allowed }},${{ steps.shots.outputs.allowed }},Bash(.github/scripts/tests/run-all.sh),Bash(git status:*),Bash(git diff:*),Bash(git add:*),Bash(git commit:*),Bash(git fetch:*),Bash(git merge:*),Bash(git checkout --ours:*),Bash(git checkout --theirs:*),Bash(git push:*),Bash(bash .github/scripts/tests/run-all.sh),Bash(shellcheck:*),Skill\" --disallowedTools \"Bash(npm run test:visual -- --update-snapshots:*),Bash(npm run test:visual -- -u:*),Bash(npx playwright test --update-snapshots:*),Bash(npx playwright test -u:*),Bash(git push --force:*),Bash(git push -f:*),Bash(git push --force-with-lease:*),Bash(git rebase:*)\" --append-system-prompt \"${{ steps.prompt.outputs.text }}${{ steps.shots.outputs.prompt }}${{ steps.target.outputs.prompt }}\""
+          claude_args: "--model ${{ env.MODEL }} --max-turns 50 --allowedTools \"${{ steps.stack.outputs.allowed }},${{ steps.visual.outputs.allowed }},${{ steps.shots.outputs.allowed }},Bash(.github/scripts/tests/run-all.sh),Bash(git status:*),Bash(git diff:*),Bash(git add:*),Bash(git commit:*),Bash(git fetch:*),Bash(git merge:*),Bash(git checkout --ours:*),Bash(git checkout --theirs:*),Bash(git push:*),Bash(bash .github/scripts/tests/run-all.sh),Bash(shellcheck:*),Skill\" --disallowedTools \"Bash(npm run test:visual -- --update-snapshots:*),Bash(npm run test:visual -- -u:*),Bash(npx playwright test --update-snapshots:*),Bash(npx playwright test -u:*),Bash(git push --force:*),Bash(git push -f:*),Bash(git push --force-with-lease:*),Bash(git rebase:*)\" --append-system-prompt \"${{ steps.prompt.outputs.text }}${{ steps.shots.outputs.prompt }}${{ steps.target.outputs.prompt }}${{ steps.images.outputs.prompt }}\""
       # AIの結果（実行記録）を、データとして次のジョブに渡す。ここでは Secret を使わない
       - name: AIの結果を取っておく
         if: ${{ !cancelled() }}
