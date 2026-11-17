@@ -542,6 +542,12 @@ start_next_in_queue() {
     | jq -r '[.[] | select(.pull_request | not) | {n: .number, p: ([.labels[].name] | index("priority:high") != null)}] | sort_by((if .p then 0 else 1 end), .n) | .[].n') || return 1
   if [ -z "$queue" ]; then
     echo "順番待ちはありません"
+    # 待っていた Issue が無くなったPRの目印は「今は止めていません」に書き換える
+    holds=$(hold_prs 2> /dev/null) || holds=""
+    while read -r pr state; do
+      [ -z "$pr" ] && continue
+      sync_hold_blocking "$pr" ""
+    done <<< "$holds"
     return 0
   fi
   if [ "$busy" -eq 0 ] && [ "$prs" -eq 0 ]; then

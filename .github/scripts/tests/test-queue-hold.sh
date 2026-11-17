@@ -44,6 +44,15 @@ state_py "s['labels']['3']=['ai:queue']"
 next > /dev/null
 assert_eq "二度目は付かない" "1" "$(comments_of 20 | grep -c '待たずに')"
 
+echo "== 止めていた唯一の Issue が順番待ちから無くなった（順番待ちが空）：目印は「止めていません」になる"
+hold_state 30 '["ai:hold"]'
+next > /dev/null
+assert_contains "目印が付いた" "$(comments_of 20)" "<!-- hold-blocking: #3 -->"
+state_py "s['labels']['3']=[]"
+next > /dev/null
+assert_not_contains "止めている目印は残らない" "$(comments_of 20)" "動き出します"
+assert_contains "目印は書き換わる" "$(comments_of 20)" "<!-- hold-blocking: -->"
+
 echo "== HOLD_BLOCK_MIN を変えられる（120分なら、90分はまだ待つ）"
 hold_state 90 '["ai:hold"]'
 HOLD_BLOCK_MIN=120 next > /dev/null
