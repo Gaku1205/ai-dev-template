@@ -174,6 +174,10 @@ if m:
     ss=st.get('statuses_by_sha',{}).get(m.group(1), st.get('statuses',[]))
     out({'state':'pending' if not ss or any(x['state']=='pending' for x in ss) else ('failure' if any(x['state']!='success' for x in ss) else 'success'),'statuses':ss}); sys.exit(0)
 if re.match(r'actions/runs/\d+/jobs$',base): out({'jobs':st.get('jobs',[])}); sys.exit(0)
+# 実行の取り消し（レビューAIを CI と同時に動かしたとき、CIが落ちたら取り消す）
+m=re.match(r'actions/runs/(\d+)/cancel$',base)
+if m and method=='POST':
+    st.setdefault('cancels',[]).append(int(m.group(1))); save(); print('{}'); sys.exit(0)
 m=re.match(r'actions/runs/(\d+)/rerun-failed-jobs$',base)
 if m and method=='POST':
     if st.get('rerun_fail'): sys.stderr.write('HTTP 403: Resource not accessible by integration\n'); sys.exit(1)
@@ -189,7 +193,7 @@ m=re.match(r'actions/workflows/([^/]+)/dispatches$',base)
 if m and method=='POST':
     st.setdefault('dispatches',[]).append({'workflow':m.group(1),**fields}); save(); sys.exit(0)
 if base=='actions/runs': out({'workflow_runs':st.get('runs',[])}); sys.exit(0)
-if base.startswith('compare/'): out({'ahead_by':0}); sys.exit(0)
+if base.startswith('compare/'): out({'ahead_by':st.get('ahead_by',0)}); sys.exit(0)
 m=re.match(r'commits/([^/]+)$',base)
 if m and m.group(1) in st.get('commit_fail',[]): sys.stderr.write('HTTP 502\n'); sys.exit(1)
 if m: st['commit_calls']=st.get('commit_calls',0)+1; save()

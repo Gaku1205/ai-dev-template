@@ -7,13 +7,16 @@ Issueを作る（メモ）。ラベルが無ければ自動で ai:plan が付く
   → 企画AIが清書して ai:implement を付ける        claude-plan.yml
      （進行中の作業とぶつかると企画AIが判断したら ai:queue で順番待ち。別の場所なら最大2つまで並列）
   → 実装AIがブランチに実装し、PRを自動で作る        claude-implement.yml
-  → CI（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）   ci.yml
+  → CI（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）と、レビューAI（ai:review）を同時に始める
+                                                    ci.yml・claude-review.yml（PRを作った・直して push した時点で）
   → main が進んでいたら取り込んでCIをやり直す         pipeline.yml
-  → 通ったらレビューAI（ai:review）                 pipeline.yml → claude-review.yml
+  → CIとレビューの両方が通ったら（後に終わった方が判断する）
   → 指摘なし：自動でマージ → 公開（Vercel／App Runner／GitHub Releases／Expo）   pipeline.yml → deploy.yml
      指摘あり／CI失敗：AIが直す（@claude、3回目は opus）→ CIから   pipeline.yml → claude-mention.yml
   → 公開されたらスマホに通知                        deploy-notify.yml
   → 順番待ち（ai:queue）があれば次を始める           queue.yml
+
+CIとレビューAIを同時に動かす（#119）：レビューはCIを待たずに始める（CIの中央値 2.8分を待たない）。CIが落ちたら、同じコミットのレビューAIは取り消す（after-ci.sh の cancel_running_review）。同じコミットに、CIとレビューの両方から「直して」を二重に頼まない（fix_requested_for）。CIが後に通ったら、出ていたレビューの結果でマージへ進む（after-ci.sh → after-review.sh。review_state）
 
 止まったときの自動再開
   使用量の上限・AIのエラー・時間切れ → ai:retry を付けて、見張り役がやり直す（10回まで）   watchdog.yml

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # CIが終わったあと（PRのとき）：
-#   通った → main が先に進んでいれば取り込む（CIがもう一度走る）。最新なら、レビューAIを動かす（ai:review を付け直す）
-#   落ちた → AIに直させる（上限を超えたら人間に回す）
+#   通った → main が先に進んでいれば取り込む（CIがもう一度走る）。最新なら：
+#            レビューAIの結果がもう出ていれば、その結果でマージへ進める（after-review.sh）。動いていれば待つ（終わったら after-review.sh が進める）。
+#            どちらでもなければ、レビューAIを動かす（ai:review を付け直す）。レビューAIは、PRができた・push された時点でCIと同時に始まる（#119）
+#   落ちた → 動いているレビューAIを取り消し、AIに直させる（上限を超えたら人間に回す）
 #
 # 環境変数：CONCLUSION、HEAD_SHA、HEAD_BRANCH、RUN_ID・READ_TOKEN（CIの実行の番号と読み取り用トークン。あれば見た目のテストの失敗を見分ける）
 source "$(dirname "$0")/pipeline-lib.sh"
@@ -66,6 +68,11 @@ esac
 
 case "$CONCLUSION" in
   success)
+    # レビューの指摘で、もうこのコミットに直すよう頼んであれば、main を取り込まない（修正AIの作業中のブランチを動かさない。直した push のあとに CI がもう一度走り、そのときに取り込む）
+    if fix_requested_for "$pr" "$HEAD_SHA"; then
+      echo "PR #$pr：CIが通りましたが、このコミットにはもう直すよう頼んであるので、直した push を待ちます"
+      exit 0
+    fi
     # main が先に進んでいたら、先にPRのブランチへ取り込む（取り込むとCIがもう一度走り、通ったらここに戻ってくる）。
     # レビューAIのワークフローは、PRのブランチの版が main と同じでないと動かないので、これが要る
     behind=$(gh api "repos/$REPO/compare/$HEAD_SHA...main" -q .ahead_by)
@@ -78,12 +85,26 @@ case "$CONCLUSION" in
       fi
       exit 0
     fi
-    # 付け直すと labeled イベントが起きて、レビューAIが動く
-    remove_label "$pr" "ai:review"
-    add_label "$pr" "ai:review"
-    echo "PR #$pr：CIが通ったのでレビューを依頼しました"
+    # レビューAIは CI と同時に始めている（#119）。結果が出ていれば、その結果でマージへ進める
+    case "$(review_state "$pr" "$HEAD_SHA")" in
+      done)
+        echo "PR #$pr：CIが通り、レビューの結果も出ているので、マージへ進めます"
+        CONCLUSION=success exec bash "$(dirname "$0")/after-review.sh"
+        ;;
+      running)
+        echo "PR #$pr：CIが通りました。レビューAIが動いているので、終わったらマージへ進めます"
+        ;;
+      *)
+        # 付け直すと labeled イベントが起きて、レビューAIが動く
+        remove_label "$pr" "ai:review"
+        add_label "$pr" "ai:review"
+        echo "PR #$pr：CIが通ったのでレビューを依頼しました"
+        ;;
+    esac
     ;;
   failure)
+    # 同じコミットに CI と同時に動いているレビューAIは、取り消す（直したあとに両方がもう一度動く。AIの使用量を無駄にしない）
+    cancel_running_review "$pr" "$HEAD_SHA"
     # 見た目のテストだけが落ちていて、PRに「見た目を変えた」（visual:update）と書いてあるなら、
     # 意図した変更なので、AIに直させず基準の画像を撮り直す（visual-update.yml が動き、終わるとCIがもう一度走る）。
     # 意図していない見た目の崩れは、今まで通りAIに直させる。撮り直しは、main を最後に取り込んだ後で2回まで（visual_update_count）
@@ -120,6 +141,11 @@ ${PIPELINE_TEST_MARK}"
         echo "PR #$pr：パイプライン自体のテストが続けて落ちたので、人間に回しました"
         exit 0
       fi
+    fi
+    # レビューの指摘で、もうこのコミットに直すよう頼んであれば、二重に頼まない（修正AIが2つ同時に動かないように。直した push のあとに CI がもう一度走る）
+    if fix_requested_for "$pr" "$HEAD_SHA"; then
+      echo "PR #$pr：CIが落ちましたが、このコミットにはもう直すよう頼んであるので、重ねて頼みません"
+      exit 0
     fi
     notify ci_failed "CIが失敗しました" "PR #${pr} $(issue_title "$pr")：AIに直してもらいます" 3
     request_fix_or_stop "$pr" "$HEAD_SHA" "CIが失敗しました。失敗したチェックのログを確認して、原因を直してください。"
