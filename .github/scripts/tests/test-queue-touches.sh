@@ -37,7 +37,7 @@ assert_contains "理由" "$(comments_of 3)" "重ならないので、並べて�
 
 echo "== 既定の上限は3：進行中が2件なら3件目は並べて始め、進行中が3件なら重ならなくても待つ"
 assert_eq "既定は3" "3" "$(env -u MAX_PARALLEL bash -c "source '$SCRIPTS_DIR/pipeline-lib.sh'; echo \"\$MAX_PARALLEL\"" 2>&1 | tail -1)"
-assert_eq "after-plan.sh の既定も3" "1" "$(grep -c 'MAX_PARALLEL:-3' "$SCRIPTS_DIR/after-plan.sh")"
+assert_eq "after-plan.sh も今の上限の関数を使う" "1" "$(grep -c 'current_parallel)' "$SCRIPTS_DIR/after-plan.sh")"
 state_with "$(python3 -c "
 import json
 print(json.dumps({'labels':{'1':['ai:implement'],'2':['ai:implement'],'3':['ai:queue'],'4':['ai:queue']},
