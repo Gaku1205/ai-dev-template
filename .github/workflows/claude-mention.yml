@@ -163,6 +163,26 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: "--model ${{ env.MODEL }} --max-turns ${{ env.MAX_TURNS }} --allowedTools \"Bash(gh pr view:*),Bash(gh pr edit:*),Bash(gh issue view:*),Bash(gh pr comment:*),Bash(git fetch:*),Bash(git merge:*),Bash(git checkout --ours:*),Bash(git checkout --theirs:*),Bash(git status:*),Bash(git diff:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),${{ steps.stack.outputs.allowed }},${{ steps.visual.outputs.allowed }},Bash(.github/scripts/tests/run-all.sh),Bash(bash .github/scripts/tests/run-all.sh),Bash(bash .github/scripts/tests/:*),Bash(shellcheck:*),Skill\" --disallowedTools \"Bash(npm run test:visual -- --update-snapshots:*),Bash(npm run test:visual -- -u:*),Bash(npx playwright test --update-snapshots:*),Bash(npx playwright test -u:*),Bash(git push --force:*),Bash(git push -f:*),Bash(git push --force-with-lease:*),Bash(git rebase:*)\" --append-system-prompt \"${{ steps.prompt.outputs.text }}\""
       # 何が起きたかを、ログと Summary に残す（拒否された操作と、AIが最後に言ったこと）。写しておいた main の版を動かす
+      # AIがコミット・push せずに作業を終えたとき（裏に回したコマンドを待つと言って終えた・回数の上限など）、
+      # 作業フォルダに残った変更を保存して push する。直すかどうかは、このあと CI とレビューが決める（AIのコミットを当てにしない。#125）。
+      # この手順は AI と同じジョブ・同じ鍵で動くので、AIが自分でできたこと以上はしない。フックは使わない
+      - name: AIがコミットせずに残した変更を保存する
+        if: ${{ !cancelled() && steps.trust.outputs.restrict == 'false' }}
+        env:
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then echo "残った変更はありません"; exit 0; fi
+          b=$(git rev-parse --abbrev-ref HEAD)
+          # PRのブランチの上にいるときだけ（main などの上なら保存しない）
+          case "$b" in main|master|HEAD) echo "PRのブランチの上ではないので保存しません（$b）"; exit 0 ;; esac
+          git add -A
+          git -c core.hooksPath=/dev/null -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q --no-verify -m "AIがコミットせずに終えた変更を保存（自動。CIとレビューで確かめる）"
+          if git -c core.hooksPath=/dev/null push -q origin "HEAD:refs/heads/$b"; then
+            echo "::notice::AIがコミットせずに終えた変更を $b に保存しました"
+          else
+            echo "::warning::残った変更を push できませんでした（$b）"
+          fi
       - name: AIの結果を残す
         if: ${{ !cancelled() }}
         env:
