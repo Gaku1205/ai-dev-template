@@ -59,6 +59,27 @@ PR_FILES=".github/scripts/watchdog.sh" run_case "Closes #1" "スクリプトの�
 assert_eq "やり直さない" "0" "$(reruns)"
 assert_contains "直す依頼のコメントが付く" "$(comments_of 58)" "auto-fix"
 
+echo "== CIが取り消された（時間切れなど） → AIに頼まず、1回だけやり直す（PR #161）"
+run_case "Closes #1" "型チェック"
+state_py "s['reruns']=[]; s['comments']=[]; s['labels']['58']=['ai:review']"
+RUN_ID=1 CONCLUSION=cancelled HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-ci.sh > /dev/null
+assert_eq "取り消されたジョブをやり直す" "1" "$(reruns)"
+assert_contains "印つきで知らせる" "$(comments_of 58)" "auto-ci-cancel-rerun"
+assert_not_contains "AIには直させない" "$(comments_of 58)" "auto-fix"
+assert_not_contains "人間には回さない" "$(labels_of 58)" "ai:stuck"
+
+echo "== 同じコミットでまた取り消された（印がもうある） → 人間に回す"
+state_py "s['reruns']=[]"
+RUN_ID=1 CONCLUSION=cancelled HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-ci.sh > /dev/null
+assert_eq "もうやり直さない" "0" "$(reruns)"
+assert_contains "ai:stuck" "$(labels_of 58)" "ai:stuck"
+
+echo "== 前のコミットで取り消された印は数えない → 新しいコミットでは、もう一度やり直す"
+run_case "Closes #1" "型チェック"
+state_py "s['reruns']=[]; s['comments']=[{'id':9,'issue':'58','body':'x コミット old <!-- auto-ci-cancel-rerun -->','user':{'login':'p'},'created_at':'$(ago 5)','updated_at':'$(ago 5)'}]"
+RUN_ID=1 CONCLUSION=cancelled HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-ci.sh > /dev/null
+assert_eq "やり直す" "1" "$(reruns)"
+
 sync_case() { # CIの結果 mainとの差
   python3 - "$2" <<'PY'
 import json, os, sys
