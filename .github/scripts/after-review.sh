@@ -55,8 +55,9 @@ review=$(all_comments "$pr" | jq -r --arg since "$head_date" \
 cutoff=$(all_comments "$pr" | jq -r --arg has "$([ -n "$review" ] && echo 1)" \
   '[.[] | select((.user.login == "claude[bot]" or .user.login == "github-actions[bot]") and (.body | startswith("## Code review"))) | .created_at] | sort
    | if $has == "1" then (.[-2] // "") else (.[-1] // "") end')
-inline=$(gh api "repos/$REPO/pulls/$pr/comments?per_page=100" --paginate --slurp \
-  | jq --arg sha "$HEAD_SHA" --arg cut "$cutoff" 'add // [] | map(select(.user.login == "claude[bot]" and .original_commit_id == $sha and .created_at > $cut)) | length')
+inline_json=$(gh api "repos/$REPO/pulls/$pr/comments?per_page=100" --paginate --slurp \
+  | jq --arg sha "$HEAD_SHA" --arg cut "$cutoff" 'add // [] | map(select(.user.login == "claude[bot]" and .original_commit_id == $sha and .created_at > $cut))')
+inline=$(printf '%s' "$inline_json" | jq 'length')
 
 if [ "$inline" -gt 0 ] || { [ -n "$review" ] && ! printf '%s' "$review" | grep -q "No issues found"; }; then
   # CI と同時に動くので、CIが落ちて先に直すよう頼んであることがある（二重に頼まない。直した push のあとに、もう一度レビューされる）
@@ -64,8 +65,22 @@ if [ "$inline" -gt 0 ] || { [ -n "$review" ] && ! printf '%s' "$review" | grep -
     echo "PR #$pr：レビューに指摘がありましたが、このコミットにはもう直すよう頼んであるので、重ねて頼みません"
     exit 0
   fi
+  # 指摘が指す場所：行への指摘は API の path、まとめは本文中のパスの形の語。
+  # 全部ワークフローの所（AIは push できない）なら、修正AIに頼まず、すぐ人間（マネージャー）に回す
+  targets=$({ printf '%s' "$inline_json" | jq -r '.[].path // empty'; printf '%s' "$review" | review_paths_from_text; } | awk 'NF' | sort -u)
+  target_kind=$(printf '%s\n' "$targets" | review_paths_kind)
+  if [ "$target_kind" = workflow ]; then
+    review_status "$HEAD_SHA" failure "ワークフローの指摘です。マネージャーが直します"
+    stop_for_human "$pr" "ワークフローの指摘なので、マネージャーが直してください（AIは .github/workflows/・.github/actions/ を直せません）。指摘の場所：$(printf '%s' "$targets" | paste -sd '、' -)"
+    echo "PR #$pr：指摘が全部ワークフローの所なので、修正AIに頼まず人間に回しました"
+    exit 0
+  fi
+  fix_message="レビューで指摘がありました。このPRの「Code review」のコメントと、コードの行に付いた指摘を読んで直してください。指摘が間違っていると判断した場合は、直さずにその理由をこのPRにコメントしてください。"
+  if [ "$target_kind" = mixed ]; then
+    fix_message="${fix_message}ただし、ワークフローの所（\`.github/workflows/\`・\`.github/actions/\`）は直さないでください（AIはpushできません）。その旨をこのPRにコメントしてください。"
+  fi
   review_status "$HEAD_SHA" failure "指摘があります。AIが直しています"
-  request_fix_or_stop "$pr" "$HEAD_SHA" "レビューで指摘がありました。このPRの「Code review」のコメントと、コードの行に付いた指摘を読んで直してください。指摘が間違っていると判断した場合は、直さずにその理由をこのPRにコメントしてください。"
+  request_fix_or_stop "$pr" "$HEAD_SHA" "$fix_message"
   echo "PR #$pr：指摘があったので直すよう依頼しました（行への指摘 ${inline} 件）"
   exit 0
 fi

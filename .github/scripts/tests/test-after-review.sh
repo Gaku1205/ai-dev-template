@@ -142,6 +142,54 @@ CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-r
 assert_eq "マージされない" "" "$(merged)"
 assert_contains "直す依頼" "$(comments_of 58)" "auto-fix"
 
+echo "== 指摘がワークフローの所だけ：修正AIに頼まず、ai:stuck（理由にパス）"
+init_state "$base"
+state_py "
+s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\n1 issue found.\n\n- \`.github/workflows/ci.yml\` の権限が広すぎます','user':{'login':'github-actions[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})
+s['review_comments']=[{'user':{'login':'claude[bot]'},'original_commit_id':'abc','created_at':'$(ago 1)','path':'.github/actions/setup/action.yml','body':'ここが危ない'}]"
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+assert_contains "ai:stuck" "$(labels_of 58)" "ai:stuck"
+assert_not_contains "修正AIに頼まない" "$(comments_of 58)" "@claude"
+assert_contains "マネージャーが直す、と書く" "$(comments_of 58)" "マネージャーが直してください"
+assert_contains "まとめのパス" "$(comments_of 58)" ".github/workflows/ci.yml"
+assert_contains "行への指摘のパス" "$(comments_of 58)" ".github/actions/setup/action.yml"
+
+echo "== 行への指摘だけがワークフローの所：同じく ai:stuck"
+init_state "$base"
+state_py "
+s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\nNo issues found.','user':{'login':'claude[bot]'},'created_at':'$(ago 10)','updated_at':'$(ago 10)'})
+s['review_comments']=[{'user':{'login':'claude[bot]'},'original_commit_id':'abc','created_at':'$(ago 1)','path':'.github/workflows/pipeline.yml','body':'ここがバグ'}]"
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+assert_contains "ai:stuck" "$(labels_of 58)" "ai:stuck"
+assert_not_contains "修正AIに頼まない" "$(comments_of 58)" "@claude"
+
+echo "== アプリとワークフローが混ざる：修正AIに頼み、ワークフローは直さないと足す"
+init_state "$base"
+state_py "
+s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\n1 issue found.\n\n- \`.github/workflows/ci.yml\` の権限','user':{'login':'github-actions[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})
+s['review_comments']=[{'user':{'login':'claude[bot]'},'original_commit_id':'abc','created_at':'$(ago 1)','path':'src/a.ts','body':'ここがバグ'}]"
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+assert_not_contains "止めない" "$(labels_of 58)" "ai:stuck"
+assert_contains "修正AIに頼む" "$(comments_of 58)" "@claude"
+assert_contains "ワークフローは直さない、と足す" "$(comments_of 58)" "ワークフローの所"
+
+echo "== アプリだけ：今までどおり（足した文は入らない）"
+init_state "$base"
+state_py "
+s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\n1 issue found.\n\n- \`src/a.ts\` にバグ','user':{'login':'github-actions[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})
+s['review_comments']=[{'user':{'login':'claude[bot]'},'original_commit_id':'abc','created_at':'$(ago 1)','path':'src/a.ts','body':'ここがバグ'}]"
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+assert_contains "修正AIに頼む" "$(comments_of 58)" "@claude"
+assert_not_contains "足した文は入らない" "$(comments_of 58)" "ワークフローの所"
+
+echo "== パスが無い指摘：今までどおり修正AIに頼む"
+init_state "$base"
+state_py "
+s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\n1 issue found.\n\n- 権限が広すぎます','user':{'login':'github-actions[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})"
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+assert_contains "修正AIに頼む" "$(comments_of 58)" "@claude"
+assert_not_contains "止めない" "$(labels_of 58)" "ai:stuck"
+
 echo "== レビューAIが何も書かずに終わった：2回までは自動でやり直し、そのあとは人間に回す"
 init_state "$base"
 CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
