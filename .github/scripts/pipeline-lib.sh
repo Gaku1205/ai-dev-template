@@ -1026,8 +1026,12 @@ cancel_running_review() { # PR番号 先頭コミット
   return 0
 }
 
-# この先頭コミットに、もう直すよう頼んであるか（CIとレビューの両方が同じコミットに頼んで、修正AIが2つ同時に動かないように）
+# この先頭コミットに、直すよう頼んであって、まだ終わっていない依頼があるか（CIとレビューの両方が同じコミットに頼んで、修正AIが2つ同時に動かないように）
+# 終わった依頼（その依頼のコメントより後に、修正AIの「Claude finished」の返事がある）は数えない。
+# 修正AIが push せずに終わり、同じコミットをもう一度レビューする流れで、止まらないように
 fix_requested_for() { # PR番号 先頭コミット
   all_comments "$1" | jq -e --arg mark "$AUTO_FIX_MARK" --arg sha "<!-- auto-fix-sha: $2 -->" \
-    'any(.[]; (.body | contains($mark)) and (.body | contains($sha)))' > /dev/null
+    '. as $all | any($all[] | select((.body | contains($mark)) and (.body | contains($sha))) | .created_at as $t
+      | ([$all[] | select(.user.login == "claude[bot]" and (.body | startswith("## Code review") | not)
+          and (.body | contains("Claude finished")) and .created_at >= $t)] | length == 0); .)' > /dev/null
 }

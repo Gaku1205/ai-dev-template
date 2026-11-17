@@ -71,4 +71,20 @@ assert_not_contains "取り込まない" "$out" "取り込みました"
 assert_eq "直す依頼は1つのまま" "1" "$(comments_of 58 | grep -c 'auto-fix-sha: abc')"
 assert_eq "マージしない" "[]" "$(mstate merged)"
 
+fix_done='{"id":4,"issue":"58","user":{"login":"claude[bot]"},"body":"**Claude finished** 指摘は誤りと返しました","created_at":"2026-01-02T00:01:00Z","updated_at":"2026-01-02T00:01:00Z"}'
+review_ng2='{"id":5,"issue":"58","user":{"login":"claude[bot]"},"body":"## Code review\n\n1 issue found.","created_at":"2026-01-02T00:02:00Z","updated_at":"2026-01-02T00:02:00Z"}'
+review_ok2='{"id":6,"issue":"58","user":{"login":"claude[bot]"},"body":"## Code review\n\nNo issues found.","created_at":"2026-01-02T00:02:00Z","updated_at":"2026-01-02T00:02:00Z"}'
+
+echo "== 前の依頼は修正AIが push せず終わった・同じコミットの2回目のレビューにも指摘 → 直すよう頼み直す"
+state "{\"comments\":[$fixed_by_review,$fix_done,$review_ng2]}"
+out=$(CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-1-x READ_TOKEN=x run_script after-review.sh)
+assert_not_contains "止まらない" "$out" "重ねて頼みません"
+assert_eq "直す依頼が2つになる" "2" "$(comments_of 58 | grep -c 'auto-fix-sha: abc')"
+
+echo "== 前の依頼は終わった・2回目のレビューは指摘なしで先に終わった・そのあとCIが通る → マージへ進める"
+state "{\"comments\":[$fixed_by_review,$fix_done,$review_ok2],\"checks\":$ci_ok}"
+out=$(ci success)
+assert_contains "マージへ進める" "$out" "レビューの結果も出ているので、マージへ進めます"
+assert_eq "マージした" "[58]" "$(mstate merged)"
+
 finish
