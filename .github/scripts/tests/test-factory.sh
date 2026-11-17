@@ -30,7 +30,12 @@ def fields():
     return out
 if a[0] in ("secret", "variable"):
     val = sys.stdin.read() if a[0] == "secret" else arg("--body")
-    log.write(f"{a[0]} {a[2]} {arg('--repo')} len={len(val)}\n"); sys.exit(0)
+    log.write(f"{a[0]} {a[2]} {arg('--repo')} len={len(val)}\n")
+    # 変数は覚えておく（作りかけのリポジトリの印 FACTORY_ISSUE を、やり直しの実行が読む）。VAR_FAIL：その名前の変数は付けられない
+    if a[0] == "variable":
+        if a[2] in os.environ.get("VAR_FAIL", "").split(): sys.exit(1)
+        st.setdefault("vars", {}).setdefault(arg("--repo"), {})[a[2]] = val; save()
+    sys.exit(0)
 assert a[0] == "api"
 method = arg("-X") or ("POST" if ("-f" in a or "-F" in a) else "GET")
 path = [x for x in a[1:] if x.startswith("repos/")][0]
@@ -40,6 +45,16 @@ def out(o):
     else: print(json.dumps(o))
 base = path.split("?")[0]
 log.write(f"{method} {base} {json.dumps(fields(), ensure_ascii=False)}\n")
+m = re.match(r"repos/([^/]+/[^/]+)/actions/variables/(\w+)$", base)
+if m:
+    v = st.get("vars", {}).get(m.group(1), {}).get(m.group(2)) or os.environ.get("VAR_" + m.group(2) + "_" + re.sub(r"\W", "_", m.group(1)))
+    if v is None: sys.stderr.write("gh: Not Found (HTTP 404)\n"); sys.exit(1)
+    out({"name": m.group(2), "value": v}); sys.exit(0)
+m = re.match(r"repos/([^/]+/[^/]+)/contents/(.+)$", base)
+if m:
+    r = subprocess.run(["git", "--git-dir", f"{T}/remotes/{m.group(1)}.git", "show", f"main:{m.group(2)}"], capture_output=True, text=True)
+    if r.returncode: sys.stderr.write("gh: Not Found (HTTP 404)\n"); sys.exit(1)
+    sys.stdout.write(r.stdout); sys.exit(0)
 m = re.match(r"repos/([^/]+)/([^/]+)$", base)
 if m and method == "PATCH":
     open(f"{T}/homepage.txt", "w").write(fields().get("homepage", "")); print("{}"); sys.exit(0)
@@ -429,9 +444,48 @@ c=$(cat "$T/comment.txt")
 assert_contains "止まったと書く" "$c" "⚠️ 新しいサービスを作る途中で止まりました"
 assert_contains "理由" "$c" "❌ 作ったリポジトリを clone できません"
 assert_contains "作りかけのリポジトリを知らせる" "$c" "🧹 作りかけのリポジトリが残っています：https://github.com/o/half-made"
-assert_contains "もう一度作ると -2 になると書く" "$c" "名前の後ろに -2 が付いた別のリポジトリになります"
 assert_contains "スマホに知らせる" "$(cat "$T/ntfy.log" 2> /dev/null)" "工場：作る途中で止まりました"
 assert_eq "コメントは1回だけ" "1" "$(grep -c '^----$' "$T/comment.txt")"
+assert_contains "やり直すと続きから作ると書く" "$c" "このリポジトリの続きから作ります"
+
+echo "== 同じ Issue でやり直した：前の実行が残した作りかけ（印があり、中身がテンプレートのまま）の続きから作る（-2 を増やさない）"
+# 前の状態（作りかけのリポジトリ・印）を消さずに、もう一度動かす
+again_factory() { rm -f "$T/calls.log" "$T/comment.txt"; env PATH="$T/bin:$PATH" FT="$T" GH_TOKEN=x TEMPLATE=o/ai-dev-template ISSUE="${AGAIN_ISSUE:-7}" MEMO="毎朝の天気と予定を1枚で見たい" \
+    APP_NAME="$1" APP_STACK="$2" APP_DESC="$3" FACTORY_GIT_URL="$T/remotes/%s.git" FACTORY_WAIT_SEC=0 S_CLAUDE_CODE_OAUTH_TOKEN=secret1 "${@:4}" bash "$SCRIPTS_DIR/factory.sh" 2>&1; }
+out=$(again_factory half-made nextjs "説明"); rc=$?
+assert_eq "続きから：成功で終わる" "0" "$rc"
+calls=$(cat "$T/calls.log")
+assert_not_contains "新しいリポジトリは作らない" "$calls" "generate"
+assert_contains "続きから作ると書く" "$(cat "$T/comment.txt")" "♻️ 前に作りかけたリポジトリの続きから作る：https://github.com/o/half-made"
+assert_contains "同じリポジトリに中身を入れる" "$(file_in o/half-made CLAUDE.md)" "half-made：説明。"
+assert_contains "最初のIssueも同じリポジトリに" "$calls" "POST repos/o/half-made/issues"
+assert_not_contains "-2 は作らない" "$calls" "half-made-2"
+echo "== もう中身が入ったリポジトリ（最初の準備を push 済み）は、印があっても続きにしない（-2 で作る）"
+out=$(again_factory half-made nextjs "説明")
+calls=$(cat "$T/calls.log")
+assert_contains "別の名前で作る" "$calls" '"name": "half-made-2"'
+assert_not_contains "続きとは書かない" "$out" "♻️"
+assert_contains "元のリポジトリの中身はそのまま" "$(file_in o/half-made CLAUDE.md)" "half-made：説明。"
+echo "== 別の Issue が作った作りかけ・印の無いリポジトリ（人が作った物）は、続きにしない"
+run_factory other-issue nextjs "説明" FACTORY_GIT_URL="$T/nowhere/%s.git" > /dev/null
+out=$(AGAIN_ISSUE=8 again_factory other-issue nextjs "説明")
+assert_contains "別の Issue：別の名前で作る" "$(cat "$T/calls.log")" '"name": "other-issue-2"'
+run_factory no-mark nextjs "説明" FACTORY_GIT_URL="$T/nowhere/%s.git" VAR_FAIL=FACTORY_ISSUE > "$T/out.txt"
+assert_contains "印を付けられなかったら、-2 になると書く" "$(cat "$T/comment.txt")" "名前の後ろに -2 が付いた別のリポジトリになります"
+assert_not_contains "続きから作るとは書かない" "$(cat "$T/comment.txt")" "続きから作ります"
+out=$(again_factory no-mark nextjs "説明")
+assert_contains "印が無い：別の名前で作る" "$(cat "$T/calls.log")" '"name": "no-mark-2"'
+echo "== saas は続きにしない（Supabase・Stripe の物を二重に作らないため）"
+run_factory half-saas saas "説明" FACTORY_GIT_URL="$T/nowhere/%s.git" > /dev/null
+assert_contains "saas：-2 になると書く" "$(cat "$T/comment.txt")" "名前の後ろに -2 が付いた別のリポジトリになります"
+out=$(again_factory half-saas saas "説明")
+assert_contains "saas：別の名前で作る" "$(cat "$T/calls.log")" '"name": "half-saas-2"'
+echo "== -9 まで全部あれば、作らずに止まる"
+out=$(run_factory full nextjs "説明" EXISTING="o/full o/full-2 o/full-3 o/full-4 o/full-5 o/full-6 o/full-7 o/full-8 o/full-9"); rc=$?
+assert_eq "失敗で終わる" "1" "$rc"
+assert_contains "理由" "$out" "同じ名前のリポジトリがもうあります"
+assert_not_contains "作らない" "$(cat "$T/calls.log")" "generate"
+
 run_factory no-repo nextjs "説明" GENERATE_FAIL=1 > /dev/null
 assert_not_contains "リポジトリを作れなかったときは、残っているとは書かない" "$(cat "$T/comment.txt")" "🧹"
 assert_eq "トピックが無ければ知らせない" "no" "$([ -f "$T/ntfy.log" ] && echo yes || echo no)"

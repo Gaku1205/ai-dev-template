@@ -314,14 +314,20 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
    - **会員と課金（saas）のとき**：design ジョブは最初に `.github/scripts/factory-saas.sh . install` で、ログイン（Supabase）と有料プラン（Stripe）の土台（`examples/saas`）を入れてから、デザイン担当に渡す。デザイン担当は無料と有料の違いを決め、トップ・料金（`/pricing`）・ログイン・アカウントの画面を作り、月額の値段を `factory-price.txt` に書く（課金の土台のファイルは変えない。下の「会員と課金」）
    - **Web のゲーム（webgame）のとき**：見本は `examples/webgame`（Electron を入れない）。スマホの縦画面をいちばん大事にして、タッチで遊べ、結果を共有できるように作る（`design-department.md`「Web のゲームのとき」）。390・1440 の幅で撮る。公開は Next.js と同じく Vercel（プロジェクトの種類は Vite）
    - **ゲームの日本語の書体**（game・webgame とも）：`factory-game.sh` が M PLUS 1 の可変フォント（`examples/game-fonts/`。OFL）を `assets/fonts/` に入れる。`npm run build`・`npm run dev` の前に `npm run fonts`（`scripts/subset-fonts.mjs`、開発用の依存 `subset-font`）が、`src/` と `index.html` に出る文字と、かな・記号・英数字だけを抜き出して `public/fonts/mplus1.woff2` を作る（300KB を超えたら失敗。`public/fonts/` は git に入れない）。見本の `index.html` に `@font-face`（"GameJP"、太さ 100〜900）、`src/main.ts` に `JP_FONT` と読み込み待ちがある。実装AIは `curl`・`python3` を使えず書体を作れないので、最初から入れておく（文言を変えても作り直し不要。どの PC・ブラウザでも同じ見た目になる）
-3. `factory.sh` が、テンプレートからリポジトリを作る（同じ名前があれば `-2` …）
+3. `factory.sh` が、テンプレートからリポジトリを作る（同じ名前があれば `-2` …）。作った直後に、どの Issue のために作ったかの印（新しいリポジトリの変数 `FACTORY_ISSUE`＝`テンプレート#Issueの番号`）を付ける
 4. パイプラインの秘密（`CLAUDE_CODE_OAUTH_TOKEN`・`PIPELINE_APP_PRIVATE_KEY`・`PIPELINE_TOKEN`・`NTFY_TOPIC`）と変数（`PIPELINE_APP_ID`・`NOTIFY_EVENTS`・`AGENT_DESK_URL`）を、テンプレートの物から写す
 5. Next.js・saas・Web のゲームで `VERCEL_TOKEN` があれば、Vercel のプロジェクトを作ってつなぐ。saas なら続けて、Supabase のプロジェクト・Stripe の商品と値段を作り、鍵を Vercel の環境変数に入れる（`factory-saas-provision.sh init`。最初の公開より前）
 6. `CLAUDE.md` の1行目・仕様書の「目的」・README に説明を書き、デザイン担当が作った画面とデザイン仕様と道具を入れ、種類に合う見本に切り替えて（Python：`examples/python`・公開先は none／ゲーム：`examples/game`・GitHub Releases の exe／Web のゲーム：`examples/webgame`・Vercel／saas：会員と課金の土台・Vercel と、表の変更の supabase）、main に push する。この push で Bootstrap が動く。そのあと、新しいリポジトリの `pipeline.json` の公開先に `github-pages` があれば、`FACTORY_TOKEN` で GitHub Pages を有効にする（`POST repos/<新しいリポジトリ>/pages`、`build_type=workflow`。もう有効（409）なら成功として扱い、失敗したら結果のコメントに設定のページの URL 付きで直し方を書く。ワークフローのトークンでは有効にできないため、ここで行う）。`github-pages` が無ければ呼ばない
 7. main を守る（PRと CI の `check` を必須にする。管理者は通れる）
 8. 最初のIssueを作る（自動で企画に回る）。デザイン担当が画面を作れていれば、作りきれなかった残り（`factory-todo.md`、3つまで）だけをIssueにする（無ければ作らない）。作れていなければ、1行のメモを最初のIssueにする（最初の画面を一から作るので `size:L`＝強いモデルで実装する）。Vercel につないだときは、本番の公開アドレスを調べて報告に書き、リポジトリの Website 欄にも入れる（同じ名前がほかの人に使われていると、アドレスの後ろに文字が付く）。saas なら、公開アドレスで Stripe の通知の受け口とログインの戻り先を登録し（`factory-saas-provision.sh url`）、環境変数を効かせるため公開をやり直す。元のIssueに結果を書いて閉じる（デザイン担当が撮った画面の画像も貼るので、公開を待たずにどんな画面か見られる）
 
-途中で止まったとき（リポジトリを作れない・push できない・時間切れ・取り消し・スクリプトのエラー）は、元の Issue に、できた所までと、何が残っているかを書き、スマホに知らせる（`stuck`）。中身を push する前に止まったら「作りかけのリポジトリが残っている。要らなければ消す。消さずにもう一度作ると `-2` が付いた別のリポジトリになる」、push のあとに止まったら「リポジトリは使える。❌ の所だけ手で続きをする」と書く（工場は、作りかけのリポジトリを自分では消さない）。
+途中で止まったとき（リポジトリを作れない・push できない・時間切れ・取り消し・スクリプトのエラー）は、元の Issue に、できた所までと、何が残っているかを書き、スマホに知らせる（`stuck`）。中身を push する前に止まったら「作りかけのリポジトリが残っている。要らなければ消す。消さずに同じ Issue でもう一度作ると、続きから作る」、push のあとに止まったら「リポジトリは使える。❌ の所だけ手で続きをする」と書く（工場は、作りかけのリポジトリを自分では消さない）。
+
+同じ Issue でもう一度動かしたとき（Actions の Factory の実行を Re-run する、など）、同じ名前のリポジトリが、前の実行の作りかけなら、新しく作らずに続きから作る（`-2` を増やさない）。続きにするのは、次の全部が確かなときだけ（`factory.sh` の `is_my_leftover`）。1つでも違えば、`-2` … の別の名前で作る（人が作ったリポジトリ・もう中身のあるリポジトリには触らない）：
+
+- 印 `FACTORY_ISSUE` が、この Issue の物（変数はリポジトリの管理者しか書けないので、外の人は作れない）
+- main の `CLAUDE.md` が、まだテンプレートのまま（最初の準備を push していない）
+- saas ではない（Supabase・Stripe の物を二重に作らないため。saas は今までどおり `-2`）
 
 テンプレートの受付（intake）は、`新サービス：` のIssueを企画に回さない。工場は最初にIssueへ `factory` の印を付け、企画AI・実装AIは、題が `新サービス：` で始まるか、この印があるIssueを、テンプレート自身では受けない（題が書き換えられても止まる）。
 
