@@ -66,12 +66,14 @@ assert_eq() { # 説明 期待 実際
   if [ "$2" = "$3" ]; then PASSED=$((PASSED + 1)); echo "  ok   $1"
   else FAILED=$((FAILED + 1)); echo "  FAIL $1"; echo "       期待: $2"; echo "       実際: $3"; fi
 }
+# 全体は、パイプ（printf | grep -q）ではなく <<< で渡す。grep -q は見つけた所で読むのをやめるので、pipefail のテストでは、
+# 書く側が途中で切られて「無い」になることがある（テストを並べて動かすと、混んで起きやすい）
 assert_contains() { # 説明 全体 含むはずの文字
-  if printf '%s' "$2" | grep -qF -- "$3"; then PASSED=$((PASSED + 1)); echo "  ok   $1"
+  if grep -qF -- "$3" <<< "$2"; then PASSED=$((PASSED + 1)); echo "  ok   $1"
   else FAILED=$((FAILED + 1)); echo "  FAIL $1"; echo "       含むはず: $3"; echo "       実際: $2"; fi
 }
 assert_not_contains() { # 説明 全体 含まないはずの文字
-  if printf '%s' "$2" | grep -qF -- "$3"; then FAILED=$((FAILED + 1)); echo "  FAIL $1"; echo "       含まないはず: $3"; echo "       実際: $2"
+  if grep -qF -- "$3" <<< "$2"; then FAILED=$((FAILED + 1)); echo "  FAIL $1"; echo "       含まないはず: $3"; echo "       実際: $2"
   else PASSED=$((PASSED + 1)); echo "  ok   $1"; fi
 }
 finish() {

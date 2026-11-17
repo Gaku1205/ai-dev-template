@@ -354,7 +354,7 @@ AIの実行記録から、許可されず拒否された操作（`permission_den
 - 見た目のテスト（`tests/visual/`）があるリポジトリでは、画面のファイル（`app/`・`components/`・`styles/`・`pages/`、`src/` の下も）を触る物どうしも重なりとみなす（基準の画像がぶつかって止まったため。agent-desk #308）
 - 印の無い物・進行中の物に印の無い物があるときは、進行中の物が全部終わるまで待つ
 - 止まっている物（`ai:stuck`）は数えない
-- 人間のマージ待ち（`ai:hold` が付いていて、レビューまで済んでいる。`watchdog.sh` と同じ判定）のPRが、環境変数 `HOLD_BLOCK_MIN`（既定 60 分）より長く待たれているときは、そのPRの変えたファイルを「進行中」から外し、重なる順番待ちも始める（並列の上限 `MAX_PARALLEL` は守る）。待ち時間は、そのPRに `ai:hold` が付いた時刻（PRのイベント）から数える。時刻が読めないとき・CIやレビューが済んでいない `ai:hold` のPRは、時間に関係なく今までどおり進行中に数える。`after-plan.sh` も `inflight_touches` を使うので、同じ扱いになる
+- 人間のマージ待ち（`ai:hold` が付いていて、レビューまで済んでいる。`watchdog.sh` と同じ判定）のPRが、環境変数 `HOLD_BLOCK_MIN`（既定 60 分）より長く待たれているときは、そのPRの変えたファイルを「進行中」から外し、重なる順番待ちも始める（並列の上限 `MAX_PARALLEL` は守る）。待ち時間は、そのPRに `ai:hold` が付いた時刻（PRのイベント）から数える。時刻が読めないとき・CIやレビューが済んでいない `ai:hold` のPRは、時間に関係なく今までどおり進行中に数える。`after-plan.sh` も `inflight_touches` を使うので、同じ扱いになる。外れる時刻には何のイベントも起きないので、順番待ちがあるとき、見張り役はその時刻（`ai:hold` が付いて `HOLD_BLOCK_MIN` 分＋1分）にも目覚まし（`retry-timer.yml`）をかける（定期の起動は数時間遅れることがあり、順番待ちが止まり続けた。PR #162 のとき）
   - 外したPRには、「待たずに #番号 を始めます。あとで入る変更とコンフリクトしたら、AIが解消します」と1回だけコメントする（印 `<!-- hold-released: #番号 -->`）
   - 順番待ちを止めている（時間内の）`ai:hold` のPRには、「このPRをマージすると #番号 が動き出します」というコメントを1つ付ける。1行目の印は `<!-- hold-blocking: #2,#3 -->` で、待っている Issue の番号を全部書く（agent-desk が読める）。待つ Issue が変わったら書き換え、待つ Issue が無くなったら（60分を過ぎて始まった・閉じられたなど）印を `<!-- hold-blocking: -->` にして「今は止めていません」に書き換える
   - `ai:hold` のPRが main とコンフリクトしたら、見張り役（`watchdog.sh`）が、他のPRと同じくAIに解消を頼む（同じ先頭コミットには1回。上限を超えたら人間に回す）
@@ -400,6 +400,8 @@ AIの実行記録から、許可されず拒否された操作（`permission_den
 `.github/scripts/tests/` に、進行役のスクリプトのテストがある。本物の GitHub には触らず、疑似の `gh`（`tests/fake-gh`）が状態をファイルに持つ。
 
 - 全部実行：`.github/scripts/tests/run-all.sh`（CIの `script-tests`、`shellcheck` も同じ物を見る）
+- `run-all.sh` は、テストのファイルを並べて動かす（1本ずつだと、CI の時間切れ（10分）に届いてPRが止まったため）。並べる数は CPU の数（`nproc`）で、環境変数 `TEST_JOBS` で変えられる（`TEST_JOBS=1` なら1本ずつ）。結果は、終わった順ではなくファイル名の順に、今までと同じ形で出す。時間のかかる `test-run-as-app.sh`・`test-factory.sh` は先に始める
+- 並べて動かすので、テストは固定の場所（`/tmp/決まった名前`、テストのフォルダの中、リポジトリの中）に書かない。`mktemp -d` か `setup_mock` の `MOCK_DIR` の中だけを使う。`pipefail` のスクリプトでは、変数の中身を `printf … | grep -q` で探さず、`grep -q … <<< "$変数"` と書く（`grep -q` は見つけた所で読むのをやめるので、混んでいると書く側が途中で切られ、「無い」になることがある。`test-run-all.sh` が書き方を見張る）
 - 書き方は `tests/lib.sh` の冒頭。スクリプトを変えたら、場面に合うテストを足す
 - 変更を入れる前にテストを壊してみて（わざとバグを入れる）、テストが落ちることを確かめると確実
 - テストは `.github/` ごと全部のアプリに配られ、アプリの CI でも動く。テンプレートにしか無い物（`examples/` など）に頼るテストは、先頭で「無ければ飛ばす」と書く（`test-factory.sh` の先頭と同じ書き方。`test-sync-to-apps.sh` が書き忘れを見つける）。配り先の形で全部のテストが通るかは、`.github/scripts/tests/run-as-app.sh` で確かめられる。アプリごとに形の違うファイル（`vercel.json`・`package.json`・`pipeline.json`・`CLAUDE.md`）を読むテストを見逃さないよう、形の違う見本のアプリを5つ（`.github/scripts/tests/app-fixtures/` の `next-vercel`・`webgame`・`electron`・`python`・`visual-keep`）置いてあり、見本ごとに「一時フォルダに見本を写す → `git init` → `sync-to-apps.sh --local` → コミット → `run-all.sh` と `shellcheck`（CI と同じ書き方）」を回す。1つ落ちても残りは回し、最後に落ちた見本の名前を出して失敗で終わる（`app-fixtures/` は配り先には配らない。`test-run-as-app.sh` が仕組みを確かめる）。環境変数 `SYNC_CANARY`（空白区切りの `owner/repo`。例 `Gaku1205/agent-desk Gaku1205/tap-stack-rush`）があれば、その公開リポジトリを `git clone --depth 1`（トークンなし）して同じ手順も回す（空なら何もしない）。テンプレート本体の CI も同じ物を動かし（`script-tests-as-app`。`SYNC_CANARY` はリポジトリの変数で渡す）、配る前に見つける

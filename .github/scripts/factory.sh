@@ -333,7 +333,7 @@ note "✅ CLAUDE.md・仕様書・README に説明を書いて push した（Boo
 if STACK_FILE="$work/app/pipeline.json" bash -c 'source "$1/stack.sh"; stack_deploy_kinds' _ "$HERE" | grep -qx github-pages; then
   if pages_out=$(gh api -X POST "repos/$NEW/pages" -f build_type=workflow 2>&1); then
     note "✅ GitHub Pages を有効にした（Source は GitHub Actions）"
-  elif printf '%s' "$pages_out" | grep -qE '409|already'; then
+  elif grep -qE '409|already' <<< "$pages_out"; then
     note "✅ GitHub Pages はもう有効になっている"
   else
     note "⚠️ GitHub Pages を有効にできませんでした（https://github.com/$NEW/settings/pages を開いて、Source を GitHub Actions にする）"
