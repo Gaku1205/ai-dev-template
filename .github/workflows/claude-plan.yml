@@ -334,6 +334,8 @@ jobs:
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
           ISSUE: ${{ github.event.issue.number }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
+          # 企画を始めた時点の本文（清書で消えた画像を足し直すのに使う）
+          ISSUE_BODY_BEFORE: ${{ github.event.issue.body }}
           PLAN_OUTCOME: ${{ needs.plan.outputs.outcome }}
           # true：作業回数の上限に届いたので、上限を増やしてもう1回動かした（それでも届いたら、やり直さず人間に回す）
           PLAN_TURNS_RAISED: ${{ needs.plan.outputs.raised }}

@@ -103,4 +103,24 @@ init_state '{"labels":{"3":["ai:plan"]}}'
 (cd "$work" && printf '%s\n%s\n' "READY" PARALLEL > plan-result.txt && ISSUE=3 PLAN_OUTCOME=success PLAN_TURNS_RAISED=true EXECUTION_FILE="$turns_file" GITHUB_TOKEN_FOR_LABELS=x bash "$SCRIPTS_DIR/after-plan.sh" > /dev/null 2>&1)
 assert_eq "ai:implement" "ai:implement" "$(labels_of 3)"
 
+echo "== 清書で消えた画像を、本文の最後に足し直す（実装AIも同じ画像を見るため）"
+body_of() { python3 -c "import json,os;print(json.load(open(os.environ['MOCK_STATE'])).get('issues_meta',{}).get('$1',{}).get('body',''))"; }
+init_state '{"labels":{"3":["ai:plan"]},"issues_meta":{"3":{"body":"### 背景\n清書した本文 ![keep](https://github.com/me/app/raw/issue-images/images/k.png)"}}}'
+before='直したい ![s](https://github.com/me/app/raw/issue-images/images/a.png "題")
+<img width="300" src="https://github.com/user-attachments/assets/b.png">
+残っている物 ![keep](https://github.com/me/app/raw/issue-images/images/k.png)'
+(cd "$work" && printf 'READY\nPARALLEL\n' > plan-result.txt && ISSUE=3 PLAN_OUTCOME=success GITHUB_TOKEN_FOR_LABELS=x ISSUE_BODY_BEFORE="$before" bash "$SCRIPTS_DIR/after-plan.sh" > /dev/null 2>&1)
+b=$(body_of 3)
+assert_contains "清書した本文は残す" "$b" "清書した本文"
+assert_contains "見出し" "$b" "### 貼られた画像"
+assert_contains "消えた Markdown の画像" "$b" "images/a.png"
+assert_contains "消えた <img>" "$b" "assets/b.png"
+assert_eq "残っている画像は二重にしない" "1" "$(printf '%s' "$b" | grep -o 'images/k.png' | wc -l | tr -d ' ')"
+assert_contains "実装へ進む" "$(labels_of 3)" "ai:implement"
+
+echo "== 画像が全部残っていれば、本文を変えない"
+init_state '{"labels":{"3":["ai:plan"]},"issues_meta":{"3":{"body":"清書 ![a](https://x.example/a.png)"}}}'
+(cd "$work" && printf 'READY\nPARALLEL\n' > plan-result.txt && ISSUE=3 PLAN_OUTCOME=success GITHUB_TOKEN_FOR_LABELS=x ISSUE_BODY_BEFORE='メモ ![a](https://x.example/a.png)' bash "$SCRIPTS_DIR/after-plan.sh" > /dev/null 2>&1)
+assert_eq "そのまま" "清書 ![a](https://x.example/a.png)" "$(body_of 3)"
+
 finish

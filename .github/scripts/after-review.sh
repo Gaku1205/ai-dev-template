@@ -133,9 +133,10 @@ if ! files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[
 fi
 # ai-dev-template 自身（main の CLAUDE.md に「pipeline-self-edit: auto」の印がある）は、スクリプト・テスト・docs/pipeline.md の変更を自動でマージしてよい。
 # ワークフロー・実行環境の部品（.github/actions/）・CLAUDE.md・AGENTS.md・pipeline.json（AIの許可とルール。pipeline.json の checks はAIに許すコマンドになる）は、どのリポジトリでも人間に任せる。印は main の物を見るので、PRの変更で印を足してもすり抜けられない
-hold_pattern='^(\.github/|docs/pipeline(-setup)?\.md$|CLAUDE\.md$|AGENTS\.md$|pipeline\.json$)'
+# パイプラインの物（pipeline-paths.sh と同じ場所。スキル .claude/ も、AIへの指示なので含む）と、AIのルール
+hold_pattern='^(\.github/|\.claude/|docs/pipeline(-setup)?\.md$|CLAUDE\.md$|AGENTS\.md$|pipeline\.json$)'
 if grep -q 'pipeline-self-edit: auto' "${CLAUDE_MD:-$(dirname "$0")/../../CLAUDE.md}" 2> /dev/null; then
-  hold_pattern='^(\.github/workflows/|\.github/actions/|CLAUDE\.md$|AGENTS\.md$|pipeline\.json$)'
+  hold_pattern='^(\.github/workflows/|\.github/actions/|\.claude/|CLAUDE\.md$|AGENTS\.md$|pipeline\.json$)'
 fi
 if printf '%s\n' "$files" | grep -qE "$hold_pattern"; then
   # ai:hold を付けておく（画面で「マージ待ち（人間）」と分かる。人間がマージするまで、自動ではマージされない）

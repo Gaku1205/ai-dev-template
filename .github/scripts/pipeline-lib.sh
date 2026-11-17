@@ -990,3 +990,29 @@ rerun_ci_if_waiting_approval() {
   gh api -X PATCH "repos/$REPO/git/refs/heads/$branch" -f sha="$new" > /dev/null
   echo "PR #$pr：$new を足しました"
 }
+
+# 企画AIが清書で消した、元の本文の画像（![..](https://…)・<img src="https://…">）を、本文の最後に足し直す。
+# 実装AIは、ラベルが付いた時点の本文の画像を見る（issue-images-prompt.sh）ので、消えると見られない。
+# 元の本文はワークフローのイベントの物（企画を始めた時点）。足したら 0、足す物が無ければ 1
+keep_issue_images() { # issue 元の本文
+  local issue="$1" before="$2" after missing
+  [ -n "$before" ] || return 1
+  after=$(gh api "repos/$REPO/issues/$issue" -q '.body // ""' 2> /dev/null) || return 1
+  missing=$(BEFORE="$before" AFTER="$after" python3 -c '
+import os, re
+pat = re.compile(r"!\[[^\]]*\]\((https://[^\s)]+)[^)]*\)|<img[^>]*\bsrc=[\"\x27](https://[^\"\x27\s>]+)[^>]*>", re.I)
+after = os.environ["AFTER"]
+out = []
+for m in pat.finditer(os.environ["BEFORE"]):
+    url = m.group(1) or m.group(2)
+    if url not in after and m.group(0) not in out:
+        out.append(m.group(0))
+print("\n".join(out))
+')
+  [ -n "$missing" ] || return 1
+  gh api -X PATCH "repos/$REPO/issues/$issue" -f body="${after}
+
+### 貼られた画像
+${missing}" > /dev/null || return 1
+  echo "#$issue：清書で消えた画像を、本文の最後に足し直しました"
+}

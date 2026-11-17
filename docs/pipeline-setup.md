@@ -77,7 +77,7 @@ AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions
 | `NTFY_TOPIC` | Secret | スマホ通知（ntfyアプリ）のトピック名。無ければ通知しない |
 | `AWS_ROLE_ARN`・`AWS_APPRUNNER_ACCESS_ROLE_ARN`・`AWS_REGION` | Variable | 公開先が `aws-apprunner` のとき（上の「AWS App Runner」） |
 | `EXPO_TOKEN` | Secret | 公開先が `expo` のとき |
-| `FACTORY_TOKEN`・`VERCEL_TOKEN` | Environment「factory」の Secret | 工場（1行から新しいサービスを作る）。ai-dev-template にだけ入れる（[docs/factory.md](factory.md) の「工場」。factory.md はテンプレート本体だけにある） |
+| `FACTORY_TOKEN`・`VERCEL_TOKEN` | Environment「factory」の Secret | 工場（1行から新しいサービスを作る）。ai-dev-template にだけ入れる（テンプレート本体の テンプレート本体の `docs/factory.md` の「工場」。factory.md はテンプレート本体だけにある） |
 
 入れなくても動く設定（`NOTIFY_EVENTS`・`RETRY_TIMER`・`AGENT_DESK_URL`・`VERCEL_DEPLOY_DELAY_MIN` など）は、下の「変えたい人向けの設定」。
 
@@ -118,12 +118,12 @@ README には載せていない。どれも**入れなくても既定値で動�
 
 README の3つ（Claude のトークン・GitHub App・Vercel）だけで動く。次の機能は消していない。要るときだけ読む。
 
-- 別の言語（Python・Go・Java・.NET など）と公開先の選び方：上の「言語と公開先（`pipeline.json`）」。Python（FastAPI）の見本は [examples/python/README.md](../examples/python/README.md)
+- 別の言語（Python・Go・Java・.NET など）と公開先の選び方：上の「言語と公開先（`pipeline.json`）」。Python（FastAPI）の見本は テンプレート本体の `examples/python/README.md`
 - AWS App Runner（Variable `AWS_ROLE_ARN` ほか）：「AWS App Runner」
 - Expo（スマホアプリ、Secret `EXPO_TOKEN`）：「Expo」
-- exe などの配布（`github-release`）とゲーム：「言語と公開先」の表と、`docs/factory.md` の「工場」の「ゲームのとき」（見本は [examples/game](../examples/game)・[examples/webgame](../examples/webgame)）
-- 会員と課金（Supabase・Stripe の saas）：`docs/factory.md` の「会員と課金（saas）」（見本は [examples/saas](../examples/saas)）
-- 1行から新しいサービスを作る工場（`FACTORY_TOKEN`・`VERCEL_TOKEN`）：`docs/factory.md` の「工場」と「最初の1回だけの準備」
+- exe などの配布（`github-release`）とゲーム：「言語と公開先」の表と、テンプレート本体の `docs/factory.md` の「工場」の「ゲームのとき」（見本は テンプレート本体の `examples/game`・テンプレート本体の `examples/webgame`）
+- 会員と課金（Supabase・Stripe の saas）：テンプレート本体の `docs/factory.md` の「会員と課金（saas）」（見本は テンプレート本体の `examples/saas`）
+- 1行から新しいサービスを作る工場（`FACTORY_TOKEN`・`VERCEL_TOKEN`）：テンプレート本体の `docs/factory.md` の「工場」と「最初の1回だけの準備」
 
 ## main の保護を Bootstrap で自動化できるか（調べた結果。実装はしない）
 

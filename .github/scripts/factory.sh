@@ -318,6 +318,8 @@ PY3
   fi
   # 工場は テンプレートの例（examples/）を新しいサービスには持ち込まない
   rm -rf examples
+  # 工場の説明（docs/factory.md）もテンプレート本体だけの物（配らないので、残すと古いまま残る）
+  rm -f docs/factory.md
   # 工場のIssueの雛形も、テンプレート本体だけの物
   rm -f .github/ISSUE_TEMPLATE/new-service.yml
   git add -A
