@@ -73,8 +73,47 @@ render_table() {
   done < <(jq -c '.[]' <<< "$rows")
 }
 
+# コメントの本文から、機械が読む行（<!-- ai-step {JSON} -->）を配列にして出す
+rows_of_body() {
+  local rows
+  rows=$(sed -nE 's/^<!-- ai-step (.*) -->$/\1/p' <<< "$1" | jq -sc '.' 2> /dev/null) || rows="[]"
+  printf '%s' "${rows:-[]}"
+}
+
+# 行の配列に、今回の行を入れる（同じ工程の行は置き換え、工程の順に並べる）
+merge_row() { # 行の配列 今回の行
+  jq -c --argjson new "$2" --argjson order "$STEP_ORDER" \
+    'map(select(.step != $new.step)) + [$new] | sort_by(.step as $s | $order | index($s))' <<< "$1"
+}
+
+# 行の配列から、コメントの本文を作る
+build_body() {
+  printf '%s\n### 進捗ログ\n\n%s\n\n%s' "$STEP_LOG_MARK" "$(render_table "$1")" "$(jq -c '.[]' <<< "$1" | sed 's/^/<!-- ai-step /; s/$/ -->/')"
+}
+
+# 書いた後の確かめ：2つの工程（CI の終わりとレビューの終わり、など）がほぼ同時に書くと、どちらも「相手の行が無い古い表」に
+# 自分の行を足して書くので、後から書いた方が、先に書いた方の行を消す。少し待ってから読み直し、自分の行が消えていたら、
+# 今の表に足して書き直す（最大 STEP_LOG_VERIFY_MAX 回）。API は、ふつうは読み直しの1回だけ増える
+#   - 自分の工程の行が、自分の書いた物 → そのまま
+#   - 無い・自分が置き換える前の行に戻っている → 消された。今の表に足して書き直す
+#   - それ以外（同じ工程の、もっと新しい記録）→ 触らない（古い記録で上書きしない）
+verify_written() { # コメントの id　今回の行　置き換える前の行（無ければ空）
+  local id="$1" new_row="$2" prev_row="$3" try body rows state
+  for try in $(seq 1 "${STEP_LOG_VERIFY_MAX:-2}"); do
+    sleep "${STEP_LOG_VERIFY_WAIT:-2}"
+    body=$(gh api "repos/$REPO/issues/comments/$id" --jq '.body // ""' 2> /dev/null) || return 0
+    rows=$(rows_of_body "$body")
+    state=$(jq -r --argjson new "$new_row" --argjson prev "${prev_row:-null}" '
+      (map(select(.step == $new.step)) | first) as $cur
+      | if $cur == $new then "ok" elif $cur == null or $cur == $prev then "lost" else "newer" end' <<< "$rows" 2> /dev/null) || return 0
+    [ "$state" = lost ] || return 0
+    echo "進捗ログ：ほかの工程の書き込みで、この工程（${step}）の行が消えていたので、足して書き直します（${try}回目）"
+    gh api -X PATCH "repos/$REPO/issues/comments/$id" -f body="$(build_body "$(merge_row "$rows" "$new_row")")" > /dev/null || return 1
+  done
+}
+
 main() {
-  local n="$issue" comments existing id rows prev_started new_row now body_new
+  local n="$issue" comments existing id rows prev_started prev_row new_row now first_id first_body
   if [ -z "$n" ] && [ -n "$pr" ]; then
     n=$(linked_issue "$pr") || return 1
   fi
@@ -85,8 +124,7 @@ main() {
   id="" rows="[]"
   if [ -n "$existing" ]; then
     id=$(jq -r .id <<< "$existing")
-    rows=$(jq -r .body <<< "$existing" | sed -nE 's/^<!-- ai-step (.*) -->$/\1/p' | jq -sc '.' 2> /dev/null) || rows="[]"
-    [ -n "$rows" ] || rows="[]"
+    rows=$(rows_of_body "$(jq -r .body <<< "$existing")")
   fi
 
   now=$(now_utc)
@@ -104,21 +142,28 @@ main() {
     {step: $step, model: (if $model == "" then null else $model end), started: $started,
      finished: (if $result == "running" then null else $now end), result: $result}
     + (if $attempt == "" then {} else {attempt: ($attempt | tonumber), max_attempts: (if $max == "" then 3 else ($max | tonumber) end)} end)')
-
-  rows=$(jq -c --argjson new "$new_row" --argjson order "$STEP_ORDER" \
-    'map(select(.step != $new.step)) + [$new] | sort_by(.step as $s | $order | index($s))' <<< "$rows")
-
-  body_new="${STEP_LOG_MARK}
-### 進捗ログ
-
-$(render_table "$rows")
-
-$(jq -c '.[]' <<< "$rows" | sed 's/^/<!-- ai-step /; s/$/ -->/')"
+  prev_row=$(jq -c --arg s "$step" 'map(select(.step == $s)) | first // empty' <<< "$rows")
 
   if [ -n "$id" ]; then
-    gh api -X PATCH "repos/$REPO/issues/comments/$id" -f body="$body_new" > /dev/null || return 1
-  else
-    comment "$n" "$body_new" || return 1
+    gh api -X PATCH "repos/$REPO/issues/comments/$id" -f body="$(build_body "$(merge_row "$rows" "$new_row")")" > /dev/null || return 1
+    verify_written "$id" "$new_row" "$prev_row" || return 1
+    return 0
+  fi
+
+  # コメントがまだ無い：作る。2つの工程が同時に作ると、進捗ログが2つになる（読む側は先の1つしか見ない）。
+  # 作った後に一覧を読み直し、自分より先のコメントがあれば、そちらに自分の行を足して、自分のコメントを消す（今作ったばかりの、自分の物だけ）
+  id=$(gh api "repos/$REPO/issues/$n/comments" -f body="$(build_body "$(merge_row "$rows" "$new_row")")" --jq '.id // empty') || return 1
+  [ -n "$id" ] || return 0
+  sleep "${STEP_LOG_VERIFY_WAIT:-2}"
+  comments=$(all_comments "$n") || return 0
+  existing=$(jq -c --arg mark "$STEP_LOG_MARK" 'map(select(.body | contains($mark))) | first // empty' <<< "$comments")
+  first_id=$(jq -r '.id // empty' <<< "${existing:-null}")
+  if [ -n "$first_id" ] && [ "$first_id" != "$id" ]; then
+    echo "進捗ログ：ほかの工程が先に進捗ログを作っていたので、そちらに足して、今作った方を消します"
+    first_body=$(jq -r .body <<< "$existing")
+    gh api -X PATCH "repos/$REPO/issues/comments/$first_id" -f body="$(build_body "$(merge_row "$(rows_of_body "$first_body")" "$new_row")")" > /dev/null || return 1
+    gh api -X DELETE "repos/$REPO/issues/comments/$id" > /dev/null || true
+    verify_written "$first_id" "$new_row" "" || return 1
   fi
 }
 
