@@ -25,7 +25,7 @@ if [ "$got" -gt 0 ]; then
 fi
 # Issue の本文の HTML コメント（<!-- … -->。目印の書き方など）は、AIのアクションが本文を渡すときに消す（安全のため）。
 # 本文にあれば、原文をファイルに置いて、そこを読むよう伝える（agent-desk #394：目印の文字列が空に見えて、実装AIが止まった）
-if printf '%s' "${BODY:-}" | grep -q '<!--'; then
+if grep -q '<!--' <<< "${BODY:-}"; then
   mkdir -p "$dir"
   printf '%s\n' "$BODY" > "$dir/body.md"
   note="${note}Issue の本文には、AIへの表示では消える HTML コメント（<!-- … -->）がある。本文の原文は ${dir}/body.md にあるので、Read で読んで、目印などの正確な文字列はそこから取る。"

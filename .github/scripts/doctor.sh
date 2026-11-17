@@ -29,7 +29,7 @@ fetch_main_protected() {
 fetch_pages() {
   local o
   if o=$(gh api "repos/$REPO/pages" --jq '.build_type // "legacy"' 2>&1); then echo "$o"
-  elif printf '%s' "$o" | grep -q '404'; then echo none
+  elif grep -q '404' <<< "$o"; then echo none
   fi
 }
 is_template_repo()    { [ "$(gh api "repos/$REPO" --jq '.is_template' 2> /dev/null)" = true ]; }
@@ -90,7 +90,8 @@ check_labels() {
   local want
   want=$(sed -nE 's/^make_label "([^"]+)".*/\1/p' "$(dirname "${BASH_SOURCE[0]}")/labels.sh")
   for l in $want; do
-    printf '%s\n' "$have" | grep -qxF "$l" || missing="$missing $l"
+    # パイプ（printf | grep -q）にしない：pipefail の下では、grep が見つけて先に終わると、書く側が切られて「無い」になることがある
+    grep -qxF "$l" <<< "$have" || missing="$missing $l"
   done
   if [ -z "$missing" ]; then ok "ラベルが全部ある"
   else ng "ラベルが足りない:${missing}" "Actions の「Setup Labels」を1回実行"; fi

@@ -30,7 +30,8 @@ while IFS= read -r f; do
     echo "::warning::$n は名前の形が違うので流さない（例：0002_notes.sql）"
     continue
   fi
-  if printf '%s\n' "$done_list" | grep -qxF "$n"; then continue; fi
+  # パイプ（printf | grep -q）にしない：pipefail の下では、grep が見つけて先に終わると、書く側が切られて「まだ流していない」になることがある
+  if grep -qxF "$n" <<< "$done_list"; then continue; fi
   echo "流す：$n"
   { echo "begin;"; cat "$f"; echo; echo "insert into app_meta.migrations (name) values ('$n');"; echo "commit;"; } | q
   applied=$((applied + 1))
