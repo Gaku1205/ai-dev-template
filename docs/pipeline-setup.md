@@ -77,7 +77,7 @@ AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions
 | `NTFY_TOPIC` | Secret | スマホ通知（ntfyアプリ）のトピック名。無ければ通知しない |
 | `AWS_ROLE_ARN`・`AWS_APPRUNNER_ACCESS_ROLE_ARN`・`AWS_REGION` | Variable | 公開先が `aws-apprunner` のとき（上の「AWS App Runner」） |
 | `EXPO_TOKEN` | Secret | 公開先が `expo` のとき |
-| `FACTORY_TOKEN`・`VERCEL_TOKEN` | Environment「factory」の Secret | 工場（1行から新しいサービスを作る）。ai-dev-template にだけ入れる（テンプレート本体の テンプレート本体の `docs/factory.md` の「工場」。factory.md はテンプレート本体だけにある） |
+| `FACTORY_TOKEN`・`VERCEL_TOKEN` | Environment「factory」の Secret | 工場（1行から新しいサービスを作る）。ai-dev-template にだけ入れる（テンプレート本体の `docs/factory.md` の「工場」。factory.md はテンプレート本体だけにある） |
 
 入れなくても動く設定（`NOTIFY_EVENTS`・`RETRY_TIMER`・`AGENT_DESK_URL`・`VERCEL_DEPLOY_DELAY_MIN` など）は、下の「変えたい人向けの設定」。
 
