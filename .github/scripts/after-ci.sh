@@ -38,6 +38,8 @@ case "$HEAD_BRANCH" in
 esac
 case "$sync_pr" in
   yes)
+    # 配布のPRはレビューを通さない決まりなので、必須の「AIレビュー」で止まらないよう、理由を書いた success を付ける（マージの判断の前に）
+    review_status "$HEAD_SHA" success "配布のPRなのでAIレビューは通しません。CIで決めます"
     if [ "$CONCLUSION" = success ]; then
       behind=$(gh api "repos/$REPO/compare/$HEAD_SHA...main" -q .ahead_by)
       if [ "${behind:-0}" -gt 0 ]; then

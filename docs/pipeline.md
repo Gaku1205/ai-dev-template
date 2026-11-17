@@ -125,6 +125,24 @@ Issue の `ai:stuck` を外したときは、付いているラベルで続き�
 - ai-dev-template 自身は、AIがスクリプト・テスト・`docs/pipeline.md` を直し、CI（`script-tests`・`shellcheck`）とレビューが通れば自動でマージされる。印は main の `CLAUDE.md` の `pipeline-self-edit: auto` で、進行役は main の物を見るので、PRで印を足してもすり抜けられない。ワークフロー・`CLAUDE.md`・`AGENTS.md`（AIの許可とルール）は、どのリポジトリでもAIが無人で書き換えない（人間側のClaudeが行い、マージは `ai:hold`）
 - 公開後に壊れていたら、Vercelの画面から前の版にすぐ戻せる
 
+## コミットのステータス「AIレビュー」（人間もマージできないようにする）
+
+人間のマージ待ち（`ai:hold`）のPRは、PRができた時点で画面からマージできてしまう。レビューが始まる前・指摘を直している間にマージしないよう、レビューの結果を先頭コミットのステータス（context `AIレビュー`）として付け、main の保護で必須にできるようにする。既存のチェック `review` は、指摘があってもジョブとしては成功なので、必須にしても止められない。
+
+**意味**：`pending`＝レビュー前・中、`success`＝指摘なし／レビューを通さない決まりのPR、`failure`＝指摘あり。付けるのは小さな部品 `review-status.sh <sha> <pending|success|failure> "<説明（140字まで）>"`（環境変数 `STATUS_TOKEN`＝ワークフローのトークン。`statuses: write` が要る）。`STATUS_TOKEN` が無い・書けないときは警告を出すだけで失敗にしない（権限が入るまでは今までどおり動く）。
+
+| 場面 | 付くもの | 付ける所 |
+| --- | --- | --- |
+| レビューを始めた | `pending`（AIがレビュー中です） | `claude-review.yml` の最初のステップ |
+| 指摘なし | `success`（指摘なし） | `after-review.sh`（CIを確かめる前） |
+| 指摘あり | `failure`（指摘があります。AIが直しています） | `after-review.sh`（直すよう依頼する前） |
+| 画像など文字で読めない変更だけ | `success`（理由つき） | `after-review.sh` |
+| `claude-review.yml` を変えるPR（レビューAIが動けない） | `success`（人間が確かめてください） | `after-review.sh`（`ai:hold` を付ける所） |
+| 配布のPR（`pipeline-sync/*`） | `success`（レビューは通さない。CIで決める） | `after-ci.sh`（マージの判断の前） |
+| レビューAIがエラーで止まって自動でやり直す間 | 何も付けない（`pending` のまま） | 付け直しは、次のレビューの開始で行う |
+
+**main の保護で必須にする手順**（設定するのは人間またはマネージャー。Administration の権限が要るので、パイプラインの鍵には持たせない。Doctor は「未設定」を知らせるだけで、設定はしない）：Settings → Branches → main の規則 →「Require status checks to pass」の検索欄で `AIレビュー` を選ぶ（承認は0人のまま）。ワークフロー側で `statuses: write` が入り、一度ステータスが付いたあとでないと、検索欄に出ない。PRができてからレビューが始まるまでの短い間はステータスが無いが、必須にしていれば、無い間もマージはできない。
+
 ## 読む量を減らす（Issue の「読む所」）
 
 仕様書（`docs/spec.md`）とデザイン仕様（`docs/design.md`）は、Issueのたびに増える。AIが毎回全部を読むと、使用量の上限に早く当たる。そこで、いちど全部を読む企画AIが、清書のときに Issue の本文に `### 読む所` を書く（ファイルごとに、関係する節の見出し。見た目に触る作業なら、デザイン仕様の全体に効く決まりの節も。関係するコードのファイルも）。
