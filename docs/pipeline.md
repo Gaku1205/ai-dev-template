@@ -129,11 +129,11 @@ Issue の `ai:stuck` を外したときは、付いているラベルで続き�
 
 人間のマージ待ち（`ai:hold`）のPRは、PRができた時点で画面からマージできてしまう。レビューが始まる前・指摘を直している間にマージしないよう、レビューの結果を先頭コミットのステータス（context `AIレビュー`）として付け、main の保護で必須にできるようにする。既存のチェック `review` は、指摘があってもジョブとしては成功なので、必須にしても止められない。
 
-**意味**：`pending`＝レビュー前・中、`success`＝指摘なし／レビューを通さない決まりのPR、`failure`＝指摘あり。付けるのは小さな部品 `review-status.sh <sha> <pending|success|failure> "<説明（140字まで）>"`（環境変数 `STATUS_TOKEN`＝ワークフローのトークン。`statuses: write` が要る）。`STATUS_TOKEN` が無い・書けないときは警告を出すだけで失敗にしない（権限が入るまでは今までどおり動く）。
+**意味**：`pending`＝レビュー前・中、`success`＝指摘なし／レビューを通さない決まりのPR、`failure`＝指摘あり。進行役（main の版が動く `after-review.sh`・`after-ci.sh`）が付けるのは小さな部品 `review-status.sh <sha> <pending|success|failure> "<説明（140字まで）>"`（環境変数 `STATUS_TOKEN`＝ワークフローのトークン。`statuses: write` が要る）。`STATUS_TOKEN` が無い・書けないときは警告を出すだけで失敗にしない（権限が入るまでは今までどおり動く）。
 
 | 場面 | 付くもの | 付ける所 |
 | --- | --- | --- |
-| レビューを始めた | `pending`（AIがレビュー中です） | `claude-review.yml` の最初のステップ |
+| レビューを始めた | `pending`（AIがレビュー中です） | `claude-review.yml` の最初のステップ（PRのスクリプトは呼ばず、`gh api` を直接書く。PRで書き換えられて `success` を付けられるのを防ぐ） |
 | 指摘なし | `success`（指摘なし） | `after-review.sh`（CIを確かめる前） |
 | 指摘あり | `failure`（指摘があります。AIが直しています） | `after-review.sh`（直すよう依頼する前） |
 | 画像など文字で読めない変更だけ | `success`（理由つき） | `after-review.sh` |
