@@ -149,6 +149,7 @@ jobs:
             - 仕様書と食い違うときは、背景に「docs/○○ の△△と違う」と書く
             - 見た目や挙動を新しく決める・変える作業なら、「やること」の最初に「`docs/spec.md`・`docs/design.md` に○○を書く（そのあと実装する）」を入れる。既存のルールの延長で決められる小さい見た目は「仮定」に書く。画面の方向が変わる・新しい画面を作るなど、見た目の大きい決めがあるときは `ASK` で聞く
             - コードは変更しない。Issueの更新とコメントだけをする
+            - コマンドは1つずつ、許された形のまま動かす（`gh issue view 番号` のように。`; && |`・改行・`cd`・`-q` の長い式を付けると拒否されて手数だけ減る）。ファイルを読むのは Read、探すのは Grep・Glob
           claude_args: '--model sonnet --max-turns 30 --allowedTools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh pr list:*),Bash(gh pr diff:*),Read,Glob,Grep,Write"'
       # 企画AIが、作業回数の上限（--max-turns 30）に届いて、結果（plan-result.txt）を書く前に終わったか。
       # コードの多いリポジトリでは、読むだけで上限に届くことがある。同じ上限でやり直しても同じ所で止まるので、
@@ -237,6 +238,7 @@ jobs:
             - 仕様書と食い違うときは、背景に「docs/○○ の△△と違う」と書く
             - 見た目や挙動を新しく決める・変える作業なら、「やること」の最初に「`docs/spec.md`・`docs/design.md` に○○を書く（そのあと実装する）」を入れる。既存のルールの延長で決められる小さい見た目は「仮定」に書く。画面の方向が変わる・新しい画面を作るなど、見た目の大きい決めがあるときは `ASK` で聞く
             - コードは変更しない。Issueの更新とコメントだけをする
+            - コマンドは1つずつ、許された形のまま動かす（`gh issue view 番号` のように。`; && |`・改行・`cd`・`-q` の長い式を付けると拒否されて手数だけ減る）。ファイルを読むのは Read、探すのは Grep・Glob
             - これは2回目です。前回は、作業回数の上限（30回）に届いて、`plan-result.txt` を書く前に終わりました。今回は50回まで使えますが、次はありません。読む量を絞ってください：仕様書（`docs/spec.md`・`docs/design.md`）は最初から全部は読まず、Grep で見出しを探して、関係する節だけを Read で読む。コードも、関係するファイルだけを読む。清書が書けたら、ほかを調べる前に `plan-result.txt` まで書き切る
             - 前回の途中の結果が残っているかもしれません。Issue の本文がもう清書の形（「### 背景」「### やること」…）なら、最初から書き直さず、足りない所だけ直す。残りの作業の Issue をもう作っていないか、`gh issue list --state open` で確かめ、同じ物をもう一度作らない。質問や順番待ちの理由のコメントがもう書いてあれば、同じコメントをもう一度書かない
           claude_args: '--model sonnet --max-turns 50 --allowedTools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh pr list:*),Bash(gh pr diff:*),Read,Glob,Grep,Write"'
