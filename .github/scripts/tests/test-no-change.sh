@@ -7,7 +7,7 @@ setup_mock
 classify() { # 1: AIの返事 2: ほかの文 3: 拒否された操作
   local f="$MOCK_DIR/ai.txt"
   printf '%s' "$1" > "$f"
-  bash -c "source '$SCRIPTS_DIR/pipeline-lib.sh'; classify_no_change \"\$1\" \"\$2\" < '$f'" _ "${2:-}" "${3:-}" 2>&1
+  bash -c "source '$SCRIPTS_DIR/pipeline-lib.sh'; classify_no_change \"\$1\" \"\$2\" \"\$3\" < '$f'" _ "${2:-}" "${3:-}" "${4:-}" 2>&1
 }
 
 echo "== classify_no_change：理由を1語に分ける"
@@ -25,6 +25,8 @@ assert_eq "英語の言い方" "disagree" "$(classify 'This is a false positive.
 assert_eq "前回の対応で直し済み" "disagree" "$(classify '指摘はPRの説明の不足だけで、前回の対応で直し済みでした。今回はコードを変えていないので、pushするコミットはありません。')"
 assert_eq "すでに書かれている" "disagree" "$(classify 'Closes や受け入れ条件は、すでに書かれています。')"
 assert_eq "英語：already fixed" "disagree" "$(classify 'This was already fixed in the previous commit.')"
+assert_eq "ワークフローの指摘が残っている（AIの返事が「直せない」だけでも）" "workflow" "$(classify '.github/workflows/ci.yml は直せませんでした。' '' '' 1)"
+assert_eq "ワークフローの指摘が無ければ unknown のまま" "unknown" "$(classify '直せませんでした。' '' '' '')"
 assert_eq "直せなかった、は誤りに数えない" "unknown" "$(classify 'テストが通らず、直せませんでした。')"
 assert_eq "分類できない" "unknown" "$(classify 'うまくいきませんでした。')"
 assert_eq "空" "unknown" "$(classify '')"
@@ -112,6 +114,16 @@ setup_case '基準の画像が古いので撮り直してください。'
 out=$(run_after)
 assert_contains "visual になる" "$out" "理由：visual"
 assert_contains "visual:update を付ける" "$(labels_of 58)" "visual:update"
+
+echo "== 変更なしで終わり、ワークフローの指摘が残っている：理由は unknown ではなく「ワークフローの指摘が残っている」"
+setup_case '直せませんでした。'
+state_py "
+s['comments'].append({'id':52,'issue':'58','body':'## Code review\n\n- \`.github/workflows/ci.yml\` の権限','user':{'login':'github-actions[bot]'},'created_at':'$(ago 0)','updated_at':'$(ago 0)'})"
+out=$(run_after)
+assert_contains "分類を出す" "$out" "理由：workflow"
+assert_contains "ai:stuck" "$(labels_of 58)" "ai:stuck"
+assert_contains "理由の文" "$(comments_of 58)" "ワークフローの指摘が残っています"
+assert_contains "指摘の場所" "$(comments_of 58)" ".github/workflows/ci.yml"
 
 echo "== 分類できない：今までどおり人間に回す"
 setup_case 'うまくいきませんでした。'

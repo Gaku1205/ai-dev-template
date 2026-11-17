@@ -1160,19 +1160,52 @@ DISAGREE_HINT_RE='指摘は.{0,40}(誤り|間違|当たら|該当しな|不要)|
 # shellcheck disable=SC2034  # after-mention.sh で使う
 PERM_RETRY_MARK="<!-- auto-perm-retry -->"
 
+# レビューの指摘が指す場所の判定（AIは .github/workflows/・.github/actions/ を push できないので、そこだけの指摘は修正AIに頼まない）
+# 標準入力の文から、ファイルのパスらしい語（/ を含む語）を1行ずつ出す。URLの一部なども拾うが、
+# 拾いすぎると「アプリのファイルが混ざっている」側になり、今までどおり修正AIに頼むので安全
+review_paths_from_text() {
+  { grep -oE '[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)+' || true; } | sed -E 's/\.+$//' | awk 'NF' | sort -u
+}
+
+# 標準入力のパス（1行に1つ）が、ワークフローの所だけか：
+#   workflow  全部 .github/workflows/・.github/actions/ の中（1つ以上）
+#   mixed     ワークフローの所と、そのほかが混ざっている
+#   other     ワークフローの所が無い（パスが無い場合も）→ 今までどおり修正AIに頼む
+review_paths_kind() {
+  local wf=0 other=0 p
+  while IFS= read -r p; do
+    [ -z "$p" ] && continue
+    case "$p" in
+      .github/workflows/* | .github/actions/*) wf=$((wf + 1)) ;;
+      *) other=$((other + 1)) ;;
+    esac
+  done
+  if [ "$wf" -gt 0 ] && [ "$other" -eq 0 ]; then
+    echo workflow
+  elif [ "$wf" -gt 0 ]; then
+    echo mixed
+  else
+    echo other
+  fi
+}
+
 # 修正AIが変更なしで終わった理由を、1語で出す。標準入力：AIの返事（この依頼のあとの claude[bot] のコメント）
 #   引数1：撮り直しの依頼を探すほかの文（この先頭コミットへのレビューの指摘。PRの説明は渡さない）
 #   引数2：実行記録で拒否された操作（denied_tools の出力。無ければ空）
+#   引数3：レビューの指摘がワークフローの所を指す物を含むなら 1（review_paths_kind が workflow か mixed）
 # 出力（上から順に見る。撮り直しは、それだけで先へ進めるので先に見る）：
 #   visual      人間のラベル作業が要る（基準の画像の撮り直し）
+#   workflow    ワークフローの指摘が残っている（AIは直せない。AIの返事が「直せない」だけでもこちらを優先）
 #   permission  ツールの許可が拒否された
 #   disagree    指摘が間違いと返して直さなかった
 #   unknown     分類できない
 classify_no_change() {
-  local ai other="${1:-}" denied="${2:-}"
+  local ai other="${1:-}" denied="${2:-}" wf="${3:-}"
   ai=$(cat)
   if printf '%s\n%s\n' "$ai" "$other" | grep -qiE "$VISUAL_HINT_RE"; then
     echo visual
+  elif [ "$wf" = 1 ]; then
+    echo workflow
   elif [ -n "$(printf '%s\n' "$denied" | awk 'NF')" ] || [ -n "$(printf '%s' "$ai" | permission_hints_from_text)" ]; then
     echo permission
   elif printf '%s\n' "$ai" | grep -qiE "$DISAGREE_HINT_RE"; then
