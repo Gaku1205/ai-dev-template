@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 工場：ai-dev-template に書いた1行のIssue（「新サービス：〜」）から、新しいサービスのリポジトリを作って、パイプラインに渡す。
 # factory.yml の build ジョブから呼ぶ（AIが決めた名前と言語は、ここで形を確かめてから使う）。
-#   1. テンプレートからリポジトリを作る（同じ名前があれば -2, -3 … を付ける）
+#   1. テンプレートからリポジトリを作る（同じ名前があれば -2, -3 … を付ける。同じ Issue の前の実行が残した作りかけなら、続きから作る）
 #   2. パイプラインの秘密と変数を、テンプレートの物から写す
 #   3. Vercel のプロジェクトを作ってつなぐ（Next.js か Web のゲームで、VERCEL_TOKEN があるとき）
 #   4. 中身を整えて main に push する（CLAUDE.md・仕様書の説明、デザイン担当が作った画面とデザイン仕様と道具、Python なら見本に切り替え）。この push で Bootstrap が動く
@@ -37,6 +37,7 @@ COPY_VARS="PIPELINE_APP_ID NOTIFY_EVENTS AGENT_DESK_URL VERCEL_TEAM_ID"
 report=()
 gallery=""
 NEW=""        # 作ったリポジトリ（owner/repo）。作る前は空
+marked=no     # 作ったリポジトリに、この Issue の印（変数 FACTORY_ISSUE）を付けられたら yes（やり直したとき、続きから作れる）
 pushed=no     # 最初の準備を main に push できたら yes（ここまで来ていれば、リポジトリは使える）
 said=no       # 結果のコメントを書いたら yes
 work=""
@@ -47,7 +48,9 @@ leftover() {
   if [ "$pushed" = yes ]; then
     note "🧹 リポジトリ https://github.com/$NEW は、中身まで入っています。作り直さなくて大丈夫です。上の ❌ の所だけ、手で続きをしてください（最初のIssueが無ければ、そのリポジトリにIssueを1つ書くと、そこから進みます）"
   else
-    note "🧹 作りかけのリポジトリが残っています：https://github.com/$NEW（中身はテンプレートのまま。秘密と変数は写してある）。要らなければ消してください（そのリポジトリの Settings → 一番下の Delete this repository。Vercel や Supabase のプロジェクトを作っていれば、それも）。消さずにもう一度作ると、名前の後ろに -2 が付いた別のリポジトリになります"
+    local again="消さずにもう一度作ると、名前の後ろに -2 が付いた別のリポジトリになります"
+    [ "$marked" = yes ] && [ "$APP_STACK" != saas ] && again="消さずに、この Issue でもう一度作る（Actions の Factory の実行を Re-run する）と、このリポジトリの続きから作ります（別の Issue から作ると、名前の後ろに -2 が付いた別のリポジトリになります）"
+    note "🧹 作りかけのリポジトリが残っています：https://github.com/$NEW（中身はテンプレートのまま。秘密と変数は写してある）。要らなければ消してください（そのリポジトリの Settings → 一番下の Delete this repository。Vercel や Supabase のプロジェクトを作っていれば、それも）。${again}"
   fi
 }
 fail() {
@@ -95,17 +98,41 @@ valid_plan() {
 why=$(valid_plan) || fail "AIが決めた名前・言語・説明の形が正しくありません：$why"
 
 # ---- 1. リポジトリを作る ----
+# 前の実行が途中で止まって残した、作りかけのリポジトリか（同じ Issue でやり直したとき、-2 の別のリポジトリを増やさず、続きから作る）。
+# 続きから作るのは、次の全部が確かなときだけ（1つでも違えば、今までどおり別の名前で作る。人のリポジトリ・もう中身のある物には触らない）：
+#   - この工場が、この Issue のために作った印（変数 FACTORY_ISSUE＝テンプレート#Issueの番号。作った直後に付ける。変数はリポジトリの管理者しか書けない）
+#   - main の CLAUDE.md が、まだテンプレートのまま（説明の置き場が残っている＝最初の準備を push していない）
+#   - saas ではない（Supabase・Stripe の物を二重に作らないため）
+is_my_leftover() { # リポジトリの名前（owner/repo）
+  local mark claude
+  [ "$APP_STACK" != saas ] || return 1
+  mark=$(gh api "repos/$1/actions/variables/FACTORY_ISSUE" -q '.value // empty' 2> /dev/null) || return 1
+  [ "$mark" = "$TEMPLATE#$ISSUE" ] || return 1
+  claude=$(gh api "repos/$1/contents/CLAUDE.md" -H "Accept: application/vnd.github.raw" 2> /dev/null) || return 1
+  case "$claude" in *"（アプリの説明を1〜2行で書く）。"*) return 0 ;; esac
+  return 1
+}
 name="$APP_NAME"
-for i in 2 3 4 5 6 7 8 9; do
+resume=no
+for i in 2 3 4 5 6 7 8 9 10; do
   gh api "repos/$OWNER/$name" > /dev/null 2>&1 || break
+  if is_my_leftover "$OWNER/$name"; then resume=yes; break; fi
+  [ "$i" = 10 ] && fail "同じ名前のリポジトリがもうあります（$OWNER/$APP_NAME から -9 まで）"
   name="${APP_NAME}-$i"
 done
-gh api "repos/$OWNER/$name" > /dev/null 2>&1 && fail "同じ名前のリポジトリがもうあります（$OWNER/$APP_NAME から -9 まで）"
-if ! out=$(gh api -X POST "repos/$TEMPLATE/generate" -f owner="$OWNER" -f name="$name" -f description="$APP_DESC" -F private=false 2>&1); then
-  fail "リポジトリを作れませんでした（$(printf '%s' "$out" | tail -1 | cut -c1-160)）。FACTORY_TOKEN に、全部のリポジトリへの Administration（Read and write）が要ります"
+if [ "$resume" = yes ]; then
+  NEW="$OWNER/$name"
+  marked=yes
+  note "♻️ 前に作りかけたリポジトリの続きから作る：https://github.com/$NEW（この Issue で作った物で、中身はまだテンプレートのまま。${APP_STACK}）"
+else
+  if ! out=$(gh api -X POST "repos/$TEMPLATE/generate" -f owner="$OWNER" -f name="$name" -f description="$APP_DESC" -F private=false 2>&1); then
+    fail "リポジトリを作れませんでした（$(printf '%s' "$out" | tail -1 | cut -c1-160)）。FACTORY_TOKEN に、全部のリポジトリへの Administration（Read and write）が要ります"
+  fi
+  NEW="$OWNER/$name"
+  note "✅ リポジトリを作った：https://github.com/$NEW（${APP_STACK}）"
+  # どの Issue のために作ったかの印。途中で止まってやり直したとき、これで自分の作りかけだと分かる（付けられなくても先へ進む。そのときは今までどおり -2）
+  if gh variable set FACTORY_ISSUE --repo "$NEW" --body "$TEMPLATE#$ISSUE" > /dev/null 2>&1; then marked=yes; fi
 fi
-NEW="$OWNER/$name"
-note "✅ リポジトリを作った：https://github.com/$NEW（${APP_STACK}）"
 ready=no
 for _ in $(seq 1 30); do
   if gh api "repos/$NEW/branches/main" > /dev/null 2>&1; then ready=yes; break; fi
