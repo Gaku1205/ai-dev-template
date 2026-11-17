@@ -91,6 +91,28 @@ setup_case '`npm run lint` が許可されていないため動かせません�
 run_after > /dev/null
 assert_eq "強いモデルの印が2つ（元の依頼とやり直し）" "2" "$(comments_of 58 | grep -c 'auto-fix-model: opus')"
 
+echo "== PRの説明に visual:update があっても、判定には使わない（指摘は誤りと返したとき）"
+setup_case '指摘は誤りです。この関数は既に null を扱っているので、直さずに理由をコメントしました。'
+state_py "s['pulls'][0]['body']='Closes #57\\n\\n見た目を変えた場合は visual:update で撮り直してください'"
+out=$(run_after)
+assert_contains "disagree になる" "$out" "理由：disagree"
+assert_not_contains "visual:update は付けない" "$(labels_of 58)" "visual:update"
+assert_contains "レビューに回す" "$(comments_of 58)" "もう一度レビューに回します"
+
+echo "== PRの説明に visual:update があっても、許可の拒否は permission になる"
+setup_case '確認コマンドを動かせませんでした。'
+state_py "s['pulls'][0]['body']='Closes #57\\n\\nvisual:update'"
+out=$(EXECUTION_FILE="$MOCK_DIR/exec.json" run_after)
+assert_contains "permission になる" "$out" "理由：permission"
+assert_not_contains "visual:update は付けない" "$(labels_of 58)" "visual:update"
+assert_contains "やり直しの印" "$(comments_of 58)" "auto-perm-retry"
+
+echo "== PRの説明に visual:update が無くても、AIの返事に撮り直しの依頼があれば visual"
+setup_case '基準の画像が古いので撮り直してください。'
+out=$(run_after)
+assert_contains "visual になる" "$out" "理由：visual"
+assert_contains "visual:update を付ける" "$(labels_of 58)" "visual:update"
+
 echo "== 分類できない：今までどおり人間に回す"
 setup_case 'うまくいきませんでした。'
 run_after > /dev/null

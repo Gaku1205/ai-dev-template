@@ -65,7 +65,7 @@ for pr in $prs; do
       # 作業回数の上限が続くなら、やり直さず人間に回す（retry_ai_failure）
       retry_ai_failure "$pr" mention "AIに直すよう頼みましたが、AIがエラーで終わりました（ログは、Claude Mention の実行の方を見てください）" "${EXECUTION_FILE:-}"
     else
-      # 変更が入らなかった。AIの返事・レビューの指摘・PRの説明・実行記録から理由を分け（classify_no_change）、
+      # 変更が入らなかった。AIの返事・レビューの指摘・実行記録から理由（PRの説明は見ない。CLAUDE.md の指示で visual:update と書くので、読み違える）を分け（classify_no_change）、
       # 人間の手が要らない物は先へ進める。分類できないときだけ人間に回す
       comments=$(all_comments "$pr")
       since=$(printf '%s' "$last" | jq -r .created_at)
@@ -77,7 +77,6 @@ for pr in $prs; do
         '[.[] | select((.user.login == "claude[bot]" or .user.login == "github-actions[bot]") and (.body | startswith("## Code review")) and .created_at >= $since) | .body] | join("\n")')
       inline_text=$(gh api "repos/$REPO/pulls/$pr/comments?per_page=100" --paginate --slurp 2> /dev/null \
         | jq -r --arg sha "$head" 'add // [] | map(select(.user.login == "claude[bot]" and .original_commit_id == $sha) | .body) | join("\n")') || inline_text=""
-      pr_body=$(gh api "repos/$REPO/pulls/$pr" -q '.body // ""')
       # 拒否された操作：実行記録（EXECUTION_FILE。あれば）と、AIの報告の文から
       denied=$(denied_tools "${EXECUTION_FILE:-}")
       hints=$(printf '%s' "$ai_text" | permission_hints_from_text)
@@ -85,7 +84,7 @@ for pr in $prs; do
       denied_note=""
       [ -n "$denied" ] && denied_note="（この実行で拒否された操作：$(permission_list_short "$(denied_raw "${EXECUTION_FILE:-}")")）"
       failed=$(ci_failed_steps "$head")
-      kind=$(printf '%s' "$ai_text" | classify_no_change "$(printf '%s\n%s\n%s' "$review_text" "$inline_text" "$pr_body")" "$denied")
+      kind=$(printf '%s' "$ai_text" | classify_no_change "$(printf '%s\n%s' "$review_text" "$inline_text")" "$denied")
       # main とのコンフリクトが残っているPRでは、撮り直し（visual-update.yml は pull_request で動く）もCIも、GitHub が動かさない。
       # visual:update を付けても何も起きず、誰も動かなくなる。撮り直しにはせず、コンフリクトの解消を先にさせる：
       # 拒否された操作があれば、それを手がかりに1回だけ出し直す（permission）。無ければ、理由を書いて人間に回す（conflict）
@@ -106,7 +105,7 @@ for pr in $prs; do
           elif [ "$updated" -ge 2 ]; then
             stop_for_human "$pr" "基準の画像を${updated}回撮り直しても、まだ「基準の画像の撮り直し」を頼まれています（撮り直しは、main を取り込んだ後で2回まで）。見た目の差が意図した物か確かめてください${denied_note}"
           else
-            comment "$pr" "修正AIは変更を入れずに終わりましたが、AIの返事・レビューの指摘・PRの説明に「基準の画像の撮り直し」の依頼があるので、基準の画像をCIの環境で撮り直します（自動、$((updated + 1))/2回目）。撮り直しのコミットが入ると、CIとレビューを最初からやり直します。${denied_note}
+            comment "$pr" "修正AIは変更を入れずに終わりましたが、AIの返事・レビューの指摘に「基準の画像の撮り直し」の依頼があるので、基準の画像をCIの環境で撮り直します（自動、$((updated + 1))/2回目）。撮り直しのコミットが入ると、CIとレビューを最初からやり直します。${denied_note}
 
 ${VISUAL_MARK}"
             add_label "$pr" "visual:update"
