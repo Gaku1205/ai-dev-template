@@ -74,6 +74,38 @@ for case in \
   assert_not_contains "印も付かない" "$(comments_of 58)" "auto-nudge"
 done
 
+new_commits() { python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print(len(s.get('ref_updates',[])))"; }
+
+echo "== 先頭コミットにCIの実行が0件（イベントの取りこぼし）：空のコミットでCIを動かし、印を残す"
+init_state '{"labels":{"58":[]},"pulls":['"$(pr_of 58 claude/issue-5-x 60)"'],"runs":[]}'
+out=$(run_script watchdog.sh)
+assert_eq "ブランチを更新（空のコミット）" "1" "$(new_commits)"
+assert_contains "印を残す" "$(comments_of 58)" "auto-nudge: newcommit"
+assert_not_contains "人間には回さない" "$(labels_of 58)" "ai:stuck"
+assert_contains "ログに出す" "$out" "CIの実行が0件"
+
+echo "== 空のコミットを足したのに、まだ0件：人間に回す（2回目は動かさない）"
+init_state '{"labels":{"58":[]},"pulls":['"$(pr_of 58 claude/issue-5-x 60)"'],"runs":[],
+  "comments":[{"id":950,"issue":"58","user":{"login":"pipeline[bot]"},"created_at":"'"$(ago 60)"'","updated_at":"'"$(ago 60)"'","body":"🔧 動かします\n\n<!-- auto-nudge: abc123 -->"}]}'
+run_script watchdog.sh > /dev/null
+assert_contains "人間に回す" "$(labels_of 58)" "ai:stuck"
+assert_eq "もう空のコミットは足さない" "0" "$(new_commits)"
+
+echo "== 0件でも、早い・コンフリクト中・fork・下書き・配布・ai:retry・visual:update：動かさない"
+for case in \
+  '{"labels":{"58":[]},"pulls":['"$(pr_of 58 claude/issue-5-x 20)"'],"runs":[]}' \
+  '{"labels":{"58":[]},"pulls":['"$(pr_of 58 claude/issue-5-x 60 | sed 's/"mergeable_state":"clean"/"mergeable_state":"dirty"/')"'],"runs":[]}' \
+  '{"labels":{"58":[]},"pulls":['"$(pr_of 58 claude/issue-5-x 60 '"draft":true')"'],"runs":[]}' \
+  '{"labels":{"58":[]},"pulls":['"$(pr_of 58 pipeline-sync/abc 60)"'],"runs":[]}' \
+  '{"labels":{"58":[]},"pulls":['"$(pr_of 58 feature-x 60 | sed 's#"full_name":"o/r"#"full_name":"stranger/r"#')"'],"runs":[]}' \
+  '{"labels":{"58":["ai:retry"]},"pulls":['"$(pr_of 58 claude/issue-5-x 60)"'],"runs":[]}' \
+  '{"labels":{"58":["visual:update"]},"pulls":['"$(pr_of 58 claude/issue-5-x 60)"'],"runs":[]}'; do
+  init_state "$case"
+  run_script watchdog.sh > /dev/null
+  assert_eq "空のコミットを足さない（$(printf '%s' "$case" | cut -c1-60)…）" "0" "$(new_commits)"
+  assert_not_contains "CIの印は付かない" "$(comments_of 58)" "CIの実行が1件も無い"
+done
+
 echo "== マージ待ち（ai:hold で、レビューまで済んでいる）は、人間が押すのを待つ。レビューがまだなら動かす"
 init_state '{"labels":{"58":["ai:hold","ai:review"]},"pulls":['"$(pr_of 58 claude/issue-5-x 600)"'],"runs":['"$(ci success)"'],
   "comments":[{"id":902,"issue":"58","user":{"login":"github-actions[bot]"},"created_at":"'"$(ago 600)"'","updated_at":"'"$(ago 600)"'","body":"## Code review\n\nNo issues found."}]}'

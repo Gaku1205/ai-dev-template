@@ -400,11 +400,33 @@ ${nudge_mark}"
           ;;
       esac
       continue
+    elif [ -z "$ci" ] && [ "$(pr_merge_state "$pr")" != dirty ]; then
+      # CIの実行が1件も無い（イベントの取りこぼしなど）：レビューが通っても after-review.sh は「CIがまだ」で終わり、印も通知も無く止まる。
+      # 空のコミットを足してCIを動かす。同じ先頭コミットには1回だけ。印があるのにまだ0件なら人間に回す
+      # （コンフリクト中は 3.2 が扱う。待つ理由のある ai:hold でマージ待ちのPRは、CIの実行がある前提なのでここでは区別しない）
+      nudge_mark="<!-- auto-nudge: ${head} -->"
+      if all_comments "$pr" | jq -e --arg mk "$nudge_mark" 'any(.[]; .body | contains($mk))' > /dev/null; then
+        stop_for_human "$pr" "このPRの先頭コミットにはCIの実行が1件もありません。見張り役が空のコミットで1回CIを動かしても、${m}分のあいだ動きませんでした（Actions の CI と、リポジトリのActionsの設定を確かめてください）"
+        continue
+      fi
+      if tree=$(gh api "repos/$REPO/git/commits/$head" -q .tree.sha 2> /dev/null) &&
+        new=$(gh api "repos/$REPO/git/commits" -f message="CIを動かす（先頭コミットにCIの実行が無かったため）" \
+          -f tree="$tree" -f "parents[]=$head" -q .sha 2> /dev/null) &&
+        gh api -X PATCH "repos/$REPO/git/refs/heads/$ref" -f sha="$new" > /dev/null 2>&1; then
+        # 印は、足した空のコミット（これが新しい先頭）に付ける。そのコミットにもCIの実行が無ければ、次の見張りで人間に回す
+        comment "$pr" "🔧 先頭コミットにCIの実行が1件も無いまま${m}分たったので、空のコミットを足してCIを動かします（見張り役）。
+
+<!-- auto-nudge: ${new} -->"
+        echo "PR #$pr：CIの実行が0件なので、空のコミット $new でCIを動かします"
+      else
+        stop_for_human "$pr" "先頭コミットにCIの実行が1件も無いまま${m}分たち、空のコミットでCIを動かすこともできませんでした（Actions の設定と、ブランチの保護を確かめてください）"
+      fi
+      continue
     fi
   fi
 done
 
-# ---- 3.5 ラベルが無いまま放置されたIssueを、企画に回す（受付 intake.yml が動かなかったとき・ai:skip を外したとき） ----
+# ---- 3.5ラベルが無いまま放置されたIssueを、企画に回す（受付 intake.yml が動かなかったとき・ai:skip を外したとき） ----
 # 一覧にラベルと更新時刻があるので、ai: のラベルが無く、時間がたった物だけを詳しく見る（Issue ごとに API を呼ばない。回数制限のため）
 intake_before=$(date -u -d "${IDLE_INTAKE_MIN:-10} minutes ago" +%Y-%m-%dT%H:%M:%SZ)
 # 開いている Issue・PR の一覧は、ここで1回だけ読んで、下の 3.9（ラベルの矛盾）でも使う（同じ一覧を2回読まない）
