@@ -62,6 +62,8 @@ jobs:
         with:
           app-id: ${{ vars.PIPELINE_APP_ID }}
           private-key: ${{ steps.app-key.outputs.pem }}
+          # 配り先のCIが落ちたとき、テンプレートにまとめの Issue を作る（sync-failure-report.sh。#129）。鍵をオーナーの全部のリポジトリに使えるようにする（sync.yml と同じ）
+          owner: ${{ github.repository_owner }}
       - uses: actions/checkout@v6
       # 進捗ログ：CIの所要時間と結果（モデルは使わないので null）。ワークフローのトークンで書く（オーナーの名義のコメントにしない）
       - name: 進捗ログ（CI）
