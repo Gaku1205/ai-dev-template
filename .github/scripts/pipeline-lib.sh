@@ -175,7 +175,8 @@ defer_close_for_human_request() {
   [ -z "$issue" ] && issue=$(linked_issue "$pr")
   [ -z "$issue" ] && return 0
   if printf '%s' "$body" | grep -qiE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+'; then
-    new_body=$(printf '%s' "$body" | sed -E 's/\b(close[sd]?|fix(e[sd])?|resolve[sd]?) #([0-9]+)/Refs #\4/gI')
+    new_body=$(printf '%s' "$body" | sed -E 's/\b(close[sd]?|fix(e[sd])?|resolve[sd]?) #([0-9]+)/Refs #\3/gI') || return 0
+    [ -n "$new_body" ] || return 0
     gh api -X PATCH "repos/$REPO/pulls/$pr" -f body="$new_body" > /dev/null || return 0
   fi
   mark="<!-- human-request-pr: #${pr} -->"
