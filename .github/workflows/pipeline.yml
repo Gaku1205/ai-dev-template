@@ -27,7 +27,8 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: read
-      actions: read
+      # CIが落ちたとき、同じコミットに CI と同時に動いているレビューAIを取り消す（after-ci.sh の cancel_running_review。#119）
+      actions: write
       # 進捗ログ（Issue のコメント）を書く・PRから Issue を引く
       issues: write
       pull-requests: read

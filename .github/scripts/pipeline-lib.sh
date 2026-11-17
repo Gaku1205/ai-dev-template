@@ -990,3 +990,44 @@ rerun_ci_if_waiting_approval() {
   gh api -X PATCH "repos/$REPO/git/refs/heads/$branch" -f sha="$new" > /dev/null
   echo "PR #$pr：$new を足しました"
 }
+
+# ---- レビューAIを CI と同時に動かす（#119） ----
+# PRができた・AIが直して push した時点で、CIの結果を待たずにレビューAIを始める（CIの中央値 2.8分を待たない）。
+# CIとレビューのどちらが後に終わっても、後の方（after-ci.sh・after-review.sh）がマージへ進める。
+# 2つは同じ concurrency（pipeline-<ブランチ>）で順に動くので、二重にマージしない。
+
+# いまの先頭コミットへのレビューの状態：done（結果のコメントがある・レビューAIが動けないと知らせてある）／running（動いている）／none
+review_state() { # PR番号 先頭コミット
+  local pr="$1" sha="$2" head_date runs
+  head_date=$(gh api "repos/$REPO/commits/$sha" -q .commit.committer.date)
+  if all_comments "$pr" | jq -e --arg since "$head_date" --arg mk "$REVIEW_UNAVAILABLE_MARK $sha" \
+    'any(.[]; ((.user.login == "claude[bot]" or .user.login == "github-actions[bot]") and (.body | startswith("## Code review")) and .created_at >= $since) or (.body | contains($mk)))' > /dev/null; then
+    echo "done"
+    return
+  fi
+  runs=$(read_api "repos/$REPO/actions/workflows/claude-review.yml/runs?head_sha=$sha&per_page=20" \
+    -q '[.workflow_runs[] | select(.status != "completed")] | length') || runs=0
+  if [ "${runs:-0}" -gt 0 ]; then echo running; else echo none; fi
+}
+
+# CIが落ちたとき、同じ先頭コミットに動いているレビューAIを取り消す（直したあとに、CIとレビューがもう一度動く）。
+# 取り消しには actions: write の鍵が要る（ワークフローの鍵 READ_TOKEN。after-ci のジョブが渡す）。取り消せなくても止めない
+cancel_running_review() { # PR番号 先頭コミット
+  local pr="$1" sha="$2" id n=0
+  for id in $(read_api "repos/$REPO/actions/workflows/claude-review.yml/runs?head_sha=$sha&per_page=20" \
+    -q '.workflow_runs[] | select(.status != "completed") | .id'); do
+    if GH_TOKEN="${READ_TOKEN:-${GH_TOKEN:-}}" gh api -X POST "repos/$REPO/actions/runs/$id/cancel" > /dev/null 2>&1; then
+      n=$((n + 1))
+    fi
+  done
+  # 結果を待つ印を外す（見張り役が「レビューの結果が出ない」と数えないように）
+  remove_label "$pr" "ai:review" 2> /dev/null || true
+  [ "$n" -gt 0 ] && echo "PR #$pr：CIが落ちたので、動いていたレビューAIを取り消しました（${n} 件）"
+  return 0
+}
+
+# この先頭コミットに、もう直すよう頼んであるか（CIとレビューの両方が同じコミットに頼んで、修正AIが2つ同時に動かないように）
+fix_requested_for() { # PR番号 先頭コミット
+  all_comments "$1" | jq -e --arg mark "$AUTO_FIX_MARK" --arg sha "<!-- auto-fix-sha: $2 -->" \
+    'any(.[]; (.body | contains($mark)) and (.body | contains($sha)))' > /dev/null
+}
