@@ -63,4 +63,12 @@ out=$(CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-1-x READ_TOKEN=x 
 assert_contains "CIを待つ" "$out" "after-ci.sh が、このレビューの結果でマージへ進めます"
 assert_eq "マージしない" "[]" "$(mstate merged)"
 
+echo "== CIが通った・レビューの「直して」が先に出ている・main が進んでいる → 取り込まず、二重に頼まない"
+state "{\"comments\":[$fixed_by_review],\"checks\":$ci_ok,\"ahead_by\":2}"
+out=$(ci success)
+assert_contains "直した push を待つ" "$out" "直した push を待ちます"
+assert_not_contains "取り込まない" "$out" "取り込みました"
+assert_eq "直す依頼は1つのまま" "1" "$(comments_of 58 | grep -c 'auto-fix-sha: abc')"
+assert_eq "マージしない" "[]" "$(mstate merged)"
+
 finish

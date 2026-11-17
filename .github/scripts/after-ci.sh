@@ -68,6 +68,11 @@ esac
 
 case "$CONCLUSION" in
   success)
+    # レビューの指摘で、もうこのコミットに直すよう頼んであれば、main を取り込まない（修正AIの作業中のブランチを動かさない。直した push のあとに CI がもう一度走り、そのときに取り込む）
+    if fix_requested_for "$pr" "$HEAD_SHA"; then
+      echo "PR #$pr：CIが通りましたが、このコミットにはもう直すよう頼んであるので、直した push を待ちます"
+      exit 0
+    fi
     # main が先に進んでいたら、先にPRのブランチへ取り込む（取り込むとCIがもう一度走り、通ったらここに戻ってくる）。
     # レビューAIのワークフローは、PRのブランチの版が main と同じでないと動かないので、これが要る
     behind=$(gh api "repos/$REPO/compare/$HEAD_SHA...main" -q .ahead_by)
