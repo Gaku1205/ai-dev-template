@@ -394,7 +394,7 @@ ${text}
 # 企画AIが本文に書く「触るファイル」の印：<!-- ai-touches: src/lib/a.ts, src/components/ --> （/ で終わる物はフォルダ）
 TOUCHES_MARK_RE='<!-- ai-touches: ([^>]*) -->'
 # 同時に動かす実装の上限（after-plan.sh と同じ）
-MAX_PARALLEL="${MAX_PARALLEL:-2}"
+MAX_PARALLEL="${MAX_PARALLEL:-3}"
 # 画面のファイル：見た目のテストがあるリポジトリでは、ここを触る物どうしは基準の画像がぶつかるので、1つずつにする
 SCREEN_PATHS_RE='^(src/)?(app|components|styles|pages)/'
 
