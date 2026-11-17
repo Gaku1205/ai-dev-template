@@ -143,6 +143,8 @@ created=$(gh api "repos/$REPO/pulls" -f title="$ISSUE_TITLE" -f head="$branch" -
 echo "PRを作りました：$created"
 # CIを待たずに、レビューAIも同時に始める（#119。CIが通ったら、先に出たレビューの結果でマージへ進む）
 request_review "${created##*/}" || true
+# 「人間にお願いしたいこと」の節があれば、マージしてもIssueを閉じないようにする
+defer_close_for_human_request "${created##*/}" || true
 remove_label "$ISSUE" "ai:retry"
 
 if [ "$AI_OUTCOME" != "success" ]; then

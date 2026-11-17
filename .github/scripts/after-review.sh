@@ -25,6 +25,8 @@ if has_label_or_unreadable "$pr" "ai:stuck"; then
   echo "人間の確認待ち（ai:stuck）か、ラベルを読めないので、何もしません"
   exit 0
 fi
+# 「人間にお願いしたいこと」の節があれば、マージ（自動でも人間でも）の前に Closes を Refs に直す（修正AIが本文を書き換えた場合も拾う）
+defer_close_for_human_request "$pr" || true
 
 if [ "$CONCLUSION" != "success" ]; then
   # レビューAIが結果のコメント（「## Code review」）を書いたあとにエラーで終わることがある（後片付けの失敗など）。
