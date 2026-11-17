@@ -12,7 +12,7 @@
 #           PLAN_TURNS_RAISED（true：作業回数の上限に届いたので、ワークフローが上限を増やしてもう1回動かした）
 source "$(dirname "$0")/pipeline-lib.sh"
 # 同時に実装してよい数（使用量を増やしすぎないため）
-MAX_PARALLEL="${MAX_PARALLEL:-2}"
+MAX_PARALLEL="${MAX_PARALLEL:-3}"
 
 # 作業中に Issue が閉じられた（人間が別のPRで片付けた・やめた）ときは、続きを進めない（ラベルも Issue も作らない）。
 # 閉じた Issue の企画の結果で実装が始まり、同じ作業のPRがもう1つできたことがある（ai-dev-template #71・#84）
