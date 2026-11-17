@@ -19,23 +19,27 @@ hold_state 30 '["ai:hold"]'
 next > /dev/null
 assert_eq "#3 は待つ" "ai:queue" "$(labels_of 3)"
 assert_contains "PRに目印（待つ Issue の番号）" "$(comments_of 20)" "このPRをマージすると #3 が動き出します"
-assert_contains "目印は1行目" "$(comments_of 20 | grep -F 'ai-hold-blocking' | head -1)" "<!-- ai-hold-blocking -->"
+assert_contains "目印は1行目" "$(comments_of 20 | grep -F 'hold-blocking' | head -1)" "<!-- hold-blocking: #3 -->"
 next > /dev/null
 assert_eq "目印は1つだけ" "1" "$(comments_of 20 | grep -c '動き出します')"
 assert_not_contains "外したコメントは付かない" "$(comments_of 20)" "待たずに"
 
-echo "== 待つ Issue が変わったら、目印を書き換える（コメントは増えない）"
+echo "== 待つ Issue が増えたら、番号を全部入れて書き換える（コメントは増えない）"
 state_py "s['labels']['2']=['ai:queue']; s['issues_meta']['2']={'title':'a','body':'本文\n<!-- ai-touches: src/lib/a.ts -->'}"
 next > /dev/null
-assert_contains "番号が #2 に変わる" "$(comments_of 20)" "このPRをマージすると #2 が動き出します"
-assert_eq "コメントは1つのまま" "1" "$(comments_of 20 | grep -c 'ai-hold-blocking -->')"
+assert_contains "印に両方の番号" "$(comments_of 20)" "<!-- hold-blocking: #2,#3 -->"
+assert_eq "コメントは1つのまま" "1" "$(comments_of 20 | grep -c 'hold-blocking:')"
 
-echo "== 60分を過ぎた：そのPRを外して始める。外したコメントは1回だけ"
-hold_state 90 '["ai:hold"]'
+echo "== 60分を過ぎた：そのPRを外して始める。外したコメントは1回だけ。古い目印は「止めていません」になる"
+hold_state 30 '["ai:hold"]'
+next > /dev/null
+state_py "s['events']['20'][0]['created_at']='$(ago 90)'"
 next > /dev/null
 assert_contains "#3 が実装へ" "$(labels_of 3)" "ai:implement"
 assert_contains "外したコメント" "$(comments_of 20)" "人間のマージ待ちが長いので、このPRを待たずに #3 を始めます"
-assert_not_contains "止めている目印は付かない" "$(comments_of 20)" "動き出します"
+assert_contains "外した印" "$(comments_of 20)" "<!-- hold-released: #3 -->"
+assert_not_contains "止めている目印は残らない" "$(comments_of 20)" "動き出します"
+assert_contains "目印は書き換わる" "$(comments_of 20)" "<!-- hold-blocking: -->"
 state_py "s['labels']['3']=['ai:queue']"
 next > /dev/null
 assert_eq "二度目は付かない" "1" "$(comments_of 20 | grep -c '待たずに')"
