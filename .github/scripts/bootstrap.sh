@@ -23,6 +23,19 @@ strip_self_edit() {
   rm -f "$tmp"
 }
 
+# 配り先の一覧（.github/sync-targets）の中身を空にする（コメント行と空行は残す）。
+# 作者の配り先（Gaku1205/agent-desk など）が、写しにも付いてくるため
+clear_sync_targets() {
+  local file="$1" tmp
+  [ -f "$file" ] || return 0
+  tmp="$(mktemp)"
+  awk '/^[[:space:]]*#/ || NF == 0 { print }' "$file" > "$tmp"
+  cat "$tmp" > "$file"
+  rm -f "$tmp"
+}
+
+is_template_repo() { [ "$(gh api "repos/$REPO" --jq '.is_template' 2> /dev/null)" = true ]; }
+
 has_label() { gh api "repos/$REPO/labels?per_page=100" --paginate --jq '.[].name' | grep -qxF "ai:plan"; }
 
 main() {
@@ -40,6 +53,12 @@ main() {
     strip_self_edit CLAUDE.md
     echo "- ✅ CLAUDE.md から「ai-dev-template 自身の作業」の節を消した"
     echo "CHANGED_CLAUDE_MD=1" >> "${GITHUB_ENV:-/dev/null}"
+  fi
+  # テンプレート本体ではない所だけ：作者の配り先を残さない
+  if [ -f .github/sync-targets ] && ! is_template_repo && grep -qE '^[[:space:]]*[^#[:space:]]' .github/sync-targets; then
+    clear_sync_targets .github/sync-targets
+    echo "- ✅ .github/sync-targets の配り先を空にした（作者の配り先を、この写しから配らないため）"
+    echo "CHANGED_SYNC_TARGETS=1" >> "${GITHUB_ENV:-/dev/null}"
   fi
   echo
   REPO="$REPO" "$HERE/doctor.sh" || true
