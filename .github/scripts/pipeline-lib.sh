@@ -996,18 +996,24 @@ rerun_ci_if_waiting_approval() {
 # CIとレビューのどちらが後に終わっても、後の方（after-ci.sh・after-review.sh）がマージへ進める。
 # 2つは同じ concurrency（pipeline-<ブランチ>）で順に動くので、二重にマージしない。
 
-# いまの先頭コミットへのレビューの状態：done（結果のコメントがある・レビューAIが動けないと知らせてある）／running（動いている）／none
+# いまの先頭コミットへのレビューの状態：running（動いている）／done（結果のコメントがある・レビューAIが動けないと知らせてある）／none
+# 動いているかを先に見る。同じコミットを2回目にレビューしている間（after-mention の disagree など）に、
+# 前の回の結果のコメントで done としないように（レビューは PR ごとに1つだけ動くので、動いている物がいちばん新しい）
 review_state() { # PR番号 先頭コミット
   local pr="$1" sha="$2" head_date runs
+  runs=$(read_api "repos/$REPO/actions/workflows/claude-review.yml/runs?head_sha=$sha&per_page=20" \
+    -q '[.workflow_runs[] | select(.status != "completed")] | length') || runs=0
+  if [ "${runs:-0}" -gt 0 ]; then
+    echo running
+    return
+  fi
   head_date=$(gh api "repos/$REPO/commits/$sha" -q .commit.committer.date)
   if all_comments "$pr" | jq -e --arg since "$head_date" --arg mk "$REVIEW_UNAVAILABLE_MARK $sha" \
     'any(.[]; ((.user.login == "claude[bot]" or .user.login == "github-actions[bot]") and (.body | startswith("## Code review")) and .created_at >= $since) or (.body | contains($mk)))' > /dev/null; then
     echo "done"
-    return
+  else
+    echo none
   fi
-  runs=$(read_api "repos/$REPO/actions/workflows/claude-review.yml/runs?head_sha=$sha&per_page=20" \
-    -q '[.workflow_runs[] | select(.status != "completed")] | length') || runs=0
-  if [ "${runs:-0}" -gt 0 ]; then echo running; else echo none; fi
 }
 
 # CIが落ちたとき、同じ先頭コミットに動いているレビューAIを取り消す（直したあとに、CIとレビューがもう一度動く）。

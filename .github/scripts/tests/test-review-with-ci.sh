@@ -87,4 +87,12 @@ out=$(ci success)
 assert_contains "マージへ進める" "$out" "レビューの結果も出ているので、マージへ進めます"
 assert_eq "マージした" "[58]" "$(mstate merged)"
 
+echo "== 前の回の結果（指摘あり）が残っている・同じコミットの2回目のレビューが動いている・CIが通る → 前の結果で頼み直さず、待つ"
+state "{\"comments\":[$fixed_by_review,$fix_done,$review_ng2],\"checks\":$ci_ok,\"wf_runs\":{\"claude-review.yml\":[{\"id\":8,\"status\":\"in_progress\"}]}}"
+out=$(ci success)
+assert_contains "待つ" "$out" "レビューAIが動いているので"
+assert_not_contains "前の結果でマージへ進めない" "$out" "レビューの結果も出ているので"
+assert_eq "直す依頼は1つのまま" "1" "$(comments_of 58 | grep -c 'auto-fix-sha: abc')"
+assert_eq "マージしない" "[]" "$(mstate merged)"
+
 finish
