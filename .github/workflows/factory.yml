@@ -38,6 +38,9 @@ jobs:
       detail: ${{ steps.memo.outputs.detail || steps.talk.outputs.detail }}
       body: ${{ github.event.issue.body || steps.talk.outputs.body }}
       files: ${{ steps.talk.outputs.files }}
+      # デザインの案の番号（JSON の配列）。案ごとに別のジョブで同時に作り、審査で一番いい物を選ぶ（#118・#121）
+      variants: ${{ steps.variants.outputs.list }}
+      variant_count: ${{ steps.variants.outputs.count }}
     steps:
       # 工場のIssueの印。題が書き換えられても、テンプレート自身で企画・実装が走らないようにする（claude-plan.yml・claude-implement.yml が見る）
       - name: 工場の印を付ける
@@ -127,6 +130,24 @@ jobs:
           echo "名前：$name／言語：$stack／説明：$desc"
           { echo "name=$name"; echo "stack=$stack"; echo "desc<<DESC_END"; echo "$desc"; echo "DESC_END";
             echo "memo<<MEMO_END"; printf '%s\n' "$MEMO"; echo "MEMO_END"; } >> "$GITHUB_OUTPUT"
+      # デザインの案の数：相談で見た目を決めた（files がある）・ゲームは1案（決めた方向・遊び方を複数にしない）。
+      # 詳しいメモが長い（大きい依頼）なら3案、それ以外は2案。変数 FACTORY_DESIGN_VARIANTS（1〜3）で決め打ちもできる
+      - name: デザインの案の数を決める
+        id: variants
+        env:
+          STACK: ${{ steps.check.outputs.stack }}
+          FILES: ${{ steps.talk.outputs.files }}
+          DETAIL: ${{ steps.memo.outputs.detail || steps.talk.outputs.detail }}
+          FIXED: ${{ vars.FACTORY_DESIGN_VARIANTS }}
+        run: |
+          n=2
+          if [ "${#DETAIL}" -gt 300 ]; then n=3; fi
+          case "$STACK" in game | webgame) n=1 ;; esac
+          if [ -n "$FILES" ] && [ "$FILES" != "[]" ]; then n=1; fi
+          case "$FIXED" in 1 | 2 | 3) n=$FIXED ;; esac
+          list=$(python3 -c "import sys; print(list(range(int(sys.argv[1]))))" "$n")
+          echo "デザインの案：${n} 案（${list}）"
+          { echo "list=$list"; echo "count=$n"; } >> "$GITHUB_OUTPUT"
 
   # デザイン担当（Next.js とゲームのとき）：.github/factory/design-department.md。決まりは「読める・押せる・スマホで崩れない・写さない」だけ。
   # 1. Issue に貼られた画像（オーナーの「こういうのが良い」）を取ってくる
@@ -138,6 +159,11 @@ jobs:
   design:
     needs: plan
     if: needs.plan.outputs.stack == 'nextjs' || needs.plan.outputs.stack == 'saas' || needs.plan.outputs.stack == 'game' || needs.plan.outputs.stack == 'webgame'
+    # 方向の違う案を、案ごとに別のジョブで同時に作る（時間は1案ぶん）。1つが落ちても、ほかの案は続ける。選ぶのは design-pick
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: ${{ fromJSON(needs.plan.outputs.variants || '[0]') }}
     runs-on: ubuntu-latest
     # 作る（最大 250 手）＋ 審査 ＋ 直し（最大 100 手）＋ もう一度審査、まで入る長さ
     timeout-minutes: 210
@@ -231,6 +257,8 @@ jobs:
             - 元のメモ：${{ needs.plan.outputs.memo }}
             - 詳しいメモ（載せたい中身・見た目の雰囲気など。あればこれも守る）：
               ${{ needs.plan.outputs.detail }}
+
+            ${{ fromJSON(needs.plan.outputs.variants || '[0]')[1] != null && format('この工場は、方向の違う画面案を同時に{0}つ作り、審査で一番いい物を使います。あなたは案{1}（番号 {2}）の担当です。`.github/factory/design-department.md` の「案ごとに違う方向を担当する」に従い、番号に応じた考えを主役にしてください。ほかの案は見ません。', needs.plan.outputs.variant_count, matrix.variant + 1, matrix.variant) || '' }}
 
             ${{ needs.plan.outputs.files != '' && needs.plan.outputs.files != '[]' && 'オーナーと相談して、見た目の方向（factory-refs/issue/chosen-look.png）とざっくり画面（factory-refs/issue/chosen-mock.html・chosen-mock-1440.png・chosen-mock-390.png）がもう決まっています。方向を決め直さず、このざっくり画面の構図・色・文字を土台にして、本物の画面に仕上げてください（実例集めは、足りない部品の参考にする分だけでよい）。詳しいメモの「オーナーの注文」も守る。' || '' }}
             `.github/factory/design-department.md`（進め方）を全部読んで、そのとおりに進めてください：
@@ -386,6 +414,10 @@ jobs:
           .github/scripts/design-review.sh summary "$RUNNER_TEMP/design/judge.md" || true
           if [ -f "$RUNNER_TEMP/judge-revert.md" ] && [ -f "$RUNNER_TEMP/design/judge.md" ]; then cat "$RUNNER_TEMP/judge-revert.md" >> "$RUNNER_TEMP/design/judge.md"; fi
           if [ -f "$RUNNER_TEMP/design/judge.md" ]; then cat "$RUNNER_TEMP/design/judge.md"; fi
+          # この案の最後の審査の結果（直した後に戻したら1回目、直した後を使ったら2回目）。design-pick が案を選ぶのに使う
+          final=.judge-results/r1.json
+          if [ -f .judge-results/r2.json ] && [ ! -f "$RUNNER_TEMP/judge-revert.md" ]; then final=.judge-results/r2.json; fi
+          if [ -f "$final" ] && [ ! -L "$final" ]; then cp "$final" "$RUNNER_TEMP/design/result.json"; fi
       # 最後の画面を撮る：最初の1画面（390・1440・1920）と、1画面ずつスクロールした絵（390・1440）。ページは / と factory-pages.txt の物（合わせて3つまで。ゲームは /?scene=play のような場面も）
       - name: 最後の画面を撮る
         id: final
@@ -443,6 +475,62 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with:
+          name: factory-design-${{ matrix.variant }}
+          path: ${{ runner.temp }}/design
+          include-hidden-files: true
+          retention-days: 3
+
+  # 案を選ぶ：全部の案の審査の結果から、合格した中の最高点（合格が無ければ最高点）を使う（design-judge.py pick）。
+  # 審査できた案が無ければ、確認コマンドが通った最初の案を使う。選んだ案を factory-design として build に渡す。
+  # 結果のコメント（judge.md）には、全部の案の点と、どれを選んだかを書く
+  design-pick:
+    needs: [plan, design]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.design.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          pattern: factory-design-*
+          path: ${{ runner.temp }}/variants
+      - name: 使う案を選ぶ
+        id: pick
+        env:
+          VARIANTS: ${{ needs.plan.outputs.variants || '[0]' }}
+        run: |
+          v="$RUNNER_TEMP/variants"
+          mapfile -t nums < <(printf '%s' "$VARIANTS" | jq -r '.[]')
+          results=()
+          for n in "${nums[@]}"; do results+=("$v/factory-design-$n/result.json"); done
+          idx=$(python3 .github/scripts/design-judge.py pick "${results[@]}" | sed -n 's/^index=//p')
+          if [ -z "$idx" ]; then
+            # 審査できた案が無い：確認コマンドが通った最初の案（無ければ最初の案）
+            idx=0
+            for i in "${!nums[@]}"; do
+              if [ -f "$v/factory-design-${nums[$i]}/site/.checks-ok" ]; then idx=$i; break; fi
+            done
+          fi
+          chosen="$v/factory-design-${nums[$idx]}"
+          echo "使う案：案$((idx + 1))（${#nums[@]} 案のうち）"
+          mkdir -p "$RUNNER_TEMP/design"
+          if [ -d "$chosen" ]; then cp -R "$chosen/." "$RUNNER_TEMP/design/"; fi
+          # 案が2つ以上なら、結果のコメントに全部の案の点を載せる
+          if [ "${#nums[@]}" -gt 1 ]; then
+            {
+              python3 .github/scripts/design-judge.py summary --picked "$idx" "${results[@]}" 2> /dev/null || true
+              if [ -f "$chosen/judge.md" ]; then echo; echo "選んだ案の審査："; cat "$chosen/judge.md"; fi
+            } > "$RUNNER_TEMP/design/judge.md"
+            cat "$RUNNER_TEMP/design/judge.md"
+          fi
+          touch "$RUNNER_TEMP/design/.keep"
+      - uses: actions/upload-artifact@v6
+        with:
           name: factory-design
           path: ${{ runner.temp }}/design
           include-hidden-files: true
@@ -451,7 +539,7 @@ jobs:
   build:
     # 安全のため別のジョブにする：強い鍵（FACTORY_TOKEN）は、AIが動いたジョブには渡さない。スクリプトは main の物を動かす。
     # 強い鍵は Environment「factory」（main からだけ使える）に置く。AIが作ったブランチのワークフローからは読めない
-    needs: [plan, design]
+    needs: [plan, design-pick]
     # 見た目の段が飛ばされた（Python）・失敗した（雛形のまま進める）ときも作る
     if: ${{ !cancelled() && needs.plan.result == 'success' }}
     environment: factory
@@ -467,7 +555,7 @@ jobs:
         with:
           node-version: 22
       - uses: actions/download-artifact@v7
-        if: needs.design.result == 'success'
+        if: needs.design-pick.result == 'success'
         continue-on-error: true
         with:
           name: factory-design
