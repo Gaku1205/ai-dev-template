@@ -31,17 +31,27 @@ def api(path):
     if FIXTURE:
         name = re.sub(r"[/?&=]", "_", path) + ".json"
         p = os.path.join(FIXTURE, name)
+        if os.path.exists(p + ".error"):
+            return None
         return json.load(open(p, encoding="utf-8")) if os.path.exists(p) else []
     r = subprocess.run(["gh", "api", path], capture_output=True, text=True)
-    if r.returncode != 0 or not r.stdout.strip():
+    if r.returncode != 0:
+        return None
+    if not r.stdout.strip():
         return []
     return json.loads(r.stdout)
 
 
-def api_all(path):
+def api_all(path, must=False):
+    """全ページ読む。読めなかったとき、must なら終了コード1で止める（前日の正しい表を上書きしないため）。そうでなければ標準エラーに出して、そこまでを返す"""
     out, page = [], 1
     while True:
         d = api(f"{path}&page={page}")
+        if d is None:
+            print(f"読めませんでした: {path} (page {page})", file=sys.stderr)
+            if must:
+                sys.exit(1)
+            break
         if not d:
             break
         out += d
@@ -95,7 +105,7 @@ def main(out):
     repo = os.environ.get("GITHUB_REPOSITORY", "")
     repos = os.environ.get("REPORT_REPOS", "").split() or [repo]
     since = os.environ.get("REPORT_SINCE", "2026-10-26")
-    items = api_all(f"repos/{repo}/issues?state=all&per_page=100")
+    items = api_all(f"repos/{repo}/issues?state=all&per_page=100", must=True)
     items = [x for x in items if not x["title"].startswith("AIの許可の不足（自動の記録）")]
     items.sort(key=lambda x: x["number"])
     wb = Workbook()

@@ -34,4 +34,10 @@ assert_eq "止まった記録の種類" "修正AIの変更が入らない" "$(re
 assert_eq "配り先の記録も載る" "a" "$(read_cell 止まった記録 B3)"
 assert_eq "洗い出し：audit のラベル・重さ" "高" "$(read_cell 洗い出し A2)"
 assert_contains "集計は式で数える" "$(read_cell 集計 B5)" "COUNTIFS(一覧!"
+# Issue の一覧が読めなければ、表を作らず終了コード1で止める（前日の表を上書きしない）
+touch "$T/repos_o_t_issues_state_all_per_page_100_page_1.json.error"
+rc=0
+REPORT_FIXTURE="$T" GITHUB_REPOSITORY=o/t python3 "$SCRIPTS_DIR/pipeline-report.py" "$T/r2.xlsx" > /dev/null 2>&1 || rc=$?
+assert_eq "一覧が読めなければ失敗する" "1" "$rc"
+assert_eq "表も作らない" "no" "$([ -e "$T/r2.xlsx" ] && echo yes || echo no)"
 finish
