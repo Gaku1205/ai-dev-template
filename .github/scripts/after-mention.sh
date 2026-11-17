@@ -40,7 +40,7 @@ else
 fi
 
 for pr in $prs; do
-  has_label "$pr" "ai:stuck" && continue
+  has_label_or_unreadable "$pr" "ai:stuck" && continue
   # やり直しの依頼（auto-fix-retry）も含めて、いちばん新しい依頼を見る
   last=$(all_comments "$pr" | jq -c 'map(select(.body | test("<!-- auto-fix(-retry)? -->"))) | last // empty')
   [ -z "$last" ] && continue

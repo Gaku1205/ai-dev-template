@@ -24,7 +24,14 @@ fi
 # ai:skip が付いている Issue（オーナー以外が作って、受付が止めた物など）は、進めない。やり直しにも回さない。
 # 雛形（メモ）から作ると誰の Issue にも ai:plan が付き、AIのアクションは書き込み権限の無い人を断って失敗で終わる。
 # それを「一時的な失敗」としてやり直すと、パイプラインの鍵が ai:plan を付け直し、他人の Issue を企画・実装してしまう
-if GH_TOKEN="$GITHUB_TOKEN_FOR_LABELS" has_label "$ISSUE" "ai:skip"; then
+# ラベルを読めなければ、進めない（「ai:skip が無い」と取り違えない）。ラベルはそのまま残すので、見張り役が企画の止まりとして拾い直す
+skip_rc=0
+GH_TOKEN="$GITHUB_TOKEN_FOR_LABELS" has_label "$ISSUE" "ai:skip" || skip_rc=$?
+if [ "$skip_rc" -eq 2 ]; then
+  echo "::warning::#$ISSUE のラベルを読めないので、企画の結果は使いません（見張り役が、企画の止まりとしてやり直します）"
+  exit 0
+fi
+if [ "$skip_rc" -eq 0 ]; then
   echo "#$ISSUE は ai:skip が付いているので、企画の結果は使いません（オーナーが ai:skip を外すと、企画に回ります）"
   GH_TOKEN="$GITHUB_TOKEN_FOR_LABELS" remove_label "$ISSUE" "ai:plan"
   GH_TOKEN="$GITHUB_TOKEN_FOR_LABELS" remove_label "$ISSUE" "ai:retry"

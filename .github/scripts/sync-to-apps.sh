@@ -69,13 +69,17 @@ for repo in "$@"; do
   if ! git -C "$dir" push -q -f origin "HEAD:refs/heads/$branch"; then
     echo "::error::$repo へ push できません（App が入っているか、Contents・Workflows の権限を確認）"; fail=1; continue
   fi
-  # 前の配布のPRがまだ開いていたら、新しい物に置き換える
-  gh api "repos/$repo/pulls?state=open&per_page=100" --jq '.[] | select(.head.ref | startswith("pipeline-sync/")) | "\(.number) \(.head.ref)"' \
-    | while read -r old_pr old_branch; do
-        [ "$old_branch" = "$branch" ] && continue
-        gh api -X PATCH "repos/$repo/pulls/$old_pr" -f state=closed > /dev/null && echo "古い配布のPR #$old_pr を閉じました"
-        gh api -X DELETE "repos/$repo/git/refs/heads/$old_branch" > /dev/null 2>&1 || true
-      done
+  # 前の配布のPRがまだ開いていたら、新しい物に置き換える。
+  # 一覧を読めなければ、このアプリだけ飛ばして後ろのアプリへ続ける（set -e で全体が終わり、後ろのアプリに配られなくならないように）
+  if ! old_prs=$(gh api "repos/$repo/pulls?state=open&per_page=100" --jq '.[] | select(.head.ref | startswith("pipeline-sync/")) | "\(.number) \(.head.ref)"'); then
+    echo "::warning::$repo の古い配布のPRの一覧を読めないので、このアプリは飛ばします（次の配布で配ります）"; fail=1; continue
+  fi
+  while read -r old_pr old_branch; do
+    [ -z "$old_pr" ] && continue
+    [ "$old_branch" = "$branch" ] && continue
+    gh api -X PATCH "repos/$repo/pulls/$old_pr" -f state=closed > /dev/null && echo "古い配布のPR #$old_pr を閉じました"
+    gh api -X DELETE "repos/$repo/git/refs/heads/$old_branch" > /dev/null 2>&1 || true
+  done <<< "$old_prs"
   # PR があるかを調べられなかったときに「PRを更新した」と言わない（PR が無いまま、配ったことになってしまう）
   if ! open=$(gh api "repos/$repo/pulls?state=open&head=${repo%%/*}:$branch" --jq 'length'); then
     echo "::error::$repo のPRを調べられません"; fail=1; continue

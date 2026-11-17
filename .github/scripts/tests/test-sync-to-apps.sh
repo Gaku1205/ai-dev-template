@@ -32,6 +32,9 @@ m = re.match(r"repos/([^/]+/[^/]+)/(.*)$", path); repo, rest = m.group(1), m.gro
 pulls = st["pulls"].setdefault(repo, [])
 if os.environ.get("PULLS_FAIL") and rest.startswith("pulls?") and "head=" in rest:
     sys.stderr.write("HTTP 502\n"); sys.exit(1)
+# OLDPULLS_FAIL=owner/repo：そのリポジトリの開いているPRの一覧（古い配布のPRを探す所）は読めない
+if os.environ.get("OLDPULLS_FAIL") == repo and rest.startswith("pulls?") and "head=" not in rest:
+    sys.stderr.write("HTTP 502\n"); sys.exit(1)
 if method == "GET" and rest.startswith("pulls?"):
     lst = [p for p in pulls if p["state"] == "open"]
     hm = re.search(r"head=[^:]+:([^&]+)", rest)
@@ -57,8 +60,9 @@ make_app() {
 }
 sync() { env PATH="$T/bin:$PATH" FT="$T" GH_TOKEN=x SYNC_GIT_URL="$T/remotes/%s.git" "$@" bash "$SCRIPTS_DIR/sync-to-apps.sh" "${REPOS[@]}" 2>&1; }
 # 配ったブランチの中のファイル
-in_branch() { git -C "$T/remotes/o/$1.git" ls-tree -r --name-only "pipeline-sync/$sha" 2> /dev/null; }
-show() { git -C "$T/remotes/o/$1.git" show "pipeline-sync/$sha:$2" 2> /dev/null; }
+# bare のリポジトリは --git-dir で明示して読む（git の設定 safe.bareRepository=explicit の環境でも読めるように）
+in_branch() { git --git-dir="$T/remotes/o/$1.git" ls-tree -r --name-only "pipeline-sync/$sha" 2> /dev/null; }
+show() { git --git-dir="$T/remotes/o/$1.git" show "pipeline-sync/$sha:$2" 2> /dev/null; }
 pulls() { python3 -c "import json,sys; print(' '.join(f\"{p['number']}:{p['head']['ref']}:{p['state']}\" for p in json.load(open('$T/state.json'))['pulls'].get('o/$1', [])))"; }
 
 # 配り先 app：古いパイプライン・自分で足したワークフロー（残す物と消える物）・自分の CLAUDE.md とスキル
@@ -97,7 +101,7 @@ if [ -d "$ROOT/.claude/skills" ]; then
   first_skill=$(cd "$ROOT" && find .claude/skills -type f | sort | head -1)
   assert_contains "共通のスキルが入る" "$files" "${first_skill#./}"
 fi
-assert_eq "main は変えない" "古い" "$(git -C "$T/remotes/o/app.git" show main:.github/scripts/after-ci.sh)"
+assert_eq "main は変えない" "古い" "$(git --git-dir="$T/remotes/o/app.git" show main:.github/scripts/after-ci.sh)"
 assert_eq "PRを1つ作る" "100:pipeline-sync/$sha:open" "$(pulls app)"
 assert_contains "配布の印（進行役がレビューなしでマージする目印）" "$(cat "$T/state.json")" "<!-- pipeline-sync -->"
 assert_contains "main に向ける" "$(cat "$T/state.json")" '"base": "main"'
@@ -140,6 +144,19 @@ out=$(sync); rc=$?
 assert_eq "失敗で終わる" "1" "$rc"
 assert_contains "取得できない物を知らせる" "$out" "::error::o/nothing を取得できません"
 assert_contains "ほかには配る" "$out" "配った（PR）: o/two"
+
+echo "== 古い配布のPRの一覧を読めない配り先があっても、そのアプリだけ飛ばして、後ろのアプリには配る"
+rm -f "$T/state.json"
+mkdir -p "$T/seed-three" && echo y > "$T/seed-three/README.md" && make_app three
+mkdir -p "$T/seed-four" && echo z > "$T/seed-four/README.md" && make_app four
+REPOS=(o/three o/four)
+out=$(sync OLDPULLS_FAIL=o/three); rc=$?
+assert_eq "失敗で終わる" "1" "$rc"
+assert_contains "読めないアプリを知らせる" "$out" "::warning::o/three の古い配布のPRの一覧を読めない"
+assert_not_contains "読めないアプリには、配ったと言わない" "$out" "配った（PR）: o/three"
+assert_eq "読めないアプリにはPRを作らない" "" "$(pulls three)"
+assert_contains "後ろのアプリには配る" "$out" "配った（PR）: o/four"
+assert_eq "後ろのアプリにPRを作る" "100:pipeline-sync/$sha:open" "$(pulls four)"
 
 echo "== PRがあるかを調べられない：「PRを更新した」と言わず、失敗で終わる"
 REPOS=(o/two)

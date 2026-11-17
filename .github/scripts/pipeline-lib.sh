@@ -70,8 +70,22 @@ take_label() {
   gh api -X DELETE "repos/$REPO/issues/$1/labels/$(urlencode "$2")" > /dev/null 2>&1
 }
 
+# ラベルが付いているか：付いている 0、付いていない 1、読めなかった 2（API の一時的なエラーなど）。
+# 読めなかったのを「付いていない」と取り違えないように、戻り値を分ける。ai:stuck・ai:skip のように「付いていたら触らない」
+# 確かめには、下の has_label_or_unreadable を使う（読めなければ、付いているものとして触らない）
 has_label() {
-  gh api "repos/$REPO/issues/$1/labels" -q '.[].name' | grep -qx "$2"
+  local labels
+  labels=$(gh api "repos/$REPO/issues/$1/labels" -q '.[].name') || return 2
+  grep -qxF -- "$2" <<< "$labels"
+}
+
+# 付いているか、読めなかったときに 0（読めなかったときは警告を出す）。確かに付いていないときだけ 1
+has_label_or_unreadable() {
+  local rc=0
+  has_label "$1" "$2" || rc=$?
+  [ "$rc" -eq 1 ] && return 1
+  [ "$rc" -eq 2 ] && echo "::warning::#$1：ラベルを読めませんでした（${2} が付いているものとして、今回は触りません）"
+  return 0
 }
 
 comment() {

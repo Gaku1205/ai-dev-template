@@ -11,8 +11,8 @@ set -e
 has_pipeline_token || { echo "PIPELINE_TOKEN が無いので何もしません"; exit 0; }
 
 # 外されたあとに、また付け直されていたら何もしない
-if has_label "$NUMBER" "ai:stuck"; then
-  echo "#$NUMBER：ai:stuck がまた付いているので何もしません"
+if has_label_or_unreadable "$NUMBER" "ai:stuck"; then
+  echo "#$NUMBER：ai:stuck がまた付いている（か、ラベルを読めない）ので何もしません"
   exit 0
 fi
 

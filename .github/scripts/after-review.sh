@@ -21,8 +21,8 @@ if [ "$head" != "$HEAD_SHA" ]; then
   echo "レビューのあとに新しいコミットが来ているので、何もしません"
   exit 0
 fi
-if has_label "$pr" "ai:stuck"; then
-  echo "人間の確認待ち（ai:stuck）なので、何もしません"
+if has_label_or_unreadable "$pr" "ai:stuck"; then
+  echo "人間の確認待ち（ai:stuck）か、ラベルを読めないので、何もしません"
   exit 0
 fi
 

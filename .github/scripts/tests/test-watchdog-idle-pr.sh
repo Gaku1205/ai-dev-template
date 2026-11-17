@@ -65,7 +65,6 @@ for case in \
   '{"labels":{"58":[]},"pulls":['"$(pr_of 58 claude/issue-5-x 20)"'],"runs":['"$(ci success)"']}' \
   '{"labels":{"58":[]},"pulls":['"$(pr_of 58 claude/issue-5-x 60)"'],"runs":[{"id":11,"name":"CI","status":"in_progress","conclusion":null,"created_at":"2026-01-01T00:00:00Z"}]}' \
   '{"labels":{"58":[]},"pulls":['"$(pr_of 58 claude/issue-5-x 60 '"draft":true')"'],"runs":['"$(ci success)"']}' \
-  '{"labels":{"58":[]},"pulls":['"$(pr_of 58 pipeline-sync/abc 60)"'],"runs":['"$(ci success)"']}' \
   '{"labels":{"58":[]},"pulls":['"$(pr_of 58 feature-x 60 | sed 's#"full_name":"o/r"#"full_name":"stranger/r"#')"'],"runs":['"$(ci cancelled)"']}'; do
   init_state "$case"
   before=$(labels_of 58)
@@ -73,6 +72,20 @@ for case in \
   assert_eq "ラベルは変わらない（$(printf '%s' "$case" | cut -c1-60)…）" "$before" "$(labels_of 58)"
   assert_not_contains "印も付かない" "$(comments_of 58)" "auto-nudge"
 done
+
+echo "== 配布のPR（pipeline-sync/）も、CIのあと誰も進めていなければ動かす（次の配布まで黙って残さない）"
+sync_extra='"body":"<!-- pipeline-sync -->","user":{"login":"app[bot]"}'
+init_state '{"labels":{"58":[]},"ahead_by":0,"pulls":['"$(pr_of 58 pipeline-sync/abc 60 "$sync_extra")"'],"runs":['"$(ci success)"']}'
+run_script watchdog.sh > /dev/null
+assert_eq "配布の流れでマージする（レビューには回さない）" "58" "$(python3 -c "import json,os;print(','.join(map(str,json.load(open(os.environ['MOCK_STATE'])).get('merged',[]))))")"
+assert_contains "動かした印を残す" "$(comments_of 58)" "auto-nudge: abc123"
+echo "== 配布のPRで main の取り込みが失敗した：ai:stuck・コメント・通知"
+init_state '{"labels":{"58":[]},"ahead_by":2,"update_branch_fail":true,"pulls":['"$(pr_of 58 pipeline-sync/abc 60 "$sync_extra")"'],"runs":['"$(ci success)"']}'
+: > "$MOCK_DIR/curl.log"
+run_script watchdog.sh > /dev/null
+assert_contains "ai:stuck が付く" "$(labels_of 58)" "ai:stuck"
+assert_contains "理由をコメントする" "$(comments_of 58)" "main の変更を取り込めませんでした"
+assert_eq "通知する" "1" "$(notify_count)"
 
 new_commits() { python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print(len(s.get('ref_updates',[])))"; }
 
