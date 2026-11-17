@@ -47,13 +47,13 @@ check_secrets() {
     ng "GitHub App の鍵を作れない（PIPELINE_TOKEN で代わりに動いている）" "App ID（Variable PIPELINE_APP_ID）と秘密鍵（Secret PIPELINE_APP_PRIVATE_KEY：.pem の中身を -----BEGIN から -----END ... KEY----- まで全部）を確かめ、App をこのリポジトリに Install する"
   fi
   if [ "${HAS_PIPELINE_TOKEN:-}" != 1 ]; then
-    ng "パイプラインの鍵が無い" "GitHub App（Variable PIPELINE_APP_ID と Secret PIPELINE_APP_PRIVATE_KEY）か、Secret PIPELINE_TOKEN を登録（docs/pipeline.md の「必要な設定」）"
+    ng "パイプラインの鍵が無い" "GitHub App（Variable PIPELINE_APP_ID と Secret PIPELINE_APP_PRIVATE_KEY）か、Secret PIPELINE_TOKEN を登録（docs/pipeline-setup.md の「必要な設定」）"
   elif [ "${USING_APP:-0}" = 1 ]; then
     if app_installed_here; then ok "GitHub App の鍵でこのリポジトリを操作できる（回数制限はオーナーと別・期限切れなし）"
     else ng "GitHub App がこのリポジトリに入っていない" "App の設定（Install App → ⚙️）で、このリポジトリを選ぶ"; fi
   elif [ "$(token_can_push)" = true ]; then
     ok "PIPELINE_TOKEN でこのリポジトリに書き込める"; check_token_expiration
-    warn "GitHub App ではなく PIPELINE_TOKEN を使っている" "回数制限をオーナーと共有し、期限もある。GitHub App に切り替えるとよい（docs/pipeline.md）"
+    warn "GitHub App ではなく PIPELINE_TOKEN を使っている" "回数制限をオーナーと共有し、期限もある。GitHub App に切り替えるとよい（docs/pipeline-setup.md）"
   else ng "PIPELINE_TOKEN でこのリポジトリに書き込めない" "トークンの Repository access にこのリポジトリを足す"; fi
   check_deploy_required
   echo; echo "**任意（あとから足せる）**"; echo
