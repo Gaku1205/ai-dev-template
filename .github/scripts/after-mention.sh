@@ -152,5 +152,7 @@ ${PERM_RETRY_MARK}
     # AIが直してpushした。そのCIが承認待ちで止まっていたら動かし直す
     branch=$(gh api "repos/$REPO/pulls/$pr" -q .head.ref)
     rerun_ci_if_waiting_approval "$pr" "$head" "$branch"
+    # CIを待たずに、直したコミットのレビューも同時に始める（#119）
+    if [ "$(review_state "$pr" "$head")" = none ]; then request_review "$pr" || true; fi
   fi
 done

@@ -78,7 +78,7 @@ verdict() { # 名前 checks の JSON [scores の JSON] [layouts の JSON]
   jq -n --arg n "$1" --argjson c "$2" --argjson s "${3:-$high}" --argjson l "${4:-$three}" \
     '{items:[{name:$n, seen:"古い地図", idea_seen:"地形図が目次", layouts:$l, checks:$c, scores:$s, fixes:[{where:"s2",what:"箱が並ぶ @x",how:"区画にする"}]}]}'
 }
-all_ok='{"one":{"ok":true},"swap":{"ok":true},"real":{"ok":true},"through":{"ok":true},"full":{"ok":true},"tells":{"ok":true},"broken":{"ok":true},"owner":{"ok":true},"variety":{"ok":true},"phone":{"ok":true},"beside":{"ok":true}}'
+all_ok='{"one":{"ok":true},"swap":{"ok":true},"real":{"ok":true},"through":{"ok":true},"full":{"ok":true},"tells":{"ok":true},"broken":{"ok":true},"owner":{"ok":true},"variety":{"ok":true},"phone":{"ok":true},"beside":{"ok":true},"world":{"ok":true},"sample":{"ok":true},"short":{"ok":true}}'
 verdict mock-a "$all_ok" > v.json
 out=$(judge verdict --mode screen v.json --gate g-ok.json --out r.json --fix fix.md)
 assert_contains "全部「はい」で 7.5 以上なら合格" "$out" "pass=true"
@@ -111,15 +111,44 @@ assert_contains "lint の FAIL が残っていれば直す" "$out" "pass=false"
 assert_eq "lint の FAIL で全体の上限 6.5" "6.5" "$(jq '.items[0].overall' r.json)"
 assert_contains "直す紙に関門の指摘" "$(cat fix.md)" "## 関門（機械で測った物。全部直す）"
 
+echo "== 審査：世界観・例の値・スマホの長さ"
+verdict mock-a "$(jq -c '.world = {ok:false, note:"白地に灰色の角丸"}' <<< "$all_ok")" > v.json
+out=$(judge verdict --mode screen v.json --out r.json --fix fix.md)
+assert_contains "world が「いいえ」なら不合格（必ず通す）" "$out" "pass=false"
+assert_eq "world の上限は見た目 6.5" "6.5" "$(jq '.items[0].scores.design' r.json)"
+assert_contains "直す紙に world の名前" "$(cat fix.md)" "【必ず通す】題材の世界観が最初の1画面で伝わる"
+verdict mock-a "$(jq -c '.sample = {ok:false, note:"48,600円が入っている"}' <<< "$all_ok")" > v.json
+out=$(judge verdict --mode screen v.json --out r.json --fix fix.md)
+assert_contains "sample が「いいえ」だけでは落ちない" "$out" "pass=true"
+assert_eq "sample の上限は使いやすさ 7.0" "7.0" "$(jq '.items[0].scores.use' r.json)"
+assert_contains "直す紙に sample の名前" "$(cat fix.md)" "【点の上限】例の値が入力欄に見える"
+verdict mock-a "$(jq -c '.short = {ok:false, note:"縦 7,400px"}' <<< "$all_ok")" > v.json
+out=$(judge verdict --mode screen v.json --out r.json)
+assert_contains "short が「いいえ」だけでは落ちない" "$out" "pass=true"
+assert_eq "short の上限は使いやすさ 7.0" "7.0" "$(jq '.items[0].scores.use' r.json)"
+verdict mock-a "$all_ok" > v.json
+judge gate --concept talk/concept.md --phone-height 7400 --out g-tall.json talk/mock-a.html > /dev/null
+assert_eq "関門が縦の長さを書く" "7400" "$(jq .phone_height g-tall.json)"
+judge verdict --mode screen v.json --gate g-tall.json --out r.json > /dev/null
+assert_eq "5,000px 超なら、審査役が「はい」でも short は「いいえ」" "short" "$(jq -r '.items[0].failed[0].id' r.json)"
+judge gate --concept talk/concept.md --phone-height 4800 --out g-tall.json talk/mock-a.html > /dev/null
+assert_contains "5,000px 以下なら通る" "$(judge verdict --mode screen v.json --gate g-tall.json --out r.json)" "pass=true"
+verdict mock-a "$(jq -c 'del(.world, .sample, .short)' <<< "$all_ok")" > v.json
+judge verdict --mode screen v.json --out r.json > /dev/null
+assert_eq "答えを飛ばした新しい問いは「いいえ」" "world sample short" "$(jq -r '[.items[0].failed[].id] | join(" ")' r.json)"
+jq -n '{items:[{name:"change", checks:{fits:{ok:true},full:{ok:true},tells:{ok:true},broken:{ok:true},phone:{ok:true},world:{ok:true},sample:{ok:true},short:{ok:false,note:"長い"}}, scores:{design:8,use:8,idea:8,content:8}, fixes:[]}]}' > v.json
+assert_contains "変更の審査にも新しい問いが入る" "$(judge verdict --mode change v.json --out r.json --critique critique.md)" "pass=true"
+assert_contains "実装の審査の形に short の名前" "$(cat critique.md)" "スマホのページが長すぎない"
+
 echo "== 審査：種類ごとの問い"
-jq -n --argjson c '{"one":{"ok":true},"swap":{"ok":true},"real":{"ok":true},"full":{"ok":true},"tells":{"ok":true},"owner":{"ok":true}}' \
+jq -n --argjson c '{"one":{"ok":true},"swap":{"ok":true},"real":{"ok":true},"full":{"ok":true},"tells":{"ok":true},"owner":{"ok":true},"world":{"ok":true},"sample":{"ok":true}}' \
   '{items:[1,2,3] | map({name:"look-\(.)", checks:$c, scores:{design:8,use:8,idea:8,content:8}}), set:{distinct:{ok:false, note:"3つとも同じ構図で色だけ違う"}}}' > v.json
 out=$(judge verdict --mode looks v.json --out r.json --fix fix.md)
 assert_contains "方向：色違いなら直す" "$out" "pass=false"
 assert_contains "直す紙に全体の指摘" "$(cat fix.md)" "3つとも同じ構図で色だけ違う"
 jq '.set.distinct.ok = true' v.json > v2.json
 assert_contains "方向：考えから違えば通る（through などは問わない）" "$(judge verdict --mode looks v2.json --out r.json)" "pass=true"
-jq -n '{items:[{name:"change", checks:{fits:{ok:false,note:"白い箱を足しただけ"},full:{ok:true},tells:{ok:true},broken:{ok:true},phone:{ok:true}}, scores:{design:8,use:8,idea:8,content:8}, fixes:[]}]}' > v.json
+jq -n '{items:[{name:"change", checks:{fits:{ok:false,note:"白い箱を足しただけ"},full:{ok:true},tells:{ok:true},broken:{ok:true},phone:{ok:true},world:{ok:true},sample:{ok:true},short:{ok:true}}, scores:{design:8,use:8,idea:8,content:8}, fixes:[]}]}' > v.json
 out=$(judge verdict --mode change v.json --out r.json --critique critique.md)
 assert_contains "変更：らしさに沿っていなければ直す" "$out" "pass=false"
 assert_eq "実装の審査の形（1行目が点数）" "点数: 7.7" "$(head -1 critique.md)"

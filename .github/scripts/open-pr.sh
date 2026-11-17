@@ -137,10 +137,12 @@ fi
 body="${body}
 
 ---
-_実装AIの作業が終わったので、自動で作ったPRです。CIが通るとレビューAIが確認し、問題がなければ自動でマージします。_"
+_実装AIの作業が終わったので、自動で作ったPRです。CIとレビューAIが同時に確かめ、両方とも問題がなければ自動でマージします。_"
 
 created=$(gh api "repos/$REPO/pulls" -f title="$ISSUE_TITLE" -f head="$branch" -f base=main -f body="$body" -q .html_url)
 echo "PRを作りました：$created"
+# CIを待たずに、レビューAIも同時に始める（#119。CIが通ったら、先に出たレビューの結果でマージへ進む）
+request_review "${created##*/}" || true
 remove_label "$ISSUE" "ai:retry"
 
 if [ "$AI_OUTCOME" != "success" ]; then

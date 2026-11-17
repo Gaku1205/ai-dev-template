@@ -59,6 +59,11 @@ inline=$(gh api "repos/$REPO/pulls/$pr/comments?per_page=100" --paginate --slurp
   | jq --arg sha "$HEAD_SHA" --arg cut "$cutoff" 'add // [] | map(select(.user.login == "claude[bot]" and .original_commit_id == $sha and .created_at > $cut)) | length')
 
 if [ "$inline" -gt 0 ] || { [ -n "$review" ] && ! printf '%s' "$review" | grep -q "No issues found"; }; then
+  # CI と同時に動くので、CIが落ちて先に直すよう頼んであることがある（二重に頼まない。直した push のあとに、もう一度レビューされる）
+  if fix_requested_for "$pr" "$HEAD_SHA"; then
+    echo "PR #$pr：レビューに指摘がありましたが、このコミットにはもう直すよう頼んであるので、重ねて頼みません"
+    exit 0
+  fi
   request_fix_or_stop "$pr" "$HEAD_SHA" "レビューで指摘がありました。このPRの「Code review」のコメントと、コードの行に付いた指摘を読んで直してください。指摘が間違っていると判断した場合は、直さずにその理由をこのPRにコメントしてください。"
   echo "PR #$pr：指摘があったので直すよう依頼しました（行への指摘 ${inline} 件）"
   exit 0
@@ -103,7 +108,9 @@ checks=$(read_api "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" -q '[.
 actions_count=$(printf '%s' "$checks" | jq '[.[] | select(.app.slug == "github-actions")] | length')
 not_ok=$(printf '%s' "$checks" | jq '[.[] | select(.app.slug == "github-actions") | select(.status != "completed" or (.conclusion | IN("success", "neutral", "skipped") | not))] | length')
 if [ "$actions_count" -eq 0 ] || [ "$not_ok" -gt 0 ]; then
-  echo "CIがまだ全部通っていないので、マージしません（CIが終わればもう一度レビューから進みます）"
+  # レビューAIは CI と同時に動くので、CIのほうが後に終わることがある。CIが通ったら after-ci.sh がこの結果でマージへ進める。
+  # CIが落ちていれば、after-ci.sh が直すよう頼む
+  echo "CIがまだ全部通っていないので、マージしません（CIが通れば after-ci.sh が、このレビューの結果でマージへ進めます）"
   exit 0
 fi
 # CI 以外のチェック（Vercel など、GitHub Actions 以外の App が付けた check run）が通っていないとき：
