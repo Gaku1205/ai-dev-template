@@ -770,8 +770,8 @@ fix_labels() { # 番号 コメント 外すラベル...
   fixed=$(( fixed + 1 ))
 }
 # 一覧は 3.5 で読んだ物を使う（3.5〜3.8 が付け外しするのは ai:plan・ai:skip・ai:blocked で、ここで見る組み合わせは作らない）
-open_items=$(printf '%s' "$open_items_json" | jq -r '.[] | [.number, ([.labels[].name] | join(","))] | @tsv')
-while IFS=$'\t' read -r n labels; do
+open_items=$(printf '%s' "$open_items_json" | jq -r '.[] | [.number, ([.labels[].name] | join(",")), (if .pull_request then "pr" else "issue" end)] | @tsv')
+while IFS=$'\t' read -r n labels kind; do
   [ -z "$n" ] && continue
   [ "$fixed" -ge 20 ] && break
   case ",$labels," in
@@ -787,8 +787,11 @@ while IFS=$'\t' read -r n labels; do
   case ",$labels," in
     *,ai:retry,*)
       if [ -z "$(retry_comment "$n")" ]; then
-        fix_labels "$n" "ai:retry が付いていますが、やり直しの記録が無いので、ai:retry を外して ai:stuck にしました。人間が確認してください" ai:retry
-        add_label "$n" "ai:stuck"
+        # ai:retry を外す・ai:stuck を付ける・コメント・通知は、stop_for_human／stop_issue_for_human がまとめて行う（二重にコメントしない）
+        stop_reason="ai:retry が付いていますが、やり直しの記録が無いので、ai:retry を外して ai:stuck にしました。人間が確認してください（見張り役がラベルの矛盾を直しました）"
+        if [ "$kind" = pr ]; then stop_for_human "$n" "$stop_reason"; else stop_issue_for_human "$n" "$stop_reason"; fi
+        echo "#$n：ai:retry の記録が無いので、ai:stuck にしました"
+        fixed=$(( fixed + 1 ))
       fi
       ;;
   esac

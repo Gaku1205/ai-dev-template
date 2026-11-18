@@ -30,8 +30,11 @@ assert_contains "PRが開いている間は ai:implement を残す" "$(labels_of
 assert_not_contains "PRが開いている間は ai:skip を付けない" "$(labels_of 7)" "ai:skip"
 
 echo "== マージされた後：進行ラベルを外して ai:skip（何度呼んでも同じ）"
+: > "$MOCK_DIR/curl.log"
 run_lib "park_issue_after_human_request_merge 5" > /dev/null
+assert_eq "マージ後に通知が1回" "1" "$(notify_count)"
 run_lib "park_issue_after_human_request_merge 5" > /dev/null
+assert_eq "2回呼んでも通知は1回" "1" "$(notify_count)"
 assert_not_contains "進行ラベルを外す" "$(labels_of 7)" "ai:implement"
 assert_contains "ai:skip を付ける" "$(labels_of 7)" "ai:skip"
 assert_contains "ほかのラベルは残す" "$(labels_of 7)" "audit"

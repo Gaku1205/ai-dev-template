@@ -343,8 +343,12 @@ park_issue_after_human_request_merge() {
   mark="<!-- human-request-pr: #${pr} -->"
   all_comments "$issue" | jq -e --arg m "$mark" 'any(.[]; .body | contains($m))' > /dev/null || return 0
   # ai: のラベルが1つも無いと、見張り役が企画に回し直すので、待ちの印 ai:skip を付ける
+  # 通知は、まだ ai:skip が付いていないとき（初めて呼ばれたとき）だけ1回鳴らす。マージの通知は既定では鳴らないので、人間の番だと分かるように
+  local first=""
+  has_label "$issue" "ai:skip" || first=1
   for l in ai:plan ai:implement ai:review ai:retry ai:queue; do remove_label "$issue" "$l"; done
   add_label "$issue" "ai:skip" || true
+  [ -z "$first" ] || notify stuck "確認が必要です" "#${issue}：PR #${pr} の『人間にお願いしたいこと』を当ててください" 4
   echo "PR #${pr}：マージされたので、#${issue} は人間が閉じるまで ai:skip で待たせます"
 }
 
