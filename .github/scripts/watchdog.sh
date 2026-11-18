@@ -399,8 +399,17 @@ for pr in $(printf '%s' "$open_prs" | jq -r '.[].number'); do
     # コンフリクトしたPRでは GitHub が CI（pull_request）を動かさないので、after-ci も呼ばれず止まる
     # （例：基準の画像の撮り直しを push している間に、別のPRが main に入った）。AIに解消させる。
     # 配布のPR（pipeline-sync/*）は次の配布で作り直されるので触らない。同じ先頭への依頼が出ていれば待つ
-    if [ "$(printf '%s' "$runs" | jq 'length')" -eq 0 ] && [[ "$ref" != pipeline-sync/* ]] &&
-      [ "$(pr_merge_state "$pr")" = dirty ]; then
+    # CIの一覧を読めたときだけ見る。マージの状態が unknown（mergeable が null＝GitHub が計算中）のときは、頼まず次の見張りまで待つ
+    merge_state=unknown
+    if [ "$runs_read" = true ] && [ "$(printf '%s' "$runs" | jq 'length')" -eq 0 ] && [[ "$ref" != pipeline-sync/* ]]; then
+      merge_state=$(pr_merge_state "$pr")
+    fi
+    if [ "$merge_state" = unknown ] && [ "$runs_read" = true ] && [ "$(printf '%s' "$runs" | jq 'length')" -eq 0 ] &&
+      [[ "$ref" != pipeline-sync/* ]]; then
+      echo "PR #$pr：CIの実行が無く、マージの状態も分からない（GitHub が計算中）ので、今回は何もしません（次の見張りで見ます）"
+      continue
+    fi
+    if [ "$merge_state" = dirty ]; then
       asked=$(all_comments "$pr" | jq --arg mark "auto-fix-sha: $head" '[.[] | select(.body | contains($mark))] | length')
       if [ "$asked" -eq 0 ]; then
         request_fix_or_stop "$pr" "$head" "main とコンフリクトしていて、このPRのCIが動いていません（コンフリクトがあるとCIは動きません）。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し（docs/spec.md・docs/design.md も両方の決まりを残す）、どちらかを捨てるときはPRにコメントで理由を書いてください。" "main とのコンフリクトが解けませんでした"
