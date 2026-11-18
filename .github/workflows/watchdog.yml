@@ -26,8 +26,11 @@ env:
   PARALLEL_OVERRIDE: ${{ vars.PARALLEL_OVERRIDE }}
   MAX_PARALLEL: ${{ vars.MAX_PARALLEL }}
 
+# 待ちの実行は1つだけ残り、新しい物に置き換えられる。飛ばされる実行（ジョブの if が偽）が本物の待ちを置き換えて消さないよう、
+# 飛ばされる実行は別の組にする（ジョブの if と同じ条件。#200・queue.yml と同じ形）
 concurrency:
-  group: watchdog
+  group: >-
+    ${{ (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion != 'skipped') && 'watchdog' || format('watchdog-skip-{0}', github.run_id) }}
   cancel-in-progress: false
 
 jobs:

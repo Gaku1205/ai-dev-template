@@ -169,7 +169,10 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN }}
           PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
+          AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
         run: |
           source .github/scripts/pipeline-lib.sh
           has_label "$PR" "ai:stuck" && exit 0
-          request_fix_or_stop "$PR" "$HEAD_SHA" "見た目のテストの基準の画像を撮り直そうとしたら、撮り直しでは直らない失敗がありました（画像の比べではなく、位置や数値を確かめるテストが落ちている、など）。見た目のテスト（test:visual。-g でテスト名を絞れる）を動かして、落ちたテストと数値を確かめて、原因のコードを直してください。テストの条件はゆるめず、基準の画像も自分で撮り直さないでください。"
+          request_fix_or_stop "$PR" "$HEAD_SHA" "見た目のテストの基準の画像を撮り直そうとしたら、撮り直しでは直らない失敗がありました（画像の比べではなく、位置や数値を確かめるテストが落ちている、など）。見た目のテスト（test:visual。-g でテスト名を絞れる）を動かして、落ちたテストと数値を確かめて、原因のコードを直してください。テストの条件はゆるめず、基準の画像も自分で撮り直さないでください。" "基準の画像の撮り直しが失敗したままです"
