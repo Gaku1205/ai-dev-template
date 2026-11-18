@@ -46,7 +46,20 @@ state_with_run success "$slot_start"
 out=$(GITHUB_EVENT_NAME=workflow_run GITHUB_RUN_ID=200 run_script watchdog.sh)
 assert_contains "何もしないと出す" "$out" "もう見張りが済んでいるので、今回は何もしません"
 assert_eq "ラベルは変わらない" "ai:plan" "$(labels_of 9)"
-assert_eq "API は、実行の一覧の1回だけ" "1" "$(calls)"
+# 実行の一覧1回＋開いている Issue・PR の一覧2回（目覚ましのため）。やり直し待ちも順番待ちも無ければ、これだけ
+assert_eq "API は、3回だけ（実行の一覧1・開いている一覧2）" "3" "$(calls)"
+
+echo "== 見張り役：間引いた回でも、やり直しの目覚ましはかける"
+# 枠で見張りが済んだあとに失敗して ai:retry が付いた物（#8。やり直しはあと約10分）。間引いても、目覚ましは見張り役しかかけない
+state_with_run success "$slot_start"
+run_lib 'mark_for_retry 9 plan "上限"' > /dev/null
+state_py "
+for c in s['comments']:
+    if c['issue']=='9' and 'auto-retry' in c['body']: c['updated_at']='$(ago 20)'"
+out=$(GITHUB_EVENT_NAME=workflow_run GITHUB_RUN_ID=200 run_script watchdog.sh)
+assert_contains "間引いた" "$out" "もう見張りが済んでいるので、今回は何もしません"
+assert_contains "目覚ましをかけた" "$out" "目覚ましを"
+assert_eq "目覚ましは1つ" "1" "$(python3 -c "import json,os;print(len(json.load(open(os.environ['MOCK_STATE'])).get('dispatches',[])))")"
 
 echo "== 見張り役：間引かないとき（全部見る）"
 state_with_run success "$slot_start"

@@ -44,6 +44,54 @@ issue_idle_min() {
   idle_min "$at"
 }
 
+# ---- 8. の目覚ましの定義（間引いた回でも、目覚ましだけはかけるので、間引きの判定の前に置く）----
+# 次のやり直しの時刻（と、マージ待ちのPRが順番待ちを止めなくなる時刻）に、見張り役を起こす目覚ましをかける。
+# GitHub の定期の起動（30分ごと）は、混んでいると数時間遅れる。待ちが明ける時刻が分かっているので、
+# その時刻に retry-timer.yml（待ってから見張り役を動かすだけ）を動かしておく。目覚ましは1つだけ（新しい物が古い物を止める）。
+# 公開していないリポジトリでは待つあいだも Actions の時間を使うので、変数 RETRY_TIMER に off を入れれば止められる
+set_retry_timer() {
+  local earliest="" n t now_s runs
+  [ "${RETRY_TIMER:-on}" = "off" ] && return 0
+  now_s=$(date +%s)
+  for n in $(open_numbers_with_label "ai:retry" all); do
+    has_label_or_unreadable "$n" "ai:stuck" && continue
+    t=$(retry_due_at "$n")
+    [ "$t" -gt "$now_s" ] || continue
+    if [ -z "$earliest" ] || [ "$t" -lt "$earliest" ]; then earliest="$t"; fi
+  done
+  # 順番待ちがあるとき、人間のマージ待ち（ai:hold）のPRが進行中から外れる時刻（ai:hold が付いて HOLD_BLOCK_MIN 分）にも起こす。
+  # 外れる時刻には何のイベントも起きないので、定期の起動が遅れると、順番待ちが何時間も止まる（PR #162 で、60分のはずが止まり続けた）
+  local queued pr state w
+  queued=$(count_open_issues_with_label "ai:queue" 2> /dev/null) || queued=0
+  if [ "${queued:-0}" -gt 0 ]; then
+    while read -r pr state; do
+      [ "$state" = waiting ] || continue
+      w=$(hold_wait_min "$pr")
+      [ -n "$w" ] || continue
+      t=$(( now_s + (HOLD_BLOCK_MIN - w) * 60 + 60 ))
+      [ "$t" -gt "$now_s" ] || continue
+      if [ -z "$earliest" ] || [ "$t" -lt "$earliest" ]; then earliest="$t"; fi
+    done < <(hold_prs 2> /dev/null)
+  fi
+  [ -z "$earliest" ] && return 0
+  # 1回の待ちは最大 RETRY_TIMER_MAX_MIN 分（ジョブの時間の上限 6時間に収める）。それより先なら、起きた見張り役がかけ直す
+  local cap=$(( now_s + ${RETRY_TIMER_MAX_MIN:-340} * 60 ))
+  [ "$earliest" -gt "$cap" ] && earliest="$cap"
+  # もう同じかそれより早い時刻の目覚ましが待っていれば、かけ直さない
+  runs=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/workflows/retry-timer.yml/runs?per_page=20" \
+    -q '[.workflow_runs[] | select(.status != "completed") | .display_title | capture("目覚まし (?<at>[0-9]+)") | .at | tonumber]' 2> /dev/null) || runs="[]"
+  if printf '%s' "${runs:-[]}" | jq -e --argjson e "$earliest" --argjson n "$now_s" 'any(.[]; . > $n and . <= $e + 120)' > /dev/null 2>&1; then
+    echo "次のやり直しの目覚ましは、もうかかっています"
+    return 0
+  fi
+  if GH_TOKEN="$READ_TOKEN" gh api -X POST "repos/$REPO/actions/workflows/retry-timer.yml/dispatches" \
+       -f ref="${GITHUB_REF_NAME:-main}" -f "inputs[at]=$earliest" > /dev/null 2>&1; then
+    echo "次のやり直しの目覚ましを $(TZ=Asia/Tokyo date -d "@$earliest" +%H:%M) にかけました"
+  else
+    echo "::warning::やり直しの目覚まし（retry-timer.yml）を動かせませんでした。定期の見張りでやり直します"
+  fi
+}
+
 # ---- 0. 続けて動くのを間引く ----
 # ほかのワークフローが終わるたび（workflow_run）に動くと、作業が続くリポジトリでは1時間に20回近く、全部を見直す（2026年11月18日、
 # パイプラインの鍵の回数制限＝全部のリポジトリで1時間5000回の半分近くを、見張り役だけで使っていた）。止まりの判定は「5〜45分動きが無い」
@@ -56,6 +104,9 @@ if [ "${GITHUB_EVENT_NAME:-}" = workflow_run ] && [[ "$WATCHDOG_SLOT_MIN" =~ ^[0
   if recent_runs=$(GH_TOKEN="${READ_TOKEN:-}" gh api "repos/$REPO/actions/workflows/watchdog.yml/runs?per_page=50" 2> /dev/null) &&
     watchdog_slot_taken "$recent_runs" "$GITHUB_RUN_ID" "$(date +%s)" "$WATCHDOG_SLOT_MIN"; then
     echo "この${WATCHDOG_SLOT_MIN}分の枠では、もう見張りが済んでいるので、今回は何もしません（次の枠・定期の見張り・目覚ましで見ます）"
+    # 済んだあとに付いた ai:retry・ai:hold の目覚ましだけは、かけ忘れない（目覚ましをかけるのは見張り役だけ）。一覧は2回ほどで読める
+    use_open_snapshot || true
+    set_retry_timer
     exit 0
   fi
 fi
@@ -645,46 +696,4 @@ start_next_in_queue || echo "順番待ちを進められませんでした"
 # GitHub の定期の起動（30分ごと）は、混んでいると数時間遅れる。待ちが明ける時刻が分かっているので、
 # その時刻に retry-timer.yml（待ってから見張り役を動かすだけ）を動かしておく。目覚ましは1つだけ（新しい物が古い物を止める）。
 # 公開していないリポジトリでは待つあいだも Actions の時間を使うので、変数 RETRY_TIMER に off を入れれば止められる
-set_retry_timer() {
-  local earliest="" n t now_s runs
-  [ "${RETRY_TIMER:-on}" = "off" ] && return 0
-  now_s=$(date +%s)
-  for n in $(open_numbers_with_label "ai:retry" all); do
-    has_label_or_unreadable "$n" "ai:stuck" && continue
-    t=$(retry_due_at "$n")
-    [ "$t" -gt "$now_s" ] || continue
-    if [ -z "$earliest" ] || [ "$t" -lt "$earliest" ]; then earliest="$t"; fi
-  done
-  # 順番待ちがあるとき、人間のマージ待ち（ai:hold）のPRが進行中から外れる時刻（ai:hold が付いて HOLD_BLOCK_MIN 分）にも起こす。
-  # 外れる時刻には何のイベントも起きないので、定期の起動が遅れると、順番待ちが何時間も止まる（PR #162 で、60分のはずが止まり続けた）
-  local queued pr state w
-  queued=$(count_open_issues_with_label "ai:queue" 2> /dev/null) || queued=0
-  if [ "${queued:-0}" -gt 0 ]; then
-    while read -r pr state; do
-      [ "$state" = waiting ] || continue
-      w=$(hold_wait_min "$pr")
-      [ -n "$w" ] || continue
-      t=$(( now_s + (HOLD_BLOCK_MIN - w) * 60 + 60 ))
-      [ "$t" -gt "$now_s" ] || continue
-      if [ -z "$earliest" ] || [ "$t" -lt "$earliest" ]; then earliest="$t"; fi
-    done < <(hold_prs 2> /dev/null)
-  fi
-  [ -z "$earliest" ] && return 0
-  # 1回の待ちは最大 RETRY_TIMER_MAX_MIN 分（ジョブの時間の上限 6時間に収める）。それより先なら、起きた見張り役がかけ直す
-  local cap=$(( now_s + ${RETRY_TIMER_MAX_MIN:-340} * 60 ))
-  [ "$earliest" -gt "$cap" ] && earliest="$cap"
-  # もう同じかそれより早い時刻の目覚ましが待っていれば、かけ直さない
-  runs=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/workflows/retry-timer.yml/runs?per_page=20" \
-    -q '[.workflow_runs[] | select(.status != "completed") | .display_title | capture("目覚まし (?<at>[0-9]+)") | .at | tonumber]' 2> /dev/null) || runs="[]"
-  if printf '%s' "${runs:-[]}" | jq -e --argjson e "$earliest" --argjson n "$now_s" 'any(.[]; . > $n and . <= $e + 120)' > /dev/null 2>&1; then
-    echo "次のやり直しの目覚ましは、もうかかっています"
-    return 0
-  fi
-  if GH_TOKEN="$READ_TOKEN" gh api -X POST "repos/$REPO/actions/workflows/retry-timer.yml/dispatches" \
-       -f ref="${GITHUB_REF_NAME:-main}" -f "inputs[at]=$earliest" > /dev/null 2>&1; then
-    echo "次のやり直しの目覚ましを $(TZ=Asia/Tokyo date -d "@$earliest" +%H:%M) にかけました"
-  else
-    echo "::warning::やり直しの目覚まし（retry-timer.yml）を動かせませんでした。定期の見張りでやり直します"
-  fi
-}
-set_retry_timer
+set_retry_timer   # 定義は、間引きの判定の前（0 の上）にある
