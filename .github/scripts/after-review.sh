@@ -67,6 +67,12 @@ if [ "$inline" -gt 0 ] || { [ -n "$review" ] && ! printf '%s' "$review" | grep -
     echo "PR #$pr：レビューに指摘がありましたが、このコミットにはもう直すよう頼んであるので、重ねて頼みません"
     exit 0
   fi
+  # 基準の画像の撮り直し（visual:update）が動いている間は、直すよう頼まない（修正AIと撮り直しが、同じブランチに同時に push しないように）。
+  # 続きは撮り直しの側が動かす：画像が変われば push → CIとレビューがもう一度動く／変わらなければレビューに回し直す／失敗すれば直すよう頼む（visual-update.yml）
+  if has_label "$pr" "visual:update"; then
+    echo "PR #$pr：レビューに指摘がありましたが、基準の画像の撮り直し（visual:update）が動いているので、いまは直すよう頼みません（撮り直しのあとに、もう一度レビューされます）"
+    exit 0
+  fi
   # 指摘が指す場所：行への指摘は API の path、まとめは本文中のパスの形の語。
   # 全部ワークフローの所（AIは push できない）なら、修正AIに頼まず、すぐ人間（マネージャー）に回す
   targets=$({ printf '%s' "$inline_json" | jq -r '.[].path // empty'; printf '%s' "$review" | review_paths_from_text; } | awk 'NF' | sort -u)
