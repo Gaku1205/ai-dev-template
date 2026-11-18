@@ -72,7 +72,7 @@ main_files = files(sys.argv[2]) + [{'filename': 'old.txt', 'status': 'removed'}]
 tree = [{'path': f['filename'], 'mode': '100755' if f['filename'].endswith('.sh') else '100644', 'type': 'blob', 'sha': 'main-' + f['filename']} for f in main_files if f['status'] != 'removed']
 s = {'next_id': 0, 'comments': [], 'labels': {'58': []}, 'issue_updated': {}, 'pulls': [pr], 'checks': [], 'runs': [], 'jobs': [], 'branches': [], 'authors': {},
      'ahead_by': 3, 'update_branch_fail': True, 'ref_shas': {'main': 'm1'},
-     'compare': {'main...abc': {'files': files(sys.argv[1])}, 'abc...main': {'files': main_files}},
+     'compare': {'m1...abc': {'files': files(sys.argv[1])}, 'abc...m1': {'files': main_files}},
      'trees': {'m1': {'tree': tree, 'truncated': False}}}
 json.dump(s, open(os.environ['MOCK_STATE'], 'w'))
 PY
@@ -126,6 +126,13 @@ state_py "s['comments']=[]; s['labels']['58']=[]; s['ref_updates']=[]"
 run_lib 'request_conflict_fix_or_stop 58 abc "人間のマージ待ちの間に main が進み、コンフリクトしています。"' > /dev/null
 assert_not_contains "AIを呼ばない" "$(comments_of 58)" "@claude"
 assert_contains "撮り直しのラベル" "$(labels_of 58)" "visual:update"
+
+echo "== 比べたあとに main が進んだ（一覧・木・親が別のコミットになる）：巻き戻さないよう、sha で比べる。分からなければAIに任せる"
+conflict_ci "tests/visual/a.png" "tests/visual/a.png" > /dev/null
+state_py "s['comments']=[]; s['labels']['58']=[]; s['ref_updates']=[]; s['new_commit_bodies']=[]; s['ref_shas']={'main':'m2'}"
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-1-x run_script after-ci.sh > /dev/null
+assert_eq "マージのコミットを作らない" '[]' "$(st "s.get('new_commit_bodies', [])")"
+assert_contains "AIに頼む" "$(comments_of 58)" "<!-- auto-fix-kind: conflict -->"
 
 echo "== 直す依頼が動かなかった（PRが更新された）コンフリクトの依頼：同じ種類のまま出し直す"
 setup_pr "$(conflict_req 1 5)"

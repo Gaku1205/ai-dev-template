@@ -471,9 +471,12 @@ resolve_baseline_conflict() { # PR番号
   [[ "$ref" == pipeline-sync/* ]] && return 1
   mark="<!-- ${CONFLICT_IMAGES_MARK} ${head} -->"
   all_comments "$pr" | jq -e --arg m "$mark" 'any(.[]; .body | contains($m))' > /dev/null 2>&1 && return 1
+  # 先に main の先頭を読み、一覧・木・親を同じコミットにそろえる（読む間に main が進んでも、変更を巻き戻さない）
+  main_sha=$(gh api "repos/$REPO/git/ref/heads/$base" -q '.object.sha' 2> /dev/null) || return 1
+  [ -n "$main_sha" ] || return 1
   # PRの側の変更（merge base → PRの先頭）と、main の側の変更（merge base → main）
-  base_cmp=$(gh api "repos/$REPO/compare/$base...$head" 2> /dev/null) || return 1
-  main_cmp=$(gh api "repos/$REPO/compare/$head...$base" 2> /dev/null) || return 1
+  base_cmp=$(gh api "repos/$REPO/compare/$main_sha...$head" 2> /dev/null) || return 1
+  main_cmp=$(gh api "repos/$REPO/compare/$head...$main_sha" 2> /dev/null) || return 1
   # 一覧は300件で切れる。切れていれば重なりが分からないので、AIに任せる
   [ "$(printf '%s' "$base_cmp" | jq '(.files // []) | length')" -lt 300 ] || return 1
   [ "$(printf '%s' "$main_cmp" | jq '(.files // []) | length')" -lt 300 ] || return 1
@@ -482,8 +485,6 @@ resolve_baseline_conflict() { # PR番号
     ($a | names) - (($a | names) - ($b | names)) | .[]') || return 1
   printf '%s\n' "$both" | only_baseline_images "$(baseline_image_globs)" || return 1
   n=$(printf '%s\n' "$both" | awk 'NF' | wc -l | tr -d ' ')
-  main_sha=$(gh api "repos/$REPO/git/ref/heads/$base" -q '.object.sha' 2> /dev/null) || return 1
-  [ -n "$main_sha" ] || return 1
   # main の側で変わったファイルを、main の木の中身（モードも）のまま、PRの先頭の木に重ねる（消えた物は消す）
   tree=$(gh api "repos/$REPO/git/trees/$main_sha?recursive=1" 2> /dev/null) || return 1
   [ "$(printf '%s' "$tree" | jq -r '.truncated // false')" = false ] || return 1
