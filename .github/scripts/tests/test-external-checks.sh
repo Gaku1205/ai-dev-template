@@ -129,6 +129,46 @@ assert_eq "マージしない" "" "$(merged)"
 assert_not_contains "やり直し待ちは外れる" "$(labels_of 58)" "ai:retry"
 assert_not_contains "人間には回さない" "$(labels_of 58)" "ai:stuck"
 
+echo "== 「CIが通っているか」は CI の最新の実行で決める（#201）"
+ci_run() { # id 状態 結果 作られた時刻
+  echo '{"id":'"$1"',"name":"CI","event":"pull_request","status":"'"$2"'","conclusion":'"$([ -n "${3:-}" ] && echo "\"$3\"" || echo null)"',"created_at":"'"$4"'"}'
+}
+SHOOT_CANCELLED='{"name":"shoot","status":"completed","conclusion":"cancelled","app":{"slug":"github-actions"}}'
+with_runs() { state_py "s['runs'] = [$(printf '%s' "$1" | sed 's/null/None/g')]"; }
+
+setup "$CI_OK,$SHOOT_CANCELLED"
+with_runs "$(ci_run 1 completed success 2026-01-01T00:00:00Z)"
+after_review > /dev/null
+assert_eq "取り消された shoot が残っていても、CI が success ならマージへ進む" "58" "$(merged)"
+
+for case in "動いている|in_progress||" "落ちている|completed|failure" "取り消された|completed|cancelled"; do
+  IFS='|' read -r label st concl <<< "$case"
+  setup "$CI_OK"
+  with_runs "$(ci_run 1 "$st" "$concl" 2026-01-01T00:00:00Z)"
+  out=$(after_review)
+  assert_eq "CI が$label：マージしない" "" "$(merged)"
+  assert_contains "CI が$label：理由をログに出す" "$out" "CIがまだ全部通っていない"
+done
+
+setup "$CI_OK" '"ci_runs_none":true'
+out=$(after_review)
+assert_eq "CI の実行が見つからない：マージしない" "" "$(merged)"
+assert_contains "見つからない：ログに出す" "$out" "CIがまだ全部通っていない"
+
+setup "$CI_OK" '"runs_fail":true'
+out=$(after_review)
+assert_eq "CI の実行が読めない：マージしない" "" "$(merged)"
+
+setup "$CI_OK"
+with_runs "$(ci_run 1 completed failure 2026-01-01T00:00:00Z),$(ci_run 2 completed success 2026-01-02T00:00:00Z)"
+after_review > /dev/null
+assert_eq "古い方が failure でも、新しい方が success ならマージへ進む" "58" "$(merged)"
+
+setup "$CI_OK"
+with_runs "$(ci_run 2 completed success 2026-01-01T00:00:00Z),$(ci_run 1 completed failure 2026-01-02T00:00:00Z)"
+after_review > /dev/null
+assert_eq "新しい方が failure なら進まない（並びの順ではなく created_at で決める）" "" "$(merged)"
+
 echo "== チェックの一覧の形（名前・状態・理由・URL）"
 init_state '{"checks":['"$CI_OK"','"$(vercel_check completed timed_out)"',{"name":"review","status":"in_progress","app":{"slug":"claude"}},{"name":"Netlify","status":"queued","conclusion":null,"app":{"slug":"netlify"}}],"statuses":[{"context":"ci/ext","state":"pending","description":"waiting"},{"context":"good","state":"success"}]}'
 out=$(run_lib 'external_checks_not_ok abc')

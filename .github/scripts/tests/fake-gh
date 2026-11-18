@@ -254,7 +254,17 @@ m=re.match(r'actions/workflows/([^/]+)/dispatches$',base)
 if m and method=='POST':
     st.setdefault('dispatches',[]).append({'workflow':m.group(1),**fields}); save(); sys.exit(0)
 if base=='actions/runs' and st.get('runs_fail'): sys.stderr.write('HTTP 502: Bad Gateway\n'); sys.exit(1)
-if base=='actions/runs': out({'workflow_runs':st.get('runs',[])}); sys.exit(0)
+if base=='actions/runs':
+    _runs=list(st.get('runs',[]))
+    # CI の実行（name == "CI"）が runs に無ければ、check run のうち GitHub Actions の物から1つの CI の実行を作る
+    # （古いテストは check run だけで CI の状態を表している）。ci_runs_none があれば作らない（実行が見つからない、を表す）
+    if 'head_sha=' in path and not st.get('ci_runs_none') and not any(r.get('name')=='CI' for r in _runs):
+        _ac=[c for c in st.get('checks',[]) if (c.get('app') or {}).get('slug')=='github-actions']
+        if _ac:
+            _done=all(c.get('status')=='completed' for c in _ac)
+            _ok=all(c.get('conclusion') in ('success','neutral','skipped') for c in _ac)
+            _runs.append({'id':9000,'name':'CI','event':'pull_request','created_at':'2026-01-01T00:00:00Z','status':'completed' if _done else 'in_progress','conclusion':('success' if _ok else 'failure') if _done else None})
+    out({'workflow_runs':_runs}); sys.exit(0)
 if base.startswith('compare/'): out({'ahead_by':st.get('ahead_by',0)}); sys.exit(0)
 m=re.match(r'commits/([^/]+)$',base)
 if m and m.group(1) in st.get('commit_fail',[]): sys.stderr.write('HTTP 502\n'); sys.exit(1)
