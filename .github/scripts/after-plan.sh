@@ -88,6 +88,30 @@ case "$result" in
   READY*)
     # 清書で画像の行が消えていたら足し直す（実装AIが同じ画像を見るため。企画AIには残すよう頼んでいるが、確かめはここ）
     keep_issue_images "$ISSUE" "${ISSUE_BODY_BEFORE:-}" || true
+    # 印が書かれていなければ、本文のファイル名から補う（補えなければ、印は無いまま＝順番待ちは今までどおり待つ）
+    if [ -n "$pipeline_token" ]; then
+      GH_TOKEN="$pipeline_token" ensure_touches_mark "$ISSUE" || true
+      # 印に共有の大きなフォルダがあると、ほかの順番待ちが全部「触るファイルが重なる」で待たされる。
+      # 1回だけ、ファイル単位で書き直させる（前に同じ印のコメントがあれば、今までどおり進める）。サイズは2回目に付ける
+      broad_body=$(GH_TOKEN="$pipeline_token" gh api "repos/$REPO/issues/$ISSUE" -q '.body // ""' 2> /dev/null || true)
+      broad=$(touches_too_broad "$(touches_from_body "$broad_body")")
+      if [ -n "$broad" ]; then
+        if GH_TOKEN="$pipeline_token" all_comments "$ISSUE" 2> /dev/null | jq -e --arg m "$TOUCHES_TOO_BROAD_MARK" 'any(.[]; (.body // "") | contains($m))' > /dev/null 2>&1; then
+          echo "#$ISSUE：触るファイルに広いフォルダがありますが、書き直しは済んでいるので、このまま進めます"
+        else
+          broad_list=$(printf '%s\n' "$broad" | sed -E 's/^(.*)$/- `\1`/')
+          comment "$ISSUE" "${TOUCHES_TOO_BROAD_MARK}
+触るファイルが広すぎるので、並べて始められません。次のフォルダは、ほかの作業も使う大きなフォルダです（中の全部と重なり扱いになり、ほかの順番待ちが全部待たされます）。
+
+${broad_list}
+
+ファイル単位で書き直してください。触るファイルの印（\`ai-touches\`）には、触るファイルを1つずつ書きます。フォルダ（/ で終わる）で書いてよいのは、新しく作るフォルダ（中身が全部この作業の物）だけです。" || true
+          GH_TOKEN="$pipeline_token" add_label "$ISSUE" "ai:plan"
+          echo "#$ISSUE：触るファイルが広すぎるので（$(printf '%s' "$broad" | paste -sd, -)）、ファイル単位で企画をやり直させます"
+          exit 0
+        fi
+      fi
+    fi
     size=$(printf '%s' "$result" | grep -oE 'size:(S|L)' || true)
     # 人間や工場が先にサイズを決めていれば（最初の画面を作る Issue の size:L など）、そちらを残す
     if [ -n "$size" ] && ! has_label "$ISSUE" "size:S" && ! has_label "$ISSUE" "size:L"; then
@@ -105,8 +129,6 @@ case "$result" in
       # 企画AIの「並列でよい」は、企画を始めた時点の進行中の作業を見た判断。企画の間に別の Issue の実装が始まっていると
       # （まとめて Issue を書いたとき）、その作業とは見比べていない。触るファイルの印（ai-touches）が両方にあって重なるなら、待つ
       overlap=no
-      # 企画AIが印を書き忘れたときは、本文に書かれたファイルの名前から補う（補えなければ、印は無いまま＝順番待ちは今までどおり待つ）
-      GH_TOKEN="$pipeline_token" ensure_touches_mark "$ISSUE" || true
       if [ "$busy" -gt 0 ] && [ "$parallel" = "PARALLEL" ]; then
         mine=$(touches_from_body "$(GH_TOKEN="$pipeline_token" gh api "repos/$REPO/issues/$ISSUE" -q '.body // ""' 2> /dev/null || true)")
         if [ -n "$mine" ]; then
