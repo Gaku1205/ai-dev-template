@@ -31,6 +31,11 @@ out=$(run_script watchdog.sh)
 assert_eq "ai:retry を付けない" "ai:implement" "$(labels_of 9)"
 assert_contains "読めないとログに出す" "$out" "実装AIの実行の一覧を読めないので"
 
+echo "== 実装AIの実行の一覧を読めなくても、90分以上動きが無ければ拾う（ジョブの上限を過ぎている）"
+init_state '{"labels":{"9":["ai:implement"]},"issue_updated":{"9":"'"$(ago 100)"'"},"wf_runs_fail":["claude-implement.yml"]}'
+run_script watchdog.sh > /dev/null
+assert_eq "やり直し待ちになる" "ai:implement,ai:retry" "$(labels_of 9)"
+
 echo "== 実装AIの実行が始まるのを待っている（queued）：動いているとみなす"
 init_state '{"labels":{"9":["ai:implement"]},"issue_updated":{"9":"'"$(ago 50)"'"},"wf_runs":{"claude-implement.yml":[{"status":"queued"}]}}'
 out=$(run_script watchdog.sh)
