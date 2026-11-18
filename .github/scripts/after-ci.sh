@@ -114,7 +114,7 @@ case "$CONCLUSION" in
         echo "PR #$pr：main の変更（${behind} コミット）を取り込みました。CIが終わったらレビューに進みます"
       else
         # コンフリクトは、AIに解消させる（直す回数に数える。直らなければ人間に回る）
-        request_fix_or_stop "$pr" "$HEAD_SHA" "main の変更を取り込もうとしたら、コンフリクトで取り込めませんでした。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し、どちらかを捨てるときはPRにコメントで理由を書いてください。解消したら確認コマンド（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）を全部通して push してください。"
+        request_fix_or_stop "$pr" "$HEAD_SHA" "main の変更を取り込もうとしたら、コンフリクトで取り込めませんでした。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し、どちらかを捨てるときはPRにコメントで理由を書いてください。解消したら確認コマンド（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）を全部通して push してください。" "main とのコンフリクトが解けませんでした"
       fi
       exit 0
     fi
@@ -181,7 +181,10 @@ ${PIPELINE_TEST_MARK}"
       exit 0
     fi
     notify ci_failed "CIが失敗しました" "PR #${pr} $(issue_title "$pr")：AIに直してもらいます" 3
-    request_fix_or_stop "$pr" "$HEAD_SHA" "CIが失敗しました。失敗したチェックのログを確認して、原因を直してください。"
+    ci_names=$(printf '%s' "${failed_steps:-[]}" | jq -r 'join("、")' 2> /dev/null || true)
+    ci_reason="CIが失敗したままです"
+    [ -z "$ci_names" ] || ci_reason="${ci_reason}（失敗したチェック：${ci_names}）"
+    request_fix_or_stop "$pr" "$HEAD_SHA" "CIが失敗しました。失敗したチェックのログを確認して、原因を直してください。" "$ci_reason"
     echo "PR #$pr：CIが落ちたので直すよう依頼しました"
     ;;
 esac

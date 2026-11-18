@@ -405,13 +405,16 @@ pr_body_hash() {
 
 # AIに直させる。上限を超えていたら人間に回す
 request_fix_or_stop() {
-  local pr="$1" sha="$2" message="$3"
+  local pr="$1" sha="$2" message="$3" human_reason="${4:-}"
   local count total model_mark="" note=""
   count=$(count_auto_fix "$pr")
   # 普通のモデルで MAX_AUTO_FIX 回直しても駄目なら、最後に1回だけ、いちばん強いモデル（opus）で直す
   total=$((MAX_AUTO_FIX + 1))
   if [ "$count" -ge "$total" ]; then
-    stop_for_human "$pr" "AIが${total}回（最後の1回は強いモデル）直しても解決しませんでした（最後の理由：${message}）"
+    # 止めた理由には、AIへの依頼文（message）ではなく、人向けの短い1文を入れる（4番目。改行は空白にして1行にする）
+    human_reason=$(printf '%s' "$human_reason" | tr '\r\n' '  ' | sed 's/  */ /g; s/^ //; s/ $//')
+    [ -n "$human_reason" ] || human_reason="AIが直せませんでした"
+    stop_for_human "$pr" "AIが${total}回（最後の1回は強いモデル）直しても解決しませんでした（最後の理由：${human_reason}）"
     return
   fi
   if [ "$count" -ge "$MAX_AUTO_FIX" ]; then
@@ -440,7 +443,7 @@ request_review() { # PR番号
   local pr="$1" sha
   if [ "$(pr_merge_state "$pr")" = dirty ]; then
     sha=$(gh api "repos/$REPO/pulls/$pr" -q .head.sha)
-    request_fix_or_stop "$pr" "$sha" "$CONFLICT_FIX_MSG"
+    request_fix_or_stop "$pr" "$sha" "$CONFLICT_FIX_MSG" "main とのコンフリクトが解けませんでした"
     echo "PR #$pr：main とコンフリクトしていてレビューが動かないので、先にAIに解消を依頼しました"
     return 0
   fi
@@ -488,7 +491,7 @@ merge_or_handle() {
   state=$(pr_merge_state "$pr")
   if [ "$state" = dirty ]; then
     # 同時に進めた別の PR が先にマージされ、同じファイルを触っていたとき
-    request_fix_or_stop "$pr" "$sha" "レビューのあとに main が進み、コンフリクトでマージできませんでした。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し（docs/spec.md・docs/design.md も両方の決まりを残す）、どちらかを捨てるときはPRにコメントで理由を書いてください。解消したら確認コマンド（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）を全部通して push してください。"
+    request_fix_or_stop "$pr" "$sha" "レビューのあとに main が進み、コンフリクトでマージできませんでした。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し（docs/spec.md・docs/design.md も両方の決まりを残す）、どちらかを捨てるときはPRにコメントで理由を書いてください。解消したら確認コマンド（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）を全部通して push してください。" "main とのコンフリクトが解けませんでした"
     echo "PR #$pr：main と衝突してマージできないので、AIに解消を依頼しました"
   else
     # CI 以外のチェック（Vercel など）が落ちていて、GitHub がマージを断ったのかもしれない。落ちているチェックがあれば、名前と理由を書く
