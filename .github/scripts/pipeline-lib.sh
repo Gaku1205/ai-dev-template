@@ -694,6 +694,40 @@ parallel_limit_decide() {
   if [ "$is_night" = 1 ]; then echo "$night 夜の上限"; else echo "$day 昼の上限"; fi
 }
 
+# いまより後で、いちばん早く並列の上限が変わる時刻（epoch 秒）を出す（純粋な関数。gh は呼ばず、現在時刻は引数）。
+# parallel_limit_decide と同じ設定を読む：PARALLEL_NIGHT_HOURS の夜の始まり・終わり（PARALLEL_TZ の時計）と、PARALLEL_OVERRIDE の期限。
+# 分からなければ（設定が無い・形が違う・期限切れ）何も出さない
+parallel_next_change() {
+  local now="$1" tz="${PARALLEL_TZ:-Asia/Tokyo}" best="" t s e b d day0 day1 ov ts
+  [[ "$now" =~ ^[0-9]+$ ]] || return 0
+  ov="${PARALLEL_OVERRIDE:-}"
+  if [[ "$ov" =~ ^[[:space:]]*(night|day)[[:space:]]+until[[:space:]]+([^[:space:]]+)[[:space:]]*$ ]]; then
+    ts="${BASH_REMATCH[2]}"
+    if [[ "$ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?(Z|[+-][0-9]{2}:?[0-9]{2})?$ ]] \
+      && t=$(TZ="$tz" date -d "$ts" +%s 2> /dev/null) && [ "$t" -gt "$now" ]; then
+      best="$t"
+    fi
+  fi
+  if [[ "${PARALLEL_NIGHT_HOURS:-}" =~ ^([0-9]{1,2})-([0-9]{1,2})$ ]]; then
+    s=$((10#${BASH_REMATCH[1]})); e=$((10#${BASH_REMATCH[2]}))
+    if [ "$s" -le 24 ] && [ "$e" -le 24 ] && [ "$s" -ne "$e" ] && [ $((s % 24)) -ne $((e % 24)) ]; then
+      day0=$(TZ="$tz" date -d "@$now" +%Y-%m-%d 2> /dev/null) || day0=""
+      day1=$(TZ="$tz" date -d "@$((now + 86400))" +%Y-%m-%d 2> /dev/null) || day1=""
+      if [ -n "$day0" ] && [ -n "$day1" ]; then
+        for b in $((s % 24)) $((e % 24)); do
+          for d in "$day0" "$day1"; do
+            t=$(TZ="$tz" date -d "$d $(printf '%02d' "$b"):00" +%s 2> /dev/null) || continue
+            [ "$t" -gt "$now" ] || continue
+            if [ -z "$best" ] || [ "$t" -lt "$best" ]; then best="$t"; fi
+            break
+          done
+        done
+      fi
+    fi
+  fi
+  [ -z "$best" ] || echo "$best"
+}
+
 # 上限の数だけ（呼ぶ側が現在時刻を渡す）
 parallel_limit() { parallel_limit_decide "$1" | cut -d' ' -f1; }
 # 画面は、今の時刻で上限を決める（ここだけが現在時刻を読む）

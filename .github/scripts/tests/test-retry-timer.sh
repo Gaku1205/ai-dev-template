@@ -36,13 +36,13 @@ run_lib 'mark_for_retry 9 implement "上限"' > /dev/null
 state_py "
 for c in s['comments']:
     if 'auto-retry' in c['body'] and 'limit-until' not in c['body']: c['body'] += '\n<!-- limit-until=$(( $(date +%s) + 10 * 3600 )) -->'"
-run_script watchdog.sh > /dev/null
+WATCHDOG_HEARTBEAT_MIN=1000 run_script watchdog.sh > /dev/null
 at=$(dispatches | awk '{print $2}')
 cap=$(( $(date +%s) + 340 * 60 ))
 assert_eq "340分先まで" "ok" "$([ "$at" -ge $((cap - 90)) ] && [ "$at" -le $((cap + 5)) ] && echo ok || echo "$at")"
 
 echo "== やり直し待ちが無い・ai:stuck の物だけ・RETRY_TIMER=off のときは、かけない"
-init_state '{"labels":{"5":["ai:implement"]}}'
+init_state '{"labels":{"5":["ai:review-done"]}}'
 run_script watchdog.sh > /dev/null
 assert_eq "待ちが無い" "" "$(dispatches)"
 init_state '{"labels":{"7":["ai:implement"]}}'
@@ -65,8 +65,90 @@ expect=$(( $(date +%s) + 31 * 60 ))
 assert_eq "あと約30分の時刻" "ok" "$([ -n "$at" ] && [ "$at" -ge $((expect - 120)) ] && [ "$at" -le $((expect + 120)) ] && echo ok || echo "${at:-なし}")"
 
 echo "== 順番待ちが無ければ、ai:hold のPRがあっても目覚ましはかけない"
-state_py "s['labels']['3']=[]; s['dispatches']=[]"
+state_py "s['labels']['3']=['ai:skip']; s['dispatches']=[]"
 run_script watchdog.sh > /dev/null
 assert_eq "かけない" "" "$(dispatches)"
+
+near15() { local at="$1" expect=$(( $(date +%s) + ${2:-15} * 60 )); [ -n "$at" ] && [ "$at" -ge $((expect - 120)) ] && [ "$at" -le $((expect + 120)) ] && echo ok || echo "${at:-なし}"; }
+
+echo "== 進行中の物（ai:implement など）があれば、15分後に目覚ましをかける"
+init_state '{"labels":{"5":["ai:implement"]}}'
+run_script watchdog.sh > /dev/null
+assert_eq "約15分後" "ok" "$(near15 "$(dispatches | awk '{print $2}')")"
+init_state '{"labels":{"5":["ai:plan"]}}'
+WATCHDOG_HEARTBEAT_MIN=7 run_script watchdog.sh > /dev/null
+assert_eq "WATCHDOG_HEARTBEAT_MIN=7：7分後" "ok" "$(near15 "$(dispatches | awk '{print $2}')" 7)"
+
+echo "== もっと早い目覚ましがかかっていれば、かけ直さない"
+init_state '{"labels":{"5":["ai:plan"]},"wf_runs":{"retry-timer.yml":[{"status":"queued","display_title":"やり直しの目覚まし '"$(( $(date +%s) + 300 ))"'"}]}}'
+run_script watchdog.sh > /dev/null
+assert_eq "かけない" "" "$(dispatches)"
+
+echo "== ラベルの無い Issue（オーナー作）は対象。ほかの人の Issue・ai:skip・ai:stuck は対象外"
+init_state '{"labels":{"5":[]}}'
+run_script watchdog.sh > /dev/null
+assert_eq "ラベル無し" "ok" "$(near15 "$(dispatches | awk '{print $2}')")"
+init_state '{"labels":{"5":[]},"authors":{"5":"stranger"}}'
+run_script watchdog.sh > /dev/null
+assert_eq "ほかの人の Issue" "" "$(dispatches)"
+init_state '{"labels":{"5":["ai:skip"],"6":["ai:stuck","ai:implement"]}}'
+run_script watchdog.sh > /dev/null
+assert_eq "ai:skip・ai:stuck" "" "$(dispatches)"
+
+echo "== 開いているPR：進行中なら対象。ai:stuck・下書き・fork・人間のマージ待ちだけなら対象外"
+mkpr() { printf '{"number":%s,"state":"open","draft":%s,"mergeable_state":"clean","updated_at":"%s","head":{"ref":"claude/issue-9-x","sha":"abc","repo":{"full_name":"%s"}},"labels":[%s]}' "$1" "$2" "$(ago 1)" "$3" "$4"; }
+repo=$(run_lib 'echo "$REPO"')
+init_state '{"labels":{"30":[]},"pulls":['"$(mkpr 30 false "$repo" "")"']}'
+run_script watchdog.sh > /dev/null
+assert_eq "進行中のPR" "ok" "$(near15 "$(dispatches | awk '{print $2}')")"
+init_state '{"labels":{"30":["ai:stuck"]},"pulls":['"$(mkpr 30 false "$repo" '{"name":"ai:stuck"}')"']}'
+run_script watchdog.sh > /dev/null
+assert_eq "ai:stuck のPR" "" "$(dispatches)"
+init_state '{"labels":{"30":[]},"pulls":['"$(mkpr 30 true "$repo" "")"']}'
+run_script watchdog.sh > /dev/null
+assert_eq "下書き" "" "$(dispatches)"
+init_state '{"labels":{"30":[]},"pulls":['"$(mkpr 30 false "someone/fork" "")"']}'
+run_script watchdog.sh > /dev/null
+assert_eq "fork" "" "$(dispatches)"
+init_state '{"labels":{"20":["ai:hold"]},"events":{"20":[{"event":"labeled","label":{"name":"ai:hold"},"created_at":"'"$(ago 30)"'"}]},"pulls":['"$(mkpr 20 false "$repo" '{"name":"ai:hold"}')"'],"comments":['"$review"']}'
+run_script watchdog.sh > /dev/null
+assert_eq "人間のマージ待ち" "" "$(dispatches)"
+
+echo "== 順番待ちがあり、夜の始まり／終わり・上書きの期限が先にあれば、その1分後にかける"
+# #1 が実装中で、昼夜とも上限 1 なので、#3 は順番待ちのまま。15分ごとの目覚ましは遠くして、変わり目の分だけを見る
+q='{"labels":{"1":["ai:implement"],"3":["ai:queue"]}}'
+tz_now=$(date +%s)
+nxt=$(( tz_now + 3 * 3600 ))
+nh=$(TZ=Asia/Tokyo date -d "@$nxt" +%H)
+want=$(TZ=Asia/Tokyo date -d "$(TZ=Asia/Tokyo date -d "@$nxt" +%Y-%m-%d) $nh:00" +%s)
+[ "$want" -gt "$tz_now" ] || want=$(( want + 86400 ))
+want=$(( want + 60 ))
+within() { [ -n "$1" ] && [ "$1" -ge $(( $2 - 120 )) ] && [ "$1" -le $(( $2 + 120 )) ] && echo ok || echo "${1:-なし}（期待 $2）"; }
+export PARALLEL_DAY=1 PARALLEL_NIGHT=1 WATCHDOG_HEARTBEAT_MIN=1000
+init_state "$q"
+PARALLEL_NIGHT_HOURS="$nh-$(( (10#$nh + 5) % 24 ))" run_script watchdog.sh > /dev/null
+assert_eq "夜の始まりの1分後" "ok" "$(within "$(dispatches | awk '{print $2}')" "$want")"
+assert_eq "#3 は順番待ちのまま" "ai:queue" "$(labels_of 3)"
+init_state "$q"
+PARALLEL_NIGHT_HOURS="$(( (10#$nh + 19) % 24 ))-$nh" run_script watchdog.sh > /dev/null
+assert_eq "夜の終わりの1分後" "ok" "$(within "$(dispatches | awk '{print $2}')" "$want")"
+init_state "$q"
+ov="night until $(TZ=Asia/Tokyo date -d "@$(( tz_now + 600 ))" +%Y-%m-%dT%H:%M:%S+09:00)"
+PARALLEL_OVERRIDE="$ov" run_script watchdog.sh > /dev/null
+assert_eq "上書きの期限の1分後" "ok" "$(within "$(dispatches | awk '{print $2}')" $(( tz_now + 660 )))"
+init_state '{"labels":{"1":["ai:review-done"]}}'
+PARALLEL_OVERRIDE="$ov" run_script watchdog.sh > /dev/null
+assert_eq "順番待ちが無ければ変わり目ではかけない" "" "$(dispatches)"
+unset PARALLEL_DAY PARALLEL_NIGHT WATCHDOG_HEARTBEAT_MIN
+
+echo "== 間引いた回（workflow_run の10分の枠が済み）でも、目覚ましはかかる"
+init_state '{"labels":{"5":["ai:implement"]},"wf_runs":{"watchdog.yml":[{"id":1,"status":"completed","conclusion":"success","created_at":"'"$(ago 1)"'","event":"schedule"}]}}'
+GITHUB_EVENT_NAME=workflow_run GITHUB_RUN_ID=999 run_script watchdog.sh > /dev/null
+assert_eq "かかる" "ok" "$(near15 "$(dispatches | awk '{print $2}')")"
+
+echo "== RETRY_TIMER=off では進行中の物があっても何もしない"
+init_state '{"labels":{"5":["ai:implement"]}}'
+RETRY_TIMER=off run_script watchdog.sh > /dev/null
+assert_eq "off" "" "$(dispatches)"
 
 finish
