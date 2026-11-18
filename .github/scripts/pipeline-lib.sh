@@ -482,6 +482,30 @@ request_review() { # PR番号
   add_label "$pr" "ai:review"
 }
 
+# 最初のレビューをCIのあとに回すか。見た目のテストがあり、PRの本文に visual:update があるPRは、
+# ほぼ必ず「CIが見た目のテストだけで落ちる → 基準の画像を撮り直す → CIとレビューを最初から」になり、1回目のレビューは捨てられるため。
+# 後回しにするなら 0。見た目のテストは、PRのブランチの package.json（scripts の test:visual）か pipeline.json（checks の run）を API で読んで判断する
+# （main を checkout しているので、ブランチの中身は読めない）。読めない・無いときは「無い」と扱い、今までどおり同時に始める
+defer_review_for_visual() { # PR番号
+  local pr="$1" info ref body pj
+  info=$(gh api "repos/$REPO/pulls/$pr" 2> /dev/null) || return 1
+  ref=$(printf '%s' "$info" | jq -r '.head.ref // ""') || return 1
+  body=$(printf '%s' "$info" | jq -r '.body // ""') || return 1
+  printf '%s' "$body" | grep -q 'visual:update' || return 1
+  [ -n "$ref" ] || return 1
+  pj=$(gh api "repos/$REPO/contents/package.json?ref=$ref" -H "Accept: application/vnd.github.raw" 2> /dev/null) || pj=""
+  if [ -n "$pj" ] && [ "$(printf '%s' "$pj" | jq -r '.scripts["test:visual"] != null' 2> /dev/null)" = true ]; then
+    echo "PR #$pr：見た目を撮り直す見込みなので、最初のレビューはCIのあとに回します"
+    return 0
+  fi
+  pj=$(gh api "repos/$REPO/contents/pipeline.json?ref=$ref" -H "Accept: application/vnd.github.raw" 2> /dev/null) || pj=""
+  if [ -n "$pj" ] && printf '%s' "$pj" | jq -e '[.checks // [] | .[] | .run // "" | select(type == "string" and test("test:visual"))] | length > 0' > /dev/null 2>&1; then
+    echo "PR #$pr：見た目を撮り直す見込みなので、最初のレビューはCIのあとに回します"
+    return 0
+  fi
+  return 1
+}
+
 pr_merge_state() {
   local pr="$1" i state=""
   for i in 1 2 3 4 5; do
