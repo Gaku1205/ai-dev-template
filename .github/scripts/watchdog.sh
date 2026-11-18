@@ -170,6 +170,26 @@ set_retry_timer() {
   fi
 }
 
+# 間引いてはいけない物があるか（期限の来た ai:retry、または順番待ちがあって HOLD_BLOCK_MIN を過ぎたマージ待ちのPR）。あれば 0
+# ai:retry は set_retry_timer と同じ取り方（retry_due_at <= 今）。ai:stuck・ai:skip の付いた物は数えない
+due_work_pending() {
+  local n now_s queued pr state
+  now_s=$(date +%s)
+  for n in $(open_numbers_with_label "ai:retry" all); do
+    has_label_or_unreadable "$n" "ai:stuck" && continue
+    has_label_or_unreadable "$n" "ai:skip" && continue
+    [ "$(retry_due_at "$n")" -le "$now_s" ] && return 0
+  done
+  queued=$(count_open_issues_with_label "ai:queue" 2> /dev/null) || queued=0
+  if [ "${queued:-0}" -gt 0 ]; then
+    remember_hold_prs
+    while read -r pr state; do
+      [ "$state" = expired ] && return 0
+    done < <(hold_prs 2> /dev/null)
+  fi
+  return 1
+}
+
 # ---- 0. 続けて動くのを間引く ----
 # ほかのワークフローが終わるたび（workflow_run）に動くと、作業が続くリポジトリでは1時間に20回近く、全部を見直す（2026年11月18日、
 # パイプラインの鍵の回数制限＝全部のリポジトリで1時間5000回の半分近くを、見張り役だけで使っていた）。止まりの判定は「5〜45分動きが無い」
@@ -181,11 +201,16 @@ if [ "${GITHUB_EVENT_NAME:-}" = workflow_run ] && [[ "$WATCHDOG_SLOT_MIN" =~ ^[0
   [[ "${GITHUB_RUN_ID:-}" =~ ^[0-9]+$ ]]; then
   if recent_runs=$(GH_TOKEN="${READ_TOKEN:-}" gh api "repos/$REPO/actions/workflows/watchdog.yml/runs?per_page=50" 2> /dev/null) &&
     watchdog_slot_taken "$recent_runs" "$GITHUB_RUN_ID" "$(date +%s)" "$WATCHDOG_SLOT_MIN"; then
-    echo "この${WATCHDOG_SLOT_MIN}分の枠では、もう見張りが済んでいるので、今回は何もしません（次の枠・定期の見張り・目覚ましで見ます）"
-    # 済んだあとに付いた ai:retry・ai:hold の目覚ましだけは、かけ忘れない（目覚ましをかけるのは見張り役だけ）。一覧は2回ほどで読める
-    use_open_snapshot || true
-    set_retry_timer
-    exit 0
+    # 期限の来たやり直し・マージ待ちがあれば、間引かずに全部を見る（間引くと、次の枠か定期の起動まで残る）。一覧は写しから読む
+    if use_open_snapshot; then SNAPSHOT_LOADED=1; fi
+    if due_work_pending; then
+      echo "この${WATCHDOG_SLOT_MIN}分の枠では見張りが済んでいますが、期限の来たやり直し・マージ待ちがあるので、全部を見ます"
+    else
+      echo "この${WATCHDOG_SLOT_MIN}分の枠では、もう見張りが済んでいるので、今回は何もしません（次の枠・定期の見張り・目覚ましで見ます）"
+      # 済んだあとに付いた ai:retry・ai:hold の目覚ましだけは、かけ忘れない（目覚ましをかけるのは見張り役だけ）。一覧は2回ほどで読める
+      set_retry_timer
+      exit 0
+    fi
   fi
 fi
 
@@ -193,7 +218,9 @@ fi
 # （pipeline-lib.sh の use_open_snapshot。ラベルごとの一覧・ラベルの確かめのたびに API を呼ばない）。
 # 一覧は、ページをまたいで全部読む（api_list。100件までなら API は1回のまま。per_page=100 だけだと、101件目からの
 # Issue・PR を見張れず、止まったままになる）。写しを読めなければ、今までどおり、その都度 API から読む
-use_open_snapshot || echo "::warning::開いている Issue・PR の一覧を読めなかったので、その都度 API から読みます"
+if [ "${SNAPSHOT_LOADED:-}" != 1 ]; then
+  use_open_snapshot || echo "::warning::開いている Issue・PR の一覧を読めなかったので、その都度 API から読みます"
+fi
 open_prs=$(open_pulls_json)
 # 実装AIのブランチ（claude/issue-N-...）のPRがopenであるか
 has_open_pr_for_issue() {

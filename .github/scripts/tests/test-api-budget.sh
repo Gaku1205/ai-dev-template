@@ -86,6 +86,46 @@ state_with_run success "$slot_start"
 GITHUB_EVENT_NAME=workflow_run GITHUB_RUN_ID=120 run_script watchdog.sh > /dev/null
 assert_eq "成功した実行が自分より後：全部見る" "ai:plan,ai:retry" "$(labels_of 9)"
 
+echo "== 見張り役：枠が済んでいても、期限の来たやり直し・マージ待ちがあれば、間引かず全部を見る"
+due_retry() { # 付ける追加のラベル（空でよい）
+  state_with_run success "$slot_start"
+  run_lib 'mark_for_retry 9 plan "上限"' > /dev/null
+  state_py "
+for c in s['comments']:
+    if c['issue']=='9' and 'auto-retry' in c['body']: c['updated_at']='$(ago 120)'
+$1"
+}
+due_retry ""
+out=$(GITHUB_EVENT_NAME=workflow_run GITHUB_RUN_ID=200 run_script watchdog.sh)
+assert_contains "期限の来た ai:retry：全部を見る" "$out" "期限の来たやり直し・マージ待ちがあるので、全部を見ます"
+assert_eq "全部を見たので、やり直しが動いた（ai:retry が外れた）" "ai:plan" "$(labels_of 9)"
+due_retry "s['labels']['9'].append('ai:stuck')"
+out=$(GITHUB_EVENT_NAME=workflow_run GITHUB_RUN_ID=200 run_script watchdog.sh)
+assert_contains "ai:stuck の ai:retry：間引く" "$out" "もう見張りが済んでいるので、今回は何もしません"
+due_retry "s['labels']['9'].append('ai:skip')"
+out=$(GITHUB_EVENT_NAME=workflow_run GITHUB_RUN_ID=200 run_script watchdog.sh)
+assert_contains "ai:skip の ai:retry：間引く" "$out" "もう見張りが済んでいるので、今回は何もしません"
+state_with_run success "$slot_start"
+run_lib 'mark_for_retry 9 plan "上限"' > /dev/null
+out=$(GITHUB_EVENT_NAME=workflow_run GITHUB_RUN_ID=200 run_script watchdog.sh)
+assert_contains "期限が来ていない ai:retry：間引く" "$out" "もう見張りが済んでいるので、今回は何もしません"
+# 順番待ちがあって、ai:hold が付いて HOLD_BLOCK_MIN を過ぎたPR
+review='{"id":901,"issue":"20","user":{"login":"github-actions[bot]"},"created_at":"2026-11-17T00:00:00Z","updated_at":"2026-11-17T00:00:00Z","body":"## Code review\n\nNo issues found."}'
+pr20='{"number":20,"state":"open","mergeable_state":"clean","head":{"ref":"claude/issue-9-x","sha":"abc"},"labels":[{"name":"ai:hold"}]}'
+hold_state() { # ai:hold が付いてからの分 順番待ちのラベル
+  init_state '{"labels":{"20":["ai:hold"],"3":["'"$2"'"]},"events":{"20":[{"event":"labeled","label":{"name":"ai:hold"},"created_at":"'"$(ago "$1")"'"}]},"pulls":['"$pr20"'],"files":["src/lib/a.ts"],"comments":['"$review"'],
+    "issues_meta":{"3":{"title":"b","body":"本文\n<!-- ai-touches: src/lib/a.ts -->"}},"wf_runs":{"watchdog.yml":[{"id":150,"status":"completed","conclusion":"success","created_at":"'"$(iso "$slot_start")"'"}]}}'
+}
+hold_state 90 ai:queue
+out=$(GITHUB_EVENT_NAME=workflow_run GITHUB_RUN_ID=200 run_script watchdog.sh)
+assert_contains "順番待ち＋60分を過ぎたマージ待ち：全部を見る" "$out" "期限の来たやり直し・マージ待ちがあるので、全部を見ます"
+hold_state 30 ai:queue
+out=$(GITHUB_EVENT_NAME=workflow_run GITHUB_RUN_ID=200 run_script watchdog.sh)
+assert_contains "マージ待ちがまだ60分未満：間引く" "$out" "もう見張りが済んでいるので、今回は何もしません"
+hold_state 90 ai:skip
+out=$(GITHUB_EVENT_NAME=workflow_run GITHUB_RUN_ID=200 run_script watchdog.sh)
+assert_contains "順番待ちが無ければ、マージ待ちが長くても間引く" "$out" "もう見張りが済んでいるので、今回は何もしません"
+
 echo "== 写し：ラベルは一覧から答え、自分の付け外しを反映する"
 init_state '{"labels":{"9":["ai:plan"],"10":[]}}'
 out=$(run_lib '
