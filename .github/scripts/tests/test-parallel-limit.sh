@@ -84,4 +84,30 @@ assert_eq "動いている #1 のラベルはそのまま" "ai:implement" "$(lab
 assert_eq "動いている #2 のラベルはそのまま" "ai:implement" "$(labels_of 2)"
 assert_eq "夜の上限1を超えているので #3 は始めない" "ai:queue" "$(labels_of 3)"
 assert_contains "上限の表示に夜と上書き中が出る" "$out" "夜の上限（手で上書き中）"
+
+echo "== parallel_next_change：いまより後で、いちばん早く上限が変わる時刻"
+nxt() {
+  local at="$1"; shift
+  env -u MAX_PARALLEL -u PARALLEL_DAY -u PARALLEL_NIGHT -u PARALLEL_NIGHT_HOURS -u PARALLEL_TZ -u PARALLEL_OVERRIDE "$@" \
+    bash -c "source '$SCRIPTS_DIR/pipeline-lib.sh'; parallel_next_change '$at'" 2> /dev/null | tail -1
+}
+h="PARALLEL_NIGHT_HOURS=01-08"
+assert_eq "設定が無ければ空" "" "$(nxt "$noon")"
+assert_eq "昼（12:00）：次は翌日1:00（夜の始まり）" "$(t '2026-11-18 01:00')" "$(nxt "$noon" $h)"
+assert_eq "夜（3:00）：次は8:00（夜の終わり）" "$(t '2026-11-17 08:00')" "$(nxt "$(t '2026-11-17 03:00')" $h)"
+assert_eq "0:59：次は1:00" "$(t '2026-11-17 01:00')" "$(nxt "$(t '2026-11-17 00:59')" $h)"
+assert_eq "ちょうど1:00：次は8:00（いまは含めない）" "$(t '2026-11-17 08:00')" "$(nxt "$(t '2026-11-17 01:00')" $h)"
+h="PARALLEL_NIGHT_HOURS=22-06"
+assert_eq "日またぎ：23:00 の次は翌6:00" "$(t '2026-11-18 06:00')" "$(nxt "$(t '2026-11-17 23:00')" $h)"
+assert_eq "日またぎ：昼の12:00 の次は22:00" "$(t '2026-11-17 22:00')" "$(nxt "$noon" $h)"
+assert_eq "夜の終わりが24時：翌0:00" "$(t '2026-11-18 00:00')" "$(nxt "$(t '2026-11-17 23:00')" PARALLEL_NIGHT_HOURS=20-24)"
+assert_eq "形が違えば空" "" "$(nxt "$noon" PARALLEL_NIGHT_HOURS=abc)"
+assert_eq "開始と終了が同じなら空" "" "$(nxt "$noon" PARALLEL_NIGHT_HOURS=05-05)"
+assert_eq "PARALLEL_TZ を見る（UTC の 01-08：東京の 12:00＝UTC 3:00 は夜なので、次は UTC 8:00）" "$(date -d '2026-11-17 08:00 +0000' +%s)" "$(nxt "$noon" PARALLEL_NIGHT_HOURS=01-08 PARALLEL_TZ=UTC)"
+ov="PARALLEL_OVERRIDE=night until 2026-11-17T13:00+09:00"
+assert_eq "上書きの期限が先ならそれ" "$(t '2026-11-17 13:00')" "$(nxt "$noon" "$ov" PARALLEL_NIGHT_HOURS=01-08)"
+assert_eq "夜の始まりが上書きの期限より先ならそちら" "$(t '2026-11-17 12:00')" "$(nxt "$(t '2026-11-17 11:00')" "$ov" PARALLEL_NIGHT_HOURS=12-20)"
+assert_eq "期限切れの上書きは無視" "" "$(nxt "$noon" "PARALLEL_OVERRIDE=night until 2026-11-17T11:00+09:00")"
+assert_eq "形が違う上書きは無視" "" "$(nxt "$noon" "PARALLEL_OVERRIDE=night until あした")"
+assert_eq "現在時刻が数でなければ空" "" "$(nxt abc PARALLEL_NIGHT_HOURS=01-08)"
 finish

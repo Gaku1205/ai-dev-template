@@ -87,6 +87,30 @@ issue_idle_min() {
 # GitHub の定期の起動（30分ごと）は、混んでいると数時間遅れる。待ちが明ける時刻が分かっているので、
 # その時刻に retry-timer.yml（待ってから見張り役を動かすだけ）を動かしておく。目覚ましは1つだけ（新しい物が古い物を止める）。
 # 公開していないリポジトリでは待つあいだも Actions の時間を使うので、変数 RETRY_TIMER に off を入れれば止められる
+# 見張りが要る物（進行中の Issue・PR、ラベルの無い Issue）が1つでもあるか。あれば 0
+heartbeat_needed() {
+  local items pulls hold
+  items=$(open_items_json) || return 1
+  if printf '%s' "$items" | jq -e --arg owner "${OWNER,,}" '
+      def active($l): ($l | map(select(. == "ai:plan" or . == "ai:implement" or . == "ai:mocks" or . == "ai:blocked")) | length) > 0;
+      def unlabeled($l): ($l | map(select(startswith("ai:"))) | length) == 0;
+      def trusted: ((.user.login // "") | ascii_downcase) as $u | ($u == $owner or $u == "claude[bot]" or $u == "github-actions[bot]");
+      def watch: ((.labels // []) | map(.name)) as $l
+        | ($l | any(. == "ai:stuck" or . == "ai:skip") | not)
+          and (active($l) or (unlabeled($l) and trusted));
+      any(.[]; (.pull_request == null) and watch)' > /dev/null 2>&1; then
+    return 0
+  fi
+  pulls=$(open_pulls_json) || return 1
+  # 人間のマージ待ちのPR（hold_prs が waiting・expired で出す物）は除く
+  hold=$(hold_prs 2> /dev/null | awk '{print $1}' | tr '\n' ' ') || hold=""
+  printf '%s' "$pulls" | jq -e --arg repo "$REPO" --arg hold " $hold" '
+    any(.[]; (.draft | not)
+      and (((.head.repo.full_name // "") | ascii_downcase) == ($repo | ascii_downcase))
+      and (((.labels // []) | map(.name) | index("ai:stuck")) | not)
+      and ((.number | tostring) as $n | ($hold | contains(" " + $n + " ")) | not))' > /dev/null 2>&1
+}
+
 set_retry_timer() {
   local earliest="" n t now_s runs
   [ "${RETRY_TIMER:-on}" = "off" ] && return 0
@@ -110,6 +134,22 @@ set_retry_timer() {
       [ "$t" -gt "$now_s" ] || continue
       if [ -z "$earliest" ] || [ "$t" -lt "$earliest" ]; then earliest="$t"; fi
     done < <(hold_prs 2> /dev/null)
+  fi
+  # 定期の起動は当てにならない（実際は1日3〜4回）。進行中の物が残っている間は、WATCHDOG_HEARTBEAT_MIN 分後にも起こす（早い方を使う）。
+  # 写しがあれば API は増えない。何も待っていなければかけない（静かなリポジトリで Actions を回し続けない）
+  local hb="${WATCHDOG_HEARTBEAT_MIN:-15}"
+  [[ "$hb" =~ ^[0-9]+$ ]] && [ "$hb" -ge 1 ] || hb=15
+  if heartbeat_needed; then
+    t=$(( now_s + hb * 60 ))
+    if [ -z "$earliest" ] || [ "$t" -lt "$earliest" ]; then earliest="$t"; fi
+  fi
+  # 順番待ちがあるとき、並列の上限が変わる次の時刻（夜の始まり／終わり・上書きの期限）の1分後にも起こす
+  if [ "${queued:-0}" -gt 0 ]; then
+    t=$(parallel_next_change "$now_s")
+    if [ -n "$t" ]; then
+      t=$(( t + 60 ))
+      if [ -z "$earliest" ] || [ "$t" -lt "$earliest" ]; then earliest="$t"; fi
+    fi
   fi
   [ -z "$earliest" ] && return 0
   # 1回の待ちは最大 RETRY_TIMER_MAX_MIN 分（ジョブの時間の上限 6時間に収める）。それより先なら、起きた見張り役がかけ直す
