@@ -199,12 +199,20 @@ ${PERM_RETRY_MARK}
   else
     # AIが直してpushした。そのCIが承認待ちで止まっていたら動かし直す
     branch=$(gh api "repos/$REPO/pulls/$pr" -q .head.ref)
-    rerun_ci_if_waiting_approval "$pr" "$head" "$branch"
+    # push したのに main とコンフリクトしている（dirty）なら、GitHub はCIを動かさない。
+    # 空のコミットで動かし直しても動かず、先頭が変わって依頼の sha と食い違うので、先にマージの状態を見て、動かし直さない
+    merge_state=$(pr_merge_state "$pr")
+    if [ "$merge_state" != dirty ]; then
+      RERUN_CI_NEW_HEAD=""
+      rerun_ci_if_waiting_approval "$pr" "$head" "$branch"
+      # 空のコミットを足したら、以降の確かめ・依頼は足した後の先頭で行う
+      [ -n "$RERUN_CI_NEW_HEAD" ] && head="$RERUN_CI_NEW_HEAD"
+    fi
     # CIを待たずに、直したコミットのレビューも同時に始める（#119）
-    # push したのに main とコンフリクトしている（dirty）なら、GitHub はCIを動かさない。CIを待たず、すぐ解消を頼む
+    # dirty なら、CIを待たず、すぐ解消を頼む
     # （待つと、CIも after-ci も来ないまま黙って止まる）。unknown（GitHub が計算中）のときは頼まず、見張り役に任せる。
     # このコミットにもう直す依頼が出ていれば頼まない。dirty のときは、レビューも動かない（request_review も同じ頼み方をするので、ここで済ませる）
-    if [ "$(pr_merge_state "$pr")" = dirty ]; then
+    if [ "$merge_state" = dirty ]; then
       if [[ "$branch" == pipeline-sync/* ]]; then
         echo "PR #$pr：配布のPRなので、コンフリクトの解消は頼みません"
       elif fix_requested_for "$pr" "$head"; then

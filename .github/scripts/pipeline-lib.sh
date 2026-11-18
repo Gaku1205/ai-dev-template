@@ -1730,12 +1730,23 @@ rerun_ci_if_waiting_approval() {
     echo "PR #$pr：head がこのリポジトリではない（fork）か読めないので、何もしません"
     return 0
   fi
-  for _ in 1 2 3 4; do
+  # コンフリクト中（dirty）は GitHub がCIを動かさない。待っても来ないので1回だけ見る
+  local dirty=false tries=4
+  if [ "$(printf '%s' "$pr_json" | jq -r '.mergeable_state // ""')" = dirty ]; then
+    dirty=true
+    tries=1
+  fi
+  RERUN_CI_NEW_HEAD=""
+  for _ in $(seq 1 "$tries"); do
     runs=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/runs?head_sha=$sha&event=pull_request&per_page=50" \
       -q '[.workflow_runs[] | select(.name == "CI")]')
     [ "$(printf '%s' "$runs" | jq 'length')" -gt 0 ] && break
-    sleep 15
+    [ "$dirty" = true ] || sleep 15
   done
+  if [ "$dirty" = true ] && [ "$(printf '%s' "$runs" | jq 'length')" -eq 0 ]; then
+    echo "PR #$pr：main とコンフリクトしていてCIが動かないので、空のコミットは足しません（コンフリクトの解消を頼みます）"
+    return 0
+  fi
   local running waiting
   running=$(printf '%s' "$runs" | jq '[.[] | select(.conclusion != "action_required")] | length')
   waiting=$(printf '%s' "$runs" | jq '[.[] | select(.conclusion == "action_required")] | length')
@@ -1749,6 +1760,8 @@ rerun_ci_if_waiting_approval() {
   new=$(gh api "repos/$REPO/git/commits" -f message="CIを動かし直す（AIのpushでCIが承認待ちになったため）" \
     -f tree="$tree" -f "parents[]=$sha" -q .sha)
   gh api -X PATCH "repos/$REPO/git/refs/heads/$branch" -f sha="$new" > /dev/null
+  # shellcheck disable=SC2034 # 呼んだ側（after-mention.sh）が読む
+  RERUN_CI_NEW_HEAD="$new"
   echo "PR #$pr：$new を足しました"
 }
 

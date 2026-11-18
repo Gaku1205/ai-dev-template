@@ -153,7 +153,7 @@ Issue の `ai:stuck` を外したときは、付いているラベルで続き�
 - AIは `.github/`・`docs/pipeline.md`・`CLAUDE.md`・依存パッケージを触らない。`docs/spec.md`・`docs/design.md` は、見た目や挙動を決めるIssueのとき、実装の前に更新して同じPRに入れる（CLAUDE.md）。レビューAIが、書いた内容がIssueの範囲かを見る
 - レビューAIは毎回、前の指摘が直ったかも含めて見直し、必ず「## Code review」で始まるまとめを残す（進行役はこれで判断する）
 - 自動の修正は3回まで（最後の1回は opus）、自動のやり直しは10回まで。無限に回らない
-- AI（claude[bot]）のpushでCIが「承認待ち」になったら、進行役がオーナーのトークンで空のコミットを足してCIを動かし直す
+- AI（claude[bot]）のpushでCIが「承認待ち」になったら、進行役がオーナーのトークンで空のコミットを足してCIを動かし直す（PRが main とコンフリクト＝`dirty` でCIが0件のときは足さない。空のコミットでは動かず、先頭が変わって依頼の sha と食い違うため。代わりにコンフリクトの解消を頼む。`after-mention.sh`・`resume.sh`・見張り役 3.2）
 - ai-dev-template 自身は、AIがスクリプト・テスト・`docs/pipeline.md` を直し、CI（`script-tests`・`shellcheck`）とレビューが通れば自動でマージされる。印は main の `CLAUDE.md` の `pipeline-self-edit: auto` で、進行役は main の物を見るので、PRで印を足してもすり抜けられない。ワークフロー・`CLAUDE.md`・`AGENTS.md`（AIの許可とルール）は、どのリポジトリでもAIが無人で書き換えない（人間側のClaudeが行い、マージは `ai:hold`）
 - 公開後に壊れていたら、Vercelの画面から前の版にすぐ戻せる
 

@@ -51,8 +51,18 @@ ${RESUME_MARK}"
 
   if [ -z "$ci" ] || [ "$conclusion" = "action_required" ]; then
     # CIが無い／承認待ち。動かし直す
-    rerun_ci_if_waiting_approval "$NUMBER" "$head" "$ref"
-    echo "PR #$NUMBER：CIが終われば、そこから自動で続きます"
+    if [ -z "$ci" ] && [ "$(printf '%s' "$pr_json" | jq -r '.mergeable_state // ""')" = dirty ]; then
+      # コンフリクト中はCIが動かない。空のコミットは足さず、解消を頼む（配布のPRは次の配布で作り直されるので頼まない）
+      if [[ "$ref" == pipeline-sync/* ]]; then
+        echo "PR #$NUMBER：配布のPRなので、コンフリクトの解消は頼みません"
+      else
+        request_fix_or_stop "$NUMBER" "$head" "$CONFLICT_FIX_MSG" "main とのコンフリクトが解けませんでした"
+        echo "PR #$NUMBER：main とコンフリクトしているので、空のコミットは足さず、解消を依頼しました"
+      fi
+    else
+      rerun_ci_if_waiting_approval "$NUMBER" "$head" "$ref"
+      echo "PR #$NUMBER：CIが終われば、そこから自動で続きます"
+    fi
   elif [ "$status" != "completed" ]; then
     echo "PR #$NUMBER：CIが実行中です。終われば、そこから自動で続きます"
   elif [ "$conclusion" = "success" ]; then
