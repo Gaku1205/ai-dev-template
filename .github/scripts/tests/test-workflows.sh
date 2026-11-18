@@ -546,6 +546,27 @@ assert_eq "別のエラー：やり直さない" "more=false" "$(plan_more '[{"t
 assert_eq "実行記録が無い：やり直さない" "more=false" "$(plan_more '')"
 assert_eq "実行記録が壊れている：やり直さない" "more=false" "$(plan_more 'こわれた')"
 
+echo "== 企画：本文の下書きは作業フォルダの決まったファイルに書き、Edit で直せる（/tmp に書いて sed・rm を試して止まらない。agent-desk #447）"
+result=$(python3 - "$WORKFLOWS/claude-plan.yml" <<'PYT'
+import re, sys, yaml
+steps = yaml.safe_load(open(sys.argv[1]))["jobs"]["plan"]["steps"]
+ai = [st for st in steps if str(st.get("uses", "")).startswith("anthropics/claude-code-action")]
+out = []
+for st in ai:
+    p = st["with"]["prompt"]
+    tools = re.search(r'--allowedTools "([^"]*)"', st["with"]["claude_args"]).group(1).split(",")
+    ok = ("Write" in tools and "Edit" in tools
+        # コマンドは gh だけ（sed・rm などのシェルは開けない）
+        and all(t.startswith("Bash(gh ") for t in tools if t.startswith("Bash("))
+        and "--body-file plan-body.md" in p and "--body-file plan-new-issue.md" in p and "--body-file <" not in p
+        and "`plan-body.md` を Edit で直して" in p and "`/tmp` など、ほかの場所には書かない" in p
+        and "書いたファイルは消さない" in p and "`sed`・`rm`" in p)
+    out.append("ok" if ok else "ng")
+print(",".join(out))
+PYT
+)
+assert_eq "2つの指示とも、下書きの場所と直し方が書いてある" "ok,ok" "$result"
+
 echo "== 企画：置き換えられて取り消された実行は、あとの工程（after-plan）を動かさない（先へ進んだ Issue に ai:retry を付けない）"
 assert_contains "after-plan の条件" "$(grep -n "needs.plan.result" "$WORKFLOWS/claude-plan.yml")" "needs.plan.result != 'cancelled'"
 

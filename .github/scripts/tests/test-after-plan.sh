@@ -82,6 +82,37 @@ assert_contains "理由を書く" "$(comments_of 3)" "作業回数の上限を�
 assert_contains "次にすることを書く" "$(comments_of 3)" "Issue を小さく分けるか"
 assert_not_contains "やり直しの記録は作らない" "$(comments_of 3)" "auto-retry"
 
+echo "== AIは正常に終わって結果も書いたのに、アクションが失敗にした（手数が上限を少し越えた。途中に拒否あり）：失敗にせず、結果を使って進める（agent-desk #447）"
+done_file="$MOCK_DIR/done.json"; printf '%s' '[{"type":"result","subtype":"success","is_error":false,"num_turns":34,"result":"清書は終わりました","permission_denials":[{"tool_name":"Edit","tool_input":{"file_path":"/tmp/issue447.md"}},{"tool_name":"Bash","tool_input":{"command":"rm issue-447-body.md"}}]}]' > "$done_file"
+err_file="$MOCK_DIR/err.json"; printf '%s' '[{"type":"result","subtype":"success","is_error":true,"result":"","permission_denials":[{"tool_name":"Edit","tool_input":{"file_path":"/tmp/a.md"}}]}]' > "$err_file"
+run_done() { # plan-result.txt の1行目（空なら、無し） 実行記録
+  (cd "$work" && if [ -n "$1" ]; then printf '%s\n%s\n' "$1" PARALLEL > plan-result.txt; else rm -f plan-result.txt; fi && ISSUE=3 PLAN_OUTCOME=failure PLAN_TURNS_RAISED=false EXECUTION_FILE="$2" GH_TOKEN=pipe GITHUB_TOKEN_FOR_LABELS=x bash "$SCRIPTS_DIR/after-plan.sh" 2>&1)
+}
+init_state '{"labels":{"3":["ai:plan"]}}'
+out=$(run_done "READY" "$done_file")
+assert_eq "実装へ進む（人間に回さない）" "ai:implement" "$(labels_of 3)"
+assert_contains "理由をログに出す" "$out" "失敗として扱いません"
+assert_not_contains "許可不足のコメントを書かない" "$(comments_of 3)" "足りない許可"
+init_state '{"labels":{"3":["ai:plan"]}}'
+run_done "ASK" "$done_file" > /dev/null
+assert_eq "質問の結果も、そのまま使う" "ai:question" "$(labels_of 3)"
+init_state '{"labels":{"3":["ai:plan"]}}'
+run_done "" "$done_file" > /dev/null
+assert_contains "結果を書いていなければ、今までどおり許可不足で人間に回す" "$(labels_of 3)" "ai:stuck"
+assert_contains "足りない許可を書く" "$(comments_of 3)" "足りない許可"
+init_state '{"labels":{"3":["ai:plan"]}}'
+run_done "READY" "$err_file" > /dev/null
+assert_contains "AIがエラーで終わっていれば、結果があっても使わない" "$(labels_of 3)" "ai:stuck"
+init_state '{"labels":{"3":["ai:plan"]}}'
+run_done "READY" "$turns_file" > /dev/null
+assert_eq "上限に届いて終わった（正常に終わっていない）なら、今までどおりやり直し待ち" "ai:plan,ai:retry" "$(labels_of 3)"
+init_state '{"labels":{"3":["ai:plan"]}}'
+run_done "READY" "$MOCK_DIR/none.json" > /dev/null
+assert_eq "実行記録が無ければ、今までどおりやり直し待ち" "ai:plan,ai:retry" "$(labels_of 3)"
+init_state '{"labels":{"3":["ai:plan"]}}'
+run_done "なにか" "$done_file" > /dev/null
+assert_contains "知らない結果は使わない" "$(labels_of 3)" "ai:stuck"
+
 echo "== 上限を増やしたやり直しをしていない（古いワークフロー・結果ファイルがあった）ときは、今までどおり1回やり直す"
 for raised in false ""; do
   init_state '{"labels":{"3":["ai:plan"]}}'

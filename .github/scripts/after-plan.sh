@@ -39,6 +39,18 @@ if [ "$skip_rc" -eq 0 ]; then
 fi
 
 result=$(head -n 1 plan-result.txt 2> /dev/null | tr -d '\r' || true)
+# AIは正常に終わって結果も書いたのに、AIのアクションが失敗にしたとき（手数が --max-turns を少し越えて終わった、など）は、
+# 清書は済んでいるので、結果を使って先へ進める。途中で拒否された操作があっても「許可不足」として人間に回さない（agent-desk #447）
+if [ "$PLAN_OUTCOME" != "success" ]; then
+  case "$result" in
+    READY* | QUESTION* | ASK* | MOCKS* | BLOCKED*)
+      if ai_finished_ok "${EXECUTION_FILE:-}"; then
+        echo "企画AIは正常に終わって結果（$result）も書いています。アクションの失敗（手数が上限を越えた、など）は、失敗として扱いません"
+        PLAN_OUTCOME=success
+      fi
+      ;;
+  esac
+fi
 # 企画AIがエラーで終わったとき（使用量の上限など）は、質問扱いにせず、自動でやり直す（watchdog.sh）
 if [ "$PLAN_OUTCOME" != "success" ]; then
   export GH_TOKEN="$GITHUB_TOKEN_FOR_LABELS"
