@@ -156,6 +156,63 @@ linked_issue() {
   printf '%s' "$n"
 }
 
+# PRの本文に「人間にお願いしたいこと」の節（## か ### の見出し）があるあいだは、マージしても元のIssueを閉じない。
+# 本文の Closes/Fixes/Resolves #N を Refs #N に書き換え（GitHub は Refs ではIssueを閉じない）、Issueに人間への頼みごとを1回だけ書く
+# （1行目 <!-- human-request -->、2行目に要点の1文。同じPRには、印 <!-- human-request-pr: #PR番号 --> で2回書かない）。
+# ワークフローの差分のように、AIが触れない物を人間が当てるまでIssueを開けておくため。当てたら人間がIssueを閉じる。
+# 節が無ければ何もしない。使い方：defer_close_for_human_request PR番号
+HUMAN_REQUEST_HEADING_RE='^###? 人間にお願いしたいこと'
+defer_close_for_human_request() {
+  local pr="$1" body section issue new_body mark url
+  body=$(gh api "repos/$REPO/pulls/$pr" -q '.body // ""') || return 0
+  printf '%s\n' "$body" | grep -qE "$HUMAN_REQUEST_HEADING_RE" || return 0
+  # 節：見出しから、次の見出しか区切り線（---）の手前まで
+  section=$(printf '%s\n' "$body" | awk -v re="$HUMAN_REQUEST_HEADING_RE" '
+    f && (/^#+ / || /^---[ \t]*$/) { exit }
+    f { print; next }
+    $0 ~ re { f = 1; print }')
+  issue=$(printf '%s' "$body" | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?|refs) #[0-9]+' | head -1 | grep -oE '[0-9]+' || true)
+  [ -z "$issue" ] && issue=$(linked_issue "$pr")
+  [ -z "$issue" ] && return 0
+  if printf '%s' "$body" | grep -qiE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+'; then
+    new_body=$(printf '%s' "$body" | sed -E 's/\b(close[sd]?|fix(e[sd])?|resolve[sd]?) #([0-9]+)/Refs #\3/gI') || return 0
+    [ -n "$new_body" ] || return 0
+    gh api -X PATCH "repos/$REPO/pulls/$pr" -f body="$new_body" > /dev/null || return 0
+  fi
+  mark="<!-- human-request-pr: #${pr} -->"
+  if all_comments "$issue" | jq -e --arg m "$mark" 'any(.[]; .body | contains($m))' > /dev/null; then
+    return 0
+  fi
+  url="${GITHUB_SERVER_URL:-https://github.com}/${REPO}/pull/${pr}"
+  comment "$issue" "<!-- human-request -->
+PR #${pr} の『人間にお願いしたいこと』を当ててください。当てたらこのIssueを閉じてください。
+
+PR：${url}
+（この PR は『人間にお願いしたいこと』があるので、マージしても Issue は自動では閉じません）
+
+${section}
+
+${mark}" || return 0
+  echo "PR #${pr}：『人間にお願いしたいこと』があるので、#${issue} は閉じないようにしました"
+}
+
+# 『人間にお願いしたいこと』のPRがマージされた後に、Issueの進行ラベルを外して待ちの印 ai:skip を付ける（Issue は人間が閉じるまで開いたまま）。
+# PRが開いている間やマージされずに閉じられたときは呼ばない（ai:implement が残らないと、並列の数え方と見張り役のやり直しが狂う）。
+# 頼みごとのコメント（PRごとの印）が無いPRでは何もしない。何度呼んでも同じ。使い方：park_issue_after_human_request_merge PR番号
+park_issue_after_human_request_merge() {
+  local pr="$1" body issue mark l
+  body=$(gh api "repos/$REPO/pulls/$pr" -q '.body // ""') || return 0
+  issue=$(printf '%s' "$body" | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?|refs) #[0-9]+' | head -1 | grep -oE '[0-9]+' || true)
+  [ -z "$issue" ] && issue=$(linked_issue "$pr")
+  [ -z "$issue" ] && return 0
+  mark="<!-- human-request-pr: #${pr} -->"
+  all_comments "$issue" | jq -e --arg m "$mark" 'any(.[]; .body | contains($m))' > /dev/null || return 0
+  # ai: のラベルが1つも無いと、見張り役が企画に回し直すので、待ちの印 ai:skip を付ける
+  for l in ai:plan ai:implement ai:review ai:retry ai:queue; do remove_label "$issue" "$l"; done
+  add_label "$issue" "ai:skip" || true
+  echo "PR #${pr}：マージされたので、#${issue} は人間が閉じるまで ai:skip で待たせます"
+}
+
 # Issue を作った人を、そのまま自動で動かしてよいか：オーナーと、このパイプラインのワークフロー（企画AIが分けて作る Issue は
 # github-actions[bot]、AI自身は claude[bot]）だけ。公開リポジトリでは誰でも Issue を作れるので、ほかの人・ほかのボットの Issue は
 # オーナーが ai:skip を外すまで動かさない（intake.sh・watchdog.sh）

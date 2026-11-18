@@ -25,6 +25,8 @@ if has_label_or_unreadable "$pr" "ai:stuck"; then
   echo "人間の確認待ち（ai:stuck）か、ラベルを読めないので、何もしません"
   exit 0
 fi
+# 「人間にお願いしたいこと」の節があれば、マージ（自動でも人間でも）の前に Closes を Refs に直す（修正AIが本文を書き換えた場合も拾う）
+defer_close_for_human_request "$pr" || true
 
 if [ "$CONCLUSION" != "success" ]; then
   # レビューAIが結果のコメント（「## Code review」）を書いたあとにエラーで終わることがある（後片付けの失敗など）。
@@ -180,6 +182,7 @@ fi
 
 # マージできなかったときのやり直しは、種類 merge（レビューは済んでいるので、見張り役はAIを動かさず、ここ（マージの判断）だけをやり直す）
 merge_or_handle "$pr" "$HEAD_SHA" merge || exit 0
+park_issue_after_human_request_merge "$pr" || true
 notify merged "マージしました" "PR #${pr} ${title}：CIもレビューもOKだったので自動でマージしました" 2
 # 使い終わったブランチを消す（リポジトリの「Automatically delete head branches」が先に消していても構わない）
 delete_branch_if_ai "$HEAD_BRANCH"

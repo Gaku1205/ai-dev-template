@@ -182,7 +182,11 @@ if m and method=='PUT': st.setdefault('merged',[]).append(int(m.group(1))); save
 m=re.match(r'pulls/(\d+)$',base)
 if m:
     for pr in st['pulls']:
-        if pr['number']==int(m.group(1)): out(pr); sys.exit(0)
+        if pr['number']==int(m.group(1)):
+            if method=='PATCH':
+                if 'body' in fields: pr['body']=fields['body']
+                save(); print('{}'); sys.exit(0)
+            out(pr); sys.exit(0)
 m=re.match(r'commits/([^/]+)/check-runs$',base)
 # checks_later・checks_flip_after：この回数だけ読まれたあとは、checks_later を返す（待っている間にチェックが終わった、を表す）
 if m:
