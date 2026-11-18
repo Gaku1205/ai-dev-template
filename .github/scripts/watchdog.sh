@@ -32,6 +32,42 @@ MOCKS_RETRY_MARK="<!-- auto-mocks-retry -->"
 IDLE_ORPHAN_MIN="${IDLE_ORPHAN_MIN:-45}"
 
 now=$(date +%s)
+
+# コンフリクトの解消の依頼が、応答の無いまま宙に浮いているか（3.2 と 3.4 の ai:hold が使う）。
+# 同じ先頭コミットへの依頼があり、いちばん新しい物が IDLE_ORPHAN_MIN 分以上前で、このPRのブランチで Claude Mention の実行が
+# 動いても待ってもいなければ、宙に浮いているとみなす（修正AIが時間切れ・取り消しになった、変更なしで終わって after-mention.sh も動かなかった、など）。
+# 実行の一覧を読めなければ「動いている」とみなす（動いている修正AIに重ねない）。
+# 宙に浮いていれば、1回目は印（auto-fix-retry）を残して同じ依頼をやり直し待ちにし、同じ先頭コミットでもう一度なら人間に回す
+# 戻り値：0＝宙に浮いていたので扱った（呼ぶ側は continue する）、1＝何もしない
+handle_lost_conflict_request() { # PR番号 先頭コミット ブランチ
+  local pr="$1" head="$2" ref="$3" last_at age running last_is_retry
+  has_label_or_unreadable "$pr" "ai:retry" && return 1
+  last_at=$(all_comments "$pr" | jq -r --arg sha "<!-- auto-fix-sha: $head -->" --arg resume "$RESUME_MARK" '
+    (map(select(.body | contains($resume)) | .created_at) | max // "") as $since
+    | map(select((.body | test("<!-- auto-fix(-retry)? -->")) and (.body | contains($sha)) and .created_at > $since)) | last | .created_at // ""')
+  [ -n "$last_at" ] || return 1
+  age=$(idle_min "$last_at")
+  [ "$age" -ge "$IDLE_ORPHAN_MIN" ] || return 1
+  running=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/workflows/claude-mention.yml/runs?per_page=30" \
+    -q "[.workflow_runs[] | select(.status != \"completed\" and .head_branch == \"$ref\")] | length" 2> /dev/null) || running=1
+  [[ "$running" =~ ^[0-9]+$ ]] || running=1
+  if [ "$running" -gt 0 ]; then
+    echo "PR #$pr：コンフリクトの解消の依頼から${age}分たちましたが、修正AIの実行が動いている（${running} 件）ので、待ちます"
+    return 1
+  fi
+  last_is_retry=$(all_comments "$pr" | jq --arg sha "<!-- auto-fix-sha: $head -->" --arg resume "$RESUME_MARK" '
+    (map(select(.body | contains($resume)) | .created_at) | max // "") as $since
+    | map(select((.body | test("<!-- auto-fix(-retry)? -->")) and (.body | contains($sha)) and .created_at > $since)) | last
+    | (.body // "") | contains("<!-- auto-fix-retry -->")')
+  if [ "$last_is_retry" = true ]; then
+    stop_for_human "$pr" "main とのコンフリクトの解消を頼みましたが、修正AIの応答がありませんでした（同じ依頼をやり直しても、${age}分のあいだコンフリクトが解けないままです。Actions の Claude Mention の実行を確かめてください）"
+  else
+    comment "$pr" "🔧 main とのコンフリクトの解消を頼んで${age}分たちましたが、まだコンフリクトしたままなので、同じ依頼をもう一度出します（見張り役）。" || true
+    mark_for_retry "$pr" mention "main とのコンフリクトの解消を頼みましたが、修正AIの応答が無いまま${age}分たちました（時間切れ・起動しなかった・変更なしで終わった、など）"
+  fi
+  return 0
+}
+
 idle_min() {
   echo $(( (now - $(date -d "$1" +%s)) / 60 ))
 }
@@ -413,6 +449,9 @@ for pr in $(printf '%s' "$open_prs" | jq -r '.[].number'); do
       asked=$(all_comments "$pr" | jq --arg mark "auto-fix-sha: $head" '[.[] | select(.body | contains($mark))] | length')
       if [ "$asked" -eq 0 ]; then
         request_fix_or_stop "$pr" "$head" "main とコンフリクトしていて、このPRのCIが動いていません（コンフリクトがあるとCIは動きません）。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し（docs/spec.md・docs/design.md も両方の決まりを残す）、どちらかを捨てるときはPRにコメントで理由を書いてください。" "main とのコンフリクトが解けませんでした"
+      else
+        # 頼んだのに応答が無いまま IDLE_ORPHAN_MIN 分たったら、やり直し→人間へ（CIが無いので、3.4 には来ない）
+        handle_lost_conflict_request "$pr" "$head" "$ref" || true
       fi
       continue
     fi
@@ -478,9 +517,13 @@ ${relabel_mark}"
         printf '%s' "$comments" | jq -e --arg mk "$REVIEW_UNAVAILABLE_MARK $head" 'any(.[]; .body | contains($mk))' > /dev/null; }; then
         # 人間を待っている間に main が進んで、コンフリクトしたら、AIに解消を頼む（待ちが長い PR を順番待ちが追い越すので、あとで入る変更とぶつかりやすい）。
         # 同じ先頭コミットへの依頼は1回だけ
-        if [[ "$ref" != pipeline-sync/* ]] && [ "$(pr_merge_state "$pr")" = dirty ] &&
-          ! printf '%s' "$comments" | jq -e --arg mk "auto-fix-sha: $head" 'any(.[]; .body | contains($mk))' > /dev/null; then
-          request_fix_or_stop "$pr" "$head" "人間のマージ待ちの間に main が進み、コンフリクトしています。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し（docs/spec.md・docs/design.md も両方の決まりを残す）、どちらかを捨てるときはPRにコメントで理由を書いてください。" "main とのコンフリクトが解けませんでした"
+        if [[ "$ref" != pipeline-sync/* ]] && [ "$(pr_merge_state "$pr")" = dirty ]; then
+          if ! printf '%s' "$comments" | jq -e --arg mk "auto-fix-sha: $head" 'any(.[]; .body | contains($mk))' > /dev/null; then
+            request_fix_or_stop "$pr" "$head" "人間のマージ待ちの間に main が進み、コンフリクトしています。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し（docs/spec.md・docs/design.md も両方の決まりを残す）、どちらかを捨てるときはPRにコメントで理由を書いてください。" "main とのコンフリクトが解けませんでした"
+          else
+            # 頼んだのに応答が無いまま IDLE_ORPHAN_MIN 分たったら、やり直し→人間へ
+            handle_lost_conflict_request "$pr" "$head" "$ref" || true
+          fi
         fi
         continue
       fi
