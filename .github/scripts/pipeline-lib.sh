@@ -908,11 +908,12 @@ start_next_in_queue() {
     return 0
   fi
   if [ "$busy" -eq 0 ] && [ "$prs" -eq 0 ]; then
-    # 2＝ほかの処理が先に始めた（競合は正常なので、失敗にしない）
-    start_queued_issue "$(printf '%s\n' "$queue" | head -1)" || [ $? -eq 2 ] || return 1
-    return 0
+    # 進行中の物が無い：先頭の1つで終わらず、下の繰り返し（上限・重なり・印の無い物の決まり）で上限まで並べて始める。
+    # 進行中が空なので、先頭は必ず始まる（印の無い物なら、その1つだけで、この実行は終わる）
+    inflight=""
+  else
+    inflight=$(inflight_touches) || return 1
   fi
-  inflight=$(inflight_touches) || return 1
   if printf '%s\n' "$inflight" | grep -qx unknown; then
     echo "進行中の物に、触るファイルが分からない物があるので、順番待ちは進めません"
     return 0
@@ -988,6 +989,32 @@ $t"
   done <<< "$holds"
   [ "$started" -eq 0 ] && echo "今は始められる物がありません（進行中の物が終わると、もう一度見ます）"
   return 0
+}
+
+# 企画のあとの数え直し：ai:implement を付けた直後に呼ぶ。同時に企画が終わった物が先に実装に入っていて、
+# 上限を超える・触るファイルが重なるなら、番号の大きい方（この Issue）が引いて、ai:implement を外し ai:queue に入れ直す。
+# 引数：Issue番号、上限、触るファイル（改行区切り・空でもよい）。引いたら 0、そのまま進めるなら 1
+# 数え方は番号だけで決まる（番号の小さい方は、相手を見ても引かない）ので、2つが互いを見ても、両方は引かない
+yield_if_crowded() {
+  local issue="$1" limit="$2" mine="$3" others older=0 n body t overlap=no
+  others=$(open_numbers_with_label "ai:implement" 2> /dev/null) || return 1
+  for n in $others; do
+    [ "$n" -lt "$issue" ] || continue
+    older=$((older + 1))
+    # PRがもうある物は、同時に始めた物ではない（PRの変えたファイルでの重なりは、付ける前に確かめ済み）
+    if [ -n "$mine" ] && [ "$overlap" = no ] && ! open_pulls_json 2> /dev/null | jq -e --arg p "claude/issue-$n-" 'any(.[]; .head.ref | startswith($p))' > /dev/null 2>&1; then
+      body=$(issue_body "$n" 2> /dev/null) || continue
+      t=$(touches_from_body "$body")
+      if [ -n "$t" ] && paths_overlap "$mine" "$t"; then overlap=yes; fi
+    fi
+  done
+  if [ "$older" -ge "$limit" ] || [ "$overlap" = yes ]; then
+    # 実装のワークフローは始まっているかもしれない。ai:queue と ai:implement を同時に持たないよう、先に外してから入れ直す
+    take_label "$issue" "ai:implement" || return 1
+    add_label "$issue" "ai:queue" || true
+    return 0
+  fi
+  return 1
 }
 
 # 順番待ちの1つを実装に回す。PRが閉じたとき（queue.yml）と見張り役が同時に進めることがあるので、ai:queue を外せた方だけが進める
