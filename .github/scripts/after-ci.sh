@@ -148,6 +148,19 @@ case "$CONCLUSION" in
       pr_body=$(gh api "repos/$REPO/pulls/$pr" -q '.body // ""')
       updated=$(visual_update_count "$pr")
       if [ "$only_visual" = "true" ] && printf '%s' "$pr_body" | grep -q 'visual:update' && [ "$updated" -lt 2 ]; then
+        # 撮り直しと修正AIは、同じブランチに push する。同時に動かさない（順番は、修正 → 撮り直し → レビュー）。
+        # 同時に動くと、先に入った push のせいで、修正AIが「PRが更新されたので動かない」で終わる・撮り直しの push が弾かれる（agent-desk PR #478）
+        if fix_requested_for "$pr" "$HEAD_SHA"; then
+          echo "PR #$pr：見た目のテストだけが落ちましたが、このコミットにはもう直すよう頼んであるので、基準の画像の撮り直しは始めません（直した push のあとの CI で、もう一度決めます）"
+          exit 0
+        fi
+        # レビューの指摘がもう出ている（CIと同時に動いて、先に終わった）：このあと修正AIが動くので、撮り直しは始めず、ここで直すよう頼む
+        # （after-review.sh は、この依頼を見て重ねて頼まない）。撮り直しは、直した push のあとの CI で決める
+        if review_has_findings "$pr" "$HEAD_SHA"; then
+          request_fix_or_stop "$pr" "$HEAD_SHA" "レビューで指摘があり、CIでは見た目のテストも落ちています。このPRの「Code review」のコメントと、コードの行に付いた指摘を読んで直してください。指摘が間違っていると判断した場合は、直さずにその理由をこのPRにコメントしてください。見た目のテスト（test:visual。-g でテスト名を絞れる）は、画像の比べではない確かめ（位置・数・文言など）が落ちていれば原因のコードを直し、テストの条件はゆるめないでください。画像の差だけなら何もしないでください（基準の画像は自分で撮り直さない。直した push のあとに、CIの環境で自動で撮り直します）。"
+          echo "PR #$pr：見た目のテストだけが落ちましたが、レビューの指摘がもう出ているので、基準の画像の撮り直しは始めず、先に直すよう依頼しました"
+          exit 0
+        fi
         comment "$pr" "見た目のテストだけが落ちていて、見た目を変えたPRなので、基準の画像をCIの環境で撮り直します（自動、$((updated + 1))回目）。
 
 ${VISUAL_MARK}"
