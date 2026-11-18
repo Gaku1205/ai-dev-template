@@ -49,7 +49,19 @@ for f in CLAUDE.md AGENTS.md; do
   run_case "$f .github/scripts/a.sh" ""
   assert_eq "$f が混ざると、マージされず ai:hold" ":ai:hold" "$(merged):$(labels_of 58)"
 done
+for f in .github/sync-targets .github/factory/x.md .github/ISSUE_TEMPLATE/x.yml .github/deploy/x docs/pipeline-setup.md .claude/skills/x.md; do
+  run_case "$f" ""
+  assert_eq "印あり：$f は、マージされず ai:hold" ":ai:hold" "$(merged):$(labels_of 58)"
+done
+for f in .github/scripts/x.sh .github/scripts/tests/x.sh docs/pipeline.md README.md; do
+  run_case "$f" ""
+  assert_eq "印あり：$f は、自動でマージされる" "58:" "$(merged):$(labels_of 58)"
+done
 export CLAUDE_MD="$MOCK_DIR/CLAUDE_without_mark.md"
+for f in .github/sync-targets .github/factory/x.md .github/ISSUE_TEMPLATE/x.yml .github/deploy/x docs/pipeline-setup.md; do
+  run_case "$f" ""
+  assert_eq "印なし：$f は、従来どおり ai:hold" ":ai:hold" "$(merged):$(labels_of 58)"
+done
 run_case ".github/scripts/watchdog.sh" ""
 assert_eq "印が無いリポジトリ（テンプレートから作ったアプリ）は、スクリプトでも ai:hold" ":ai:hold" "$(merged):$(labels_of 58)"
 export CLAUDE_MD="$MOCK_DIR/CLAUDE_default.md"

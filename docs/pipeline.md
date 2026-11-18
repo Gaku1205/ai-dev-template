@@ -36,7 +36,7 @@ CIとレビューAIを同時に動かす（#119）：レビューはCIを待た�
 | `ai:blocked` | 企画AI（`BLOCKED`） | 他の Issue・PR の完了待ち（その結果や決まりを使う作業。別のリポジトリの作業でもよい）。待ち先はコメントの印 `<!-- blocked-by: owner/repo#N -->`（待ち先ごとに1つ）。見張り役が待ち先を見て、全部閉じたら（マージ・クローズ）`ai:blocked` を外して `ai:plan` に戻す。人間は何もしなくてよい（下の「他の Issue・PR の完了待ち」） |
 | `ai:found` | 使ってみる役・監査役（`found-report.sh`） | 使ってみる役（公開後に本番を試す）・監査役（仕様書の食い違いを探す）が見つけて作った Issue の印。`ai:plan` も一緒に付き、いつもの流れに乗る（下の「使ってみる役・監査役」） |
 | `priority:high` | 人間 | 急ぎ。順番待ち（`ai:queue`）から先に実装に回す（下の「順番待ちの進め方」） |
-| `ai:hold` | 人間か進行役 | 最後のマージだけ人間が押す（大事な変更用）。`.github/`・`docs/pipeline.md`・`CLAUDE.md`・`AGENTS.md` を触るPRには、進行役が自動で付ける（ただし ai-dev-template 自身は、スクリプト・テスト・`docs/pipeline.md` だけの変更なら付けず、自動でマージする。下の「安全のしくみ」） |
+| `ai:hold` | 人間か進行役 | 最後のマージだけ人間が押す（大事な変更用）。`.github/`・`.claude/`・`docs/pipeline.md`・`docs/pipeline-setup.md`・`CLAUDE.md`・`AGENTS.md`・`pipeline.json` を触るPRには、進行役が自動で付ける（ただし ai-dev-template 自身は、`.github/scripts/`（テストを含む）・`docs/pipeline.md`・README だけの変更なら付けず、自動でマージする。下の「安全のしくみ」） |
 | `ai:retry` | パイプライン | AIが一時的に止まった（使用量の上限など）。見張り役が30分以上あけて自動でやり直す（失敗のコメントに、原因の分類とログのURLが付く）。人間は何もしなくてよい |
 | `ai:stuck` | パイプライン | 自動で進められず止まった。人間が確認して、続けるなら外す（外すと自動で再開） |
 | `ai:question` | 企画AI・画面案 | 結果が大きく変わる迷い（見た目の方向・画面の構成・挙動・お金・データ・範囲）を、選択式で質問して待っている（コメントの印 `<!-- ai-question -->`）。オーナーがコメントで答えると `answer.yml` が `ai:plan` に戻し、企画AIが答えを使って清書する。小さい迷いは聞かずに「仮定」に書く |
@@ -150,14 +150,14 @@ Issue の `ai:stuck` を外したときは、付いているラベルで続き�
 - レビューAIは普段 sonnet。追加＋削除が300行を超える変更と、ログイン・トークン・秘密・権限・依存（`package.json`）・ワークフローを触る変更は opus でレビューする（`claude-review.yml` の「レビューのモデルを決める」）
 - AIが動くジョブには `PIPELINE_TOKEN` を渡さない。企画・実装のあとの処理（次へ進める・PRを作る）は別のジョブで、main から取り直したスクリプトを動かす。AIが作業フォルダのスクリプトを書き換えても、強いトークンでは動かない（AIの結果は、実行記録と `plan-result.txt` をデータとして受け渡すだけ）
 - パイプラインの更新を配る（`sync.yml`）のは、テンプレートの main でCIが通った版だけ。CIが通ってから15分待ち（変数 `SYNC_DELAY_MIN` で変えられる。手で動かしたときは待たない）、その間に main がまた更新されたら新しい方だけを配る（続けてマージしても、配り先のPRは1つで済む）。配り先は、このテンプレートから作られ、パイプラインの鍵（App）が見えるリポジトリ（自動。新しいアプリを作っても書き足さなくてよい）と、`.github/sync-targets` に書いた物（テンプレートより前からあるリポジトリなど）。配りたくない物は `.github/sync-targets` に `!owner/repo` と書く（`sync-targets.sh`）。リポジトリの一覧を読めないとき（鍵が無い・期限切れ）は、書いた物だけに黙って配らず、失敗で終わる。配るときは配り先の `.github/` をテンプレートの物で置き換える（テンプレートに無いファイルは消える）。配り先で自分で足したワークフローなどを残したいときは、配り先の `.github/sync-keep` に、そのファイルの名前を1行に1つ書く（例：`workflows/my-job.yml`）。配り先の main には直接入れず、`pipeline-sync/<sha>` のPRを作る。配り先のCIが通ったら、進行役がレビューなしでマージする（落ちたら `ai:stuck` で人間に回す。main が先に進んでいれば先に取り込み、取り込めなかったときも、黙らず `ai:stuck`・コメント・通知で人間に回す。AIが作ったPRや、印の無いPRはこの扱いにしない）。前の配布のPRの一覧を読めない配り先は、警告を出してそのアプリだけ飛ばし、後ろのアプリには配る（全体は失敗で終わる）。配布のPRの本文には、元のリポジトリと sha の印 `<!-- pipeline-sync-src: owner/repo@sha -->` を入れる（印の無い古いPRは、ブランチ名 `pipeline-sync/<sha>` から sha だけ読む）。同じ配布が複数のアプリで落ちたとき（テンプレートのテストの不具合など、原因が1つのとき）、「パイプラインの更新が入りません」の通知は最初の1件だけにする（`sync-failure-report.sh`）。テンプレートに、タイトル `配布 <sha> が配り先で落ちています` の Issue（ラベルなし。「テンプレートの main のCIは通っているが、配り先で落ちた」という説明）を1つ作り、これが先にあれば通知を送らず、その Issue に「`owner/app` PR #n：CIが落ちました」を1行コメントする（同時に作って重複したら、いちばん番号が小さい Issue をまとめ先にする）。PRへのコメントと `ai:stuck` は今までどおり付く。まとめ先の Issue は、人間が閉じるまで開いたままにする。テンプレートの Issue を読めない・作れないとき（鍵に権限が無い・印が無い）は、通知は今までどおり送る（消えるよりは重複する方へ倒す）。「マージできなかった」通知は、まとめない
-- `.github/`・`docs/pipeline.md`・CLAUDE.md・AGENTS.md・`pipeline.json` を変えるPRは、CIとレビューが通っても自動でマージしない（マージを人間に任せて通知する）。仕組みそのものが、AIの判断だけで書き換わらないようにするため。普通のIssueは全自動
+- `.github/`・`.claude/`・`docs/pipeline.md`・`docs/pipeline-setup.md`・CLAUDE.md・AGENTS.md・`pipeline.json` を変えるPRは、CIとレビューが通っても自動でマージしない（マージを人間に任せて通知する）。仕組みそのものが、AIの判断だけで書き換わらないようにするため。普通のIssueは全自動
 - 合否を決めるのはCI。AIの「できました」は信じない
 - 進行役（pipeline.yml）は `workflow_run` で main にある版が動くので、PRの中身で判断を書き換えられない
 - AIは `.github/`・`docs/pipeline.md`・`CLAUDE.md`・依存パッケージを触らない。`docs/spec.md`・`docs/design.md` は、見た目や挙動を決めるIssueのとき、実装の前に更新して同じPRに入れる（CLAUDE.md）。レビューAIが、書いた内容がIssueの範囲かを見る
 - レビューAIは毎回、前の指摘が直ったかも含めて見直し、必ず「## Code review」で始まるまとめを残す（進行役はこれで判断する）
 - 自動の修正は3回まで（最後の1回は opus）、自動のやり直しは10回まで。無限に回らない
 - AI（claude[bot]）のpushでCIが「承認待ち」になったら、進行役がオーナーのトークンで空のコミットを足してCIを動かし直す（PRが main とコンフリクト＝`dirty` でCIが0件のときは足さない。空のコミットでは動かず、先頭が変わって依頼の sha と食い違うため。代わりにコンフリクトの解消を頼む。`after-mention.sh`・`resume.sh`・見張り役 3.2）
-- ai-dev-template 自身は、AIがスクリプト・テスト・`docs/pipeline.md` を直し、CI（`script-tests`・`shellcheck`）とレビューが通れば自動でマージされる。印は main の `CLAUDE.md` の `pipeline-self-edit: auto` で、進行役は main の物を見るので、PRで印を足してもすり抜けられない。ワークフロー・`CLAUDE.md`・`AGENTS.md`（AIの許可とルール）は、どのリポジトリでもAIが無人で書き換えない（人間側のClaudeが行い、マージは `ai:hold`）
+- ai-dev-template 自身は、AIが `.github/scripts/`（テストを含む）・`docs/pipeline.md`・README だけを直すPRなら、CI（`script-tests`・`shellcheck`）とレビューが通れば自動でマージされる。印は main の `CLAUDE.md` の `pipeline-self-edit: auto` で、進行役は main の物を見るので、PRで印を足してもすり抜けられない。それ以外のパイプラインの物（`.github/` の `scripts/` 以外すべて（`workflows/`・`actions/`・`factory/`・`sync-targets` など）・`.claude/`・`docs/pipeline-setup.md`・`CLAUDE.md`・`AGENTS.md`・`pipeline.json`）は、どのリポジトリでもAIが無人で書き換えない（人間側のClaudeが行い、マージは `ai:hold`）
 - 公開後に壊れていたら、Vercelの画面から前の版にすぐ戻せる
 
 ## コミットのステータス「AIレビュー」（人間もマージできないようにする）
