@@ -139,9 +139,8 @@ review_status "$HEAD_SHA" success "${status_desc:-指摘なし}"
 # CI（レビュー以外のチェック）が全部通っているか、もう一度確かめる
 # チェックの読み取りはワークフロー自身のトークン（checks: read）で行う（読めなければ、パイプラインの鍵で読む。read_api）
 checks=$(read_api "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" -q '[.check_runs[] | select(.name != "review")]')
-actions_count=$(printf '%s' "$checks" | jq '[.[] | select(.app.slug == "github-actions")] | length')
-not_ok=$(printf '%s' "$checks" | jq '[.[] | select(.app.slug == "github-actions") | select(.status != "completed" or (.conclusion | IN("success", "neutral", "skipped") | not))] | length')
-if [ "$actions_count" -eq 0 ] || [ "$not_ok" -gt 0 ]; then
+# 「CIが通っているか」は、CI のワークフローのいちばん新しい実行で決める。CI 以外の Actions の check run（visual-update.yml の取り消しなど）は止めない
+if [ "$(ci_state "$HEAD_SHA")" != "success" ]; then
   # レビューAIは CI と同時に動くので、CIのほうが後に終わることがある。CIが通ったら after-ci.sh がこの結果でマージへ進める。
   # CIが落ちていれば、after-ci.sh が直すよう頼む
   echo "CIがまだ全部通っていないので、マージしません（CIが通れば after-ci.sh が、このレビューの結果でマージへ進めます）"

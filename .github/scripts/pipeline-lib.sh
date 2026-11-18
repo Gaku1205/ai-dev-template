@@ -1644,6 +1644,23 @@ ci_failed_steps() {
   fi
 }
 
+# そのコミットの、いちばん新しい CI（PRの物。created_at がいちばん新しい実行）の状態を1語で出す。
+#   none＝実行が見つからない／unreadable＝読めない／pending＝まだ終わっていない／success＝通った／failure＝それ以外（failure・cancelled など）
+# 読めない・見つからないを、通ったと取り違えない（どちらも success 以外）。読み取りは read_api と同じ（READ_TOKEN、だめならパイプラインの鍵）
+ci_state() {
+  local sha="$1" out
+  if ! out=$(read_api "repos/$REPO/actions/runs?head_sha=$sha&event=pull_request&per_page=100" \
+    -q '[.workflow_runs[] | select(.name == "CI")] | sort_by(.created_at) | last
+        | if . == null then "none" elif .status != "completed" then "pending" elif .conclusion == "success" then "success" else "failure" end'); then
+    echo unreadable
+    return 0
+  fi
+  case "$out" in
+    none | pending | success | failure) echo "$out" ;;
+    *) echo unreadable ;;
+  esac
+}
+
 # ---- 修正AIが変更なしで終わったときの理由の分類（after-mention.sh） ----
 # 基準の画像の撮り直しを頼んでいる言い方（AIの返事・レビューの指摘のどちらかにあれば、撮り直しが要る。PRの説明は見ない：CLAUDE.md の指示で visual:update と書くので、読み違える）
 VISUAL_HINT_RE='visual:update|基準の?画像.{0,60}(古|撮り直|更新|差し替)|(撮り直|更新|差し替).{0,60}基準の?画像|スナップショット.{0,60}(古|撮り直|更新)|update-snapshots'
