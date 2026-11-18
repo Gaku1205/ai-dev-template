@@ -88,7 +88,12 @@ if [ "$inline" -gt 0 ] || { [ -n "$review" ] && ! printf '%s' "$review" | grep -
     fix_message="${fix_message}ただし、ワークフローの所（\`.github/workflows/\`・\`.github/actions/\`）は直さないでください（AIはpushできません）。その旨をこのPRにコメントしてください。"
   fi
   review_status "$HEAD_SHA" failure "指摘があります。AIが直しています"
-  request_fix_or_stop "$pr" "$HEAD_SHA" "$fix_message"
+  # 止まったときに人へ見せる1文。指摘の場所は、行への指摘の最初の1件（path:line）、無ければまとめの最初のパス。80字まで
+  where=$(printf '%s' "$inline_json" | jq -r '.[0] | select(. != null) | .path + (if (.line // .original_line) then ":" + ((.line // .original_line) | tostring) else "" end)' 2> /dev/null | head -n 1 || true)
+  [ -n "$where" ] || where=$(printf '%s' "$review" | review_paths_from_text | awk 'NF' | head -n 1 || true)
+  human_reason="レビューの指摘が直りませんでした"
+  [ -z "$where" ] || human_reason="${human_reason}（指摘：$(printf '%s' "$where" | cut -c1-80)）"
+  request_fix_or_stop "$pr" "$HEAD_SHA" "$fix_message" "$human_reason"
   echo "PR #$pr：指摘があったので直すよう依頼しました（行への指摘 ${inline} 件）"
   exit 0
 fi

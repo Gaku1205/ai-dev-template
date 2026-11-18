@@ -105,13 +105,13 @@ case "$result" in
       # 企画AIの「並列でよい」は、企画を始めた時点の進行中の作業を見た判断。企画の間に別の Issue の実装が始まっていると
       # （まとめて Issue を書いたとき）、その作業とは見比べていない。触るファイルの印（ai-touches）が両方にあって重なるなら、待つ
       overlap=no
+      # 企画AIが印を書き忘れたときは、本文に書かれたファイルの名前から補う（補えなければ、印は無いまま＝順番待ちは今までどおり待つ）
+      GH_TOKEN="$pipeline_token" ensure_touches_mark "$ISSUE" || true
       if [ "$busy" -gt 0 ] && [ "$parallel" = "PARALLEL" ]; then
         mine=$(touches_from_body "$(GH_TOKEN="$pipeline_token" gh api "repos/$REPO/issues/$ISSUE" -q '.body // ""' 2> /dev/null || true)")
         if [ -n "$mine" ]; then
           inflight=$(GH_TOKEN="$pipeline_token" inflight_touches) || inflight=unknown
-          screen=0
-          if GH_TOKEN="$pipeline_token" repo_has_visual_tests; then screen=1; fi
-          if ! printf '%s\n' "$inflight" | grep -qx unknown && paths_overlap "$mine" "$inflight" "$screen"; then
+          if ! printf '%s\n' "$inflight" | grep -qx unknown && paths_overlap "$mine" "$inflight"; then
             overlap=yes
             echo "#$ISSUE：企画AIは並列でよいと判断しましたが、進行中の作業と触るファイルが重なるので、待ちます"
           fi
