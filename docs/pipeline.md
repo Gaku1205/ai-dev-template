@@ -5,7 +5,7 @@
 ```
 Issueを作る（メモ）。ラベルが無ければ自動で ai:plan が付く   intake.yml（見落としは watchdog.yml が拾う）
   → 企画AIが清書して ai:implement を付ける        claude-plan.yml
-     （進行中の作業とぶつかると企画AIが判断したら ai:queue で順番待ち。別の場所なら最大2つまで並列）
+     （進行中の作業とぶつかると企画AIが判断したら ai:queue で順番待ち。別の場所なら最大3つまで（`MAX_PARALLEL`、既定 3）並列）
   → 実装AIがブランチに実装し、PRを自動で作る        claude-implement.yml
   → CI（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）と、レビューAI（ai:review）を同時に始める
                                                     ci.yml・claude-review.yml（PRを作った・直して push した時点で）

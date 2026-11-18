@@ -66,6 +66,7 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 
 ## 最初の1回だけの準備
 
+- **Template repository**：ai-dev-template のリポジトリで Settings → General の **Template repository** にチェックを入れる（入れないと、工場が新しいリポジトリをテンプレートから作れない）
 - **Environment「factory」**を作る：ai-dev-template の Settings → Environments → New environment で名前 `factory`。Deployment branches and tags を **Selected branches and tags** にして `main` だけを足す（強い鍵を、main のワークフローからだけ使えるようにする。AIが作ったブランチからは読めない）。下の2つの Secret は、リポジトリではなくこの Environment の Secrets に入れる
 - **`FACTORY_TOKEN`**：リポジトリを作れる鍵。github.com → Settings → Developer settings → Fine-grained tokens で作る。Resource owner は自分、Expiration は **90日くらい**（切れたら作り直して入れ直す）、Repository access は **All repositories**、Permissions（Repository）は **Administration・Contents・Secrets・Variables・Issues を Read and write**（Metadata は自動で Read）。Administration は、リポジトリの削除までできる強い権限なので、この鍵はほかに使わない
 - **パイプラインの GitHub App** を、**All repositories** に入れておく（新しいリポジトリでも、すぐ鍵が使えるように）。App の画面 → Install App → 自分のアカウントの Configure
