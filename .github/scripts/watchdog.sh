@@ -210,6 +210,8 @@ if [ "${GITHUB_EVENT_NAME:-}" = workflow_run ] && [[ "$WATCHDOG_SLOT_MIN" =~ ^[0
     # 期限の来たやり直し・マージ待ちがあれば、間引かずに全部を見る（間引くと、次の枠か定期の起動まで残る）。一覧は写しから読む
     if use_open_snapshot; then SNAPSHOT_LOADED=1; fi
     if due_work_pending; then
+      # 写しの期限は間引く回だけ使う。全部を見る間に付け直された ai:retry の期限を、古い写しで読まない
+      RETRY_DUE_CACHE=()
       echo "この${WATCHDOG_SLOT_MIN}分の枠では見張りが済んでいますが、期限の来たやり直し・マージ待ちがあるので、全部を見ます"
     else
       echo "この${WATCHDOG_SLOT_MIN}分の枠では、もう見張りが済んでいるので、今回は何もしません（次の枠・定期の見張り・目覚ましで見ます）"
