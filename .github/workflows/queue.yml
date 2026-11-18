@@ -19,8 +19,13 @@ env:
   PARALLEL_OVERRIDE: ${{ vars.PARALLEL_OVERRIDE }}
   MAX_PARALLEL: ${{ vars.MAX_PARALLEL }}
 
+# 待ちの実行は1つだけ残り、新しい物に置き換えられる。関係ないラベルのイベント（ジョブが飛ばされる実行）が
+# 本物のきっかけ（Issue が閉じた、など）の待ちを置き換えて消さないよう、飛ばされる実行は別の組にする（ジョブの if と同じ条件）
 concurrency:
-  group: queue
+  group: >-
+    ${{ ((github.event.action == 'labeled' && github.event.label.name == 'ai:queue') ||
+    (github.event.action == 'unlabeled' && github.event.label.name == 'ai:stuck') ||
+    github.event.action == 'closed') && 'queue' || format('queue-skip-{0}', github.run_id) }}
   cancel-in-progress: false
 
 jobs:
@@ -63,6 +68,8 @@ jobs:
         with:
           app-id: ${{ vars.PIPELINE_APP_ID }}
           private-key: ${{ steps.app-key.outputs.pem }}
+          # 並列の上限を全部のリポジトリで数える（#216）ため、持ち主のリポジトリ全部に効く鍵にする（AIが動かないジョブ）
+          owner: ${{ github.repository_owner }}
       - uses: actions/checkout@v6
       - name: パイプラインの鍵があるか
         env:
