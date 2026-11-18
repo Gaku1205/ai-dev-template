@@ -22,6 +22,8 @@ has_pipeline_token || { echo "PIPELINE_TOKEN が無いので何もしません";
 # これだけ何の動きも無ければ「止まっている」とみなす（分）
 IDLE_PLAN_MIN="${IDLE_PLAN_MIN:-30}"
 IDLE_IMPLEMENT_MIN="${IDLE_IMPLEMENT_MIN:-45}"
+# 実装の「確実に止まった」時間（実装のジョブの上限75分＋PRを作るジョブ5分より長くする）。これ以上は、実装の実行が動いていても拾う
+IDLE_IMPLEMENT_HARD_MIN="${IDLE_IMPLEMENT_HARD_MIN:-90}"
 IDLE_REVIEW_MIN="${IDLE_REVIEW_MIN:-30}"
 IDLE_CI_MIN="${IDLE_CI_MIN:-5}"
 # 画面案のジョブ（claude-mocks.yml）の時間の上限（100分）より長くする
@@ -344,20 +346,24 @@ for st in in_progress queued; do
 done
 for n in $(open_numbers_with_label "ai:implement"); do
   case "$handled" in *" $n "*) continue ;; esac
-  if [ "$implement_running" = unknown ]; then
-    echo "実装AIの実行の一覧を読めないので、実装の止まりは今回は見ません"
-    break
-  fi
-  if [ "$implement_running" -gt 0 ]; then
-    echo "実装AIの実行が動いている（${implement_running} 件）ので、実装の止まりは今回は見ません"
-    break
-  fi
   has_label_or_unreadable "$n" "ai:stuck" && continue
   has_label_or_unreadable "$n" "ai:retry" && continue
   has_label_or_unreadable "$n" "ai:skip" && continue
   has_open_pr_for_issue "$n" && continue
   m=$(issue_idle_min "$n") || { echo "#$n：更新時刻を読めないので、今回は見ません"; continue; }
   [ "$m" -lt "$IDLE_IMPLEMENT_MIN" ] && continue
+  # 確実に止まった時間（HARD）未満では、実装の実行が動いている間・一覧を読めない間は触らない。
+  # HARD 以上は、実行が動いていても（ジョブの上限を過ぎているので）止まったとみなす
+  if [ "$m" -lt "$IDLE_IMPLEMENT_HARD_MIN" ]; then
+    if [ "$implement_running" = unknown ]; then
+      echo "#$n：実装AIの実行の一覧を読めないので、実装の止まりは今回は見ません"
+      continue
+    fi
+    if [ "$implement_running" -gt 0 ]; then
+      echo "#$n：実装AIの実行が動いている（${implement_running} 件）ので、実装の止まりは今回は見ません"
+      continue
+    fi
+  fi
   mark_for_retry "$n" implement "実装AIの終了が確認できないまま${m}分たちました"
 done
 
@@ -366,7 +372,6 @@ done
 # 次へ進む。work が時間切れ・取り消しになる、実行環境が落ちる、後片付けが途中で落ちると、ai:mocks が残ったまま誰も拾わない
 # （失敗の知らせも ai:retry も付かない）。IDLE_MOCKS_MIN 分なにも起きず、画面案のジョブも動いていなければ、やり直し待ちにする。
 # やり直すのは、同じ画面案の回で1回だけ（Opus を最大100分動かすので、何度も回さない）。やり直しても止まったら、人間に回す
-mocks_running=""
 for n in $(open_numbers_with_label "ai:mocks"); do
   case "$handled" in *" $n "*) continue ;; esac
   has_label_or_unreadable "$n" "ai:stuck" && continue
@@ -374,20 +379,8 @@ for n in $(open_numbers_with_label "ai:mocks"); do
   has_label_or_unreadable "$n" "ai:skip" && continue
   m=$(issue_idle_min "$n") || { echo "#$n：更新時刻を読めないので、今回は見ません"; continue; }
   [ "$m" -lt "$IDLE_MOCKS_MIN" ] && continue
-  # 画面案のジョブが動いている・待っている間は、止まったとみなさない（時間がたった物があるときだけ調べる。どの Issue の実行かは
-  # 分からないので、1つでも動いていれば今回は見ない）。読めなければ「動いていない」とみなす（時間の上限は、もう過ぎている）
-  if [ -z "$mocks_running" ]; then
-    mocks_running=0
-    for st in in_progress queued; do
-      c=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/workflows/claude-mocks.yml/runs?status=$st&per_page=30" \
-        -q '[.workflow_runs[] | select(.status != "completed")] | length' 2> /dev/null) || c=0
-      mocks_running=$(( mocks_running + ${c:-0} ))
-    done
-  fi
-  if [ "$mocks_running" -gt 0 ]; then
-    echo "画面案の実行が動いている（${mocks_running} 件）ので、画面案の止まりは今回は見ません"
-    break
-  fi
+  # IDLE_MOCKS_MIN は画面案のジョブの上限（100分）＋後片付け（10分）より長いので、動いている実行があっても
+  # この時間たった物は止まっている（どの Issue の実行かは分からないので、実行の確認はしない）
   # この画面案の回で、もうやり直したか：いちばん新しい「画面案のコメント」（前の回が終わった印）・人間の再開より後に、やり直しの印がある
   retried=$(all_comments "$n" | jq --arg mk "$MOCKS_RETRY_MARK" --arg resume "$RESUME_MARK" '
     (map(select((.body | contains("<!-- ai-mocks: ")) or (.body | contains($resume))) | .created_at) | max // "") as $since

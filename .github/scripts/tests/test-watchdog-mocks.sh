@@ -63,14 +63,16 @@ out=$(NUMBER=7 IS_PR=false run_script resume.sh)
 assert_contains "何もしない" "$out" "画面案の実行が動いているので、何もしません"
 assert_not_contains "再開の印を書かない" "$(comments_of 7)" "auto-resume"
 
-echo "== 画面案のジョブが動いている・待っている間は、止まったとみなさない"
+echo "== 120分以上たった物は、ほかの画面案のジョブが動いていても拾う（上限100分を過ぎている）"
 mocks_issue 130 '"wf_runs":{"claude-mocks.yml":[{"id":1,"status":"in_progress"}]}'
-out=$(run_script watchdog.sh)
-assert_eq "何もしない" "ai:mocks" "$(labels_of 7)"
-assert_contains "ログに出す" "$out" "画面案の実行が動いている"
+run_script watchdog.sh > /dev/null
+assert_eq "動いていてもやり直し待ちにする" "ai:mocks,ai:retry" "$(labels_of 7)"
 mocks_issue 130 '"wf_runs":{"claude-mocks.yml":[{"id":1,"status":"queued"}]}'
 run_script watchdog.sh > /dev/null
-assert_eq "待っている実行（queued）でも何もしない" "ai:mocks" "$(labels_of 7)"
+assert_eq "待っている実行（queued）があっても拾う" "ai:mocks,ai:retry" "$(labels_of 7)"
+mocks_issue 110 '"wf_runs":{"claude-mocks.yml":[{"id":1,"status":"in_progress"}]}'
+run_script watchdog.sh > /dev/null
+assert_eq "120分未満なら、動いていてもいなくても触らない" "ai:mocks" "$(labels_of 7)"
 mocks_issue 130 '"wf_runs":{"claude-mocks.yml":[{"id":1,"status":"completed","conclusion":"cancelled"}]}'
 run_script watchdog.sh > /dev/null
 assert_eq "終わった実行は数えない（やり直し待ちにする）" "ai:mocks,ai:retry" "$(labels_of 7)"
