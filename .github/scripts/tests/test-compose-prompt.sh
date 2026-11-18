@@ -34,7 +34,7 @@ assert_contains "visual-diff" "$out" "$DIFF"
 assert_contains "pr-body" "$out" "$PRB"
 
 echo "== 全部入りに、元のワークフローの要の語句が残っている"
-for w in "; や && や | でつなぐ" "Read、探すのは grep・find ではなく Grep・Glob" "Read の offset と limit でその節だけを読む" "今までどおり全部読む" \
+for w in "; や && や | でつなぐ" "ファイルを読むのは Read、探すのは Grep・Glob" "Read の offset と limit でその節だけを読む" "今までどおり全部読む" \
   "古い main のままの push は GitHub に拒否される" "両方の変更を残して解消する" "git checkout --theirs -- パス" "tests/visual/ の png" \
   ".github/ のファイルは自分では変えない" "$RUN" "基準の画像の撮り直しはしない" "〜-diff.png が違う所" "頼まれていない崩れ" \
   ".visual-diff/ はコミットしない" "gh pr edit 番号 --body-file .pr-body.md" ".pr-body.md はコミットしない" "gh issue view 番号"; do
@@ -85,5 +85,8 @@ assert_contains "--auto：長い仕様書で read-sections" "$out" "$READ"
 assert_not_contains "--auto：見た目のテストが無ければ visual-tests なし" "$out" "$VIS"
 rm docs/spec.md
 assert_not_contains "--auto：仕様書が無ければ read-sections なし" "$(bash "$C" --mode implement --auto)" "$READ"
+
+# 書き換えはスクリプトでしない（#550：python3 で docs/spec.md を書き換えようとして止まった）
+assert_contains "implement に「書き換えは Edit・Write だけ」" "$(bash "$C" --mode implement)" "ファイルの書き換えは Edit・Write だけで行う"
 
 finish
