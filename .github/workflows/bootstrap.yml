@@ -58,11 +58,12 @@ jobs:
           USING_APP: ${{ steps.app-token.outputs.token != '' && '1' || '0' }}
           HAS_NTFY: ${{ secrets.NTFY_TOPIC != '' && '1' || '0' }}
         run: .github/scripts/bootstrap.sh | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: CLAUDE.md の変更をコミットする
-        if: env.CHANGED_CLAUDE_MD == '1'
+      - name: 最初の準備の変更をコミットする
+        if: env.CHANGED_CLAUDE_MD == '1' || env.CHANGED_SYNC_TARGETS == '1'
         run: |
           git config user.name "pipeline"
           git config user.email "noreply@github.com"
           git add CLAUDE.md
-          git commit -m "CLAUDE.md：ai-dev-template 自身の作業の節を消す（自動）"
+          if [ -f .github/sync-targets ]; then git add .github/sync-targets; fi
+          git commit -m "最初の準備：CLAUDE.md の自己編集の節と、作者の配り先を消す（自動）"
           git push origin HEAD:main
