@@ -96,4 +96,25 @@ for msg in \
   assert_contains "人間に回す" "$(labels_of 7)" "ai:stuck"
 done
 
+echo "== 一覧に出たブランチが読めない（一覧のあとに消えた）：そのブランチだけ飛ばし、残りのブランチで進める（agent-desk #456）"
+init_state '{"labels":{"7":["ai:implement"]}}'
+state_py "s['branches']=[{'name':'claude/issue-7-real','date':'2026-11-18T04:25:00Z'}]; s['ghost_branches']=['claude/issue-7-gone']; s['ahead_by']=1"
+printf '%s' "$clean" > "$exec_file"
+out=$(run_open 2>&1) || true
+assert_not_contains "Branch not found で止まらない" "$out" "失敗したコマンド"
+assert_contains "読めなかったブランチを書く" "$out" "claude/issue-7-gone"
+assert_not_contains "人間に回さない" "$(labels_of 7)" "ai:stuck"
+assert_contains "残りのブランチから PR を作る" "$(python3 -c "import json,os;print(json.load(open(os.environ['MOCK_STATE'])).get('created_pulls'))")" "claude/issue-7-real"
+
+echo "== ブランチの一覧が3回とも読めない：「ブランチが無い」と取り違えず、失敗として止まる（人間に回さない・Issueを閉じない）"
+init_state '{"labels":{"7":["ai:implement"]},"issues_meta":{"7":{"title":"t","state":"open"}}}'
+state_py "s['branches']=[{'name':'claude/issue-7-real','date':'2026-11-18T04:25:00Z'}]; s['branches_list_fail']=True; s['ahead_by']=1"
+printf '%s' '[{"type":"result","subtype":"success","result":"すでに直っていました。","permission_denials":[]}]' > "$exec_file"
+rc=0
+out=$(BRANCH_LIST_RETRY_SLEEP=0 run_open 2>&1) || rc=$?
+assert_eq "失敗で終わる" "1" "$rc"
+assert_contains "一覧が読めなかったと書く" "$out" "ブランチの一覧"
+assert_not_contains "人間に回さない" "$(labels_of 7)" "ai:stuck"
+assert_eq "Issueを閉じない" "open" "$(python3 -c "import json,os;print(json.load(open(os.environ['MOCK_STATE']))['issues_meta']['7']['state'])")"
+
 finish
