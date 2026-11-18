@@ -129,6 +129,8 @@ README の3つ（Claude のトークン・GitHub App・Vercel）だけで動く�
 
 **結論：技術的には可能だが、自動化しない。README の手順（手で1回。Settings → Branches で1分）に残す。** 工場で作るリポジトリだけ、`FACTORY_TOKEN` で自動で保護する。
 
+**AIレビューが通るまで、人間もマージできないようにする（任意・#144）**：Settings → Branches → main の規則 →「Require status checks to pass」で `AIレビュー` を選ぶ（承認は0人のまま）。`AIレビュー` は、レビューAIが動くと pending、指摘なしで success、指摘ありで failure になるコミットのステータス。一度ステータスが付いたあとでないと検索欄に出ないので、パイプラインでPRを1つ通してから選ぶ。配布のPR（`pipeline-sync/`）は、CIが通ると success が付くので止まらない
+
 - 保護の設定（`PUT /repos/{owner}/{repo}/branches/main/protection`）には Administration（Read and write）が要るが、パイプラインの鍵（GitHub App・`PIPELINE_TOKEN`）には無い（任意で Read を足せるだけ）
 - パイプラインの App に足す案は取らない：保護は「AI を PR とレビューに通すための柵」で、柵を外せる鍵を AI の近くに置くことになる
 - 別の強い鍵を Environment に入れて main のワークフローからだけ使う案（工場と同じ形）は安全だが、初めての人に「強い鍵をもう1つ作る」手順が増え、必須3つの方針に反する。付け忘れは Doctor が ⚠️ で教える
