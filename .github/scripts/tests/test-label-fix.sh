@@ -20,9 +20,13 @@ assert_contains "コメントが付く" "$(comments_of 2)" "ai:plan を外しま
 
 echo "== 記録の無い ai:retry"
 init_state '{"labels":{"3":["ai:retry"]}}'
+: > "$MOCK_DIR/curl.log"
 run_script watchdog.sh > /dev/null
 assert_eq "ai:retry が外れて ai:stuck になる" "ai:stuck" "$(labels_of 3)"
 assert_contains "コメントが付く" "$(comments_of 3)" "ai:stuck にしました"
+assert_contains "ラベルの矛盾を直した趣旨を残す" "$(comments_of 3)" "見張り役がラベルの矛盾を直しました"
+assert_eq "コメントは1つだけ" "1" "$(comments_of 3 | grep -c '自動で進めるのを止めました')"
+assert_eq "通知が1回" "1" "$(notify_count)"
 
 echo "== 記録のある ai:retry は触らない"
 init_state '{"labels":{"4":["ai:retry"]},"comments":[{"id":1,"body":"x\n<!-- auto-retry -->\n<!-- count=1 kind=plan -->","user":{"login":"github-actions[bot]"},"created_at":"'"$(ago 1)"'","updated_at":"'"$(ago 1)"'","issue":"4"}],"next_id":1}'

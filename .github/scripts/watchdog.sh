@@ -22,6 +22,8 @@ has_pipeline_token || { echo "PIPELINE_TOKEN が無いので何もしません";
 # これだけ何の動きも無ければ「止まっている」とみなす（分）
 IDLE_PLAN_MIN="${IDLE_PLAN_MIN:-30}"
 IDLE_IMPLEMENT_MIN="${IDLE_IMPLEMENT_MIN:-45}"
+# 実装の「確実に止まった」時間（実装のジョブの上限75分＋PRを作るジョブ5分より長くする）。これ以上は、実装の実行が動いていても拾う
+IDLE_IMPLEMENT_HARD_MIN="${IDLE_IMPLEMENT_HARD_MIN:-90}"
 IDLE_REVIEW_MIN="${IDLE_REVIEW_MIN:-30}"
 IDLE_CI_MIN="${IDLE_CI_MIN:-5}"
 # 画面案のジョブ（claude-mocks.yml）の時間の上限（100分）より長くする
@@ -85,13 +87,41 @@ issue_idle_min() {
 # GitHub の定期の起動（30分ごと）は、混んでいると数時間遅れる。待ちが明ける時刻が分かっているので、
 # その時刻に retry-timer.yml（待ってから見張り役を動かすだけ）を動かしておく。目覚ましは1つだけ（新しい物が古い物を止める）。
 # 公開していないリポジトリでは待つあいだも Actions の時間を使うので、変数 RETRY_TIMER に off を入れれば止められる
+# 見張りが要る物（進行中の Issue・PR、ラベルの無い Issue）が1つでもあるか。あれば 0
+heartbeat_needed() {
+  local items pulls hold
+  items=$(open_items_json) || return 1
+  if printf '%s' "$items" | jq -e --arg owner "${OWNER,,}" '
+      def active($l): ($l | map(select(. == "ai:plan" or . == "ai:implement" or . == "ai:mocks" or . == "ai:blocked")) | length) > 0;
+      def unlabeled($l): ($l | map(select(startswith("ai:"))) | length) == 0;
+      def trusted: ((.user.login // "") | ascii_downcase) as $u | ($u == $owner or $u == "claude[bot]" or $u == "github-actions[bot]");
+      def watch: ((.labels // []) | map(.name)) as $l
+        | ($l | any(. == "ai:stuck" or . == "ai:skip") | not)
+          and (active($l) or (unlabeled($l) and trusted));
+      any(.[]; (.pull_request == null) and watch)' > /dev/null 2>&1; then
+    return 0
+  fi
+  pulls=$(open_pulls_json) || return 1
+  # 人間のマージ待ちのPR（hold_prs が waiting・expired で出す物）は除く
+  hold=$(hold_prs 2> /dev/null | awk '{print $1}' | tr '\n' ' ') || hold=""
+  printf '%s' "$pulls" | jq -e --arg repo "$REPO" --arg hold " $hold" '
+    any(.[]; (.draft | not)
+      and (((.head.repo.full_name // "") | ascii_downcase) == ($repo | ascii_downcase))
+      and (((.labels // []) | map(.name) | index("ai:stuck")) | not)
+      and ((.number | tostring) as $n | ($hold | contains(" " + $n + " ")) | not))' > /dev/null 2>&1
+}
+
+# 番号ごとの retry_due_at の写し（due_work_pending が読んだ物を set_retry_timer が使い回す。コメントの API を増やさない）
+declare -A RETRY_DUE_CACHE=()
+
 set_retry_timer() {
   local earliest="" n t now_s runs
   [ "${RETRY_TIMER:-on}" = "off" ] && return 0
   now_s=$(date +%s)
   for n in $(open_numbers_with_label "ai:retry" all); do
     has_label_or_unreadable "$n" "ai:stuck" && continue
-    t=$(retry_due_at "$n")
+    t="${RETRY_DUE_CACHE[$n]:-}"
+    [ -n "$t" ] || t=$(retry_due_at "$n")
     [ "$t" -gt "$now_s" ] || continue
     if [ -z "$earliest" ] || [ "$t" -lt "$earliest" ]; then earliest="$t"; fi
   done
@@ -108,6 +138,26 @@ set_retry_timer() {
       [ "$t" -gt "$now_s" ] || continue
       if [ -z "$earliest" ] || [ "$t" -lt "$earliest" ]; then earliest="$t"; fi
     done < <(hold_prs 2> /dev/null)
+  fi
+  # 定期の起動は当てにならない（実際は1日3〜4回）。進行中の物が残っている間は、WATCHDOG_HEARTBEAT_MIN 分後にも起こす（早い方を使う）。
+  # 写しがあれば API は増えない。何も待っていなければかけない（静かなリポジトリで Actions を回し続けない）
+  local hb="${WATCHDOG_HEARTBEAT_MIN:-15}"
+  [[ "$hb" =~ ^[0-9]+$ ]] && [ "$hb" -ge 1 ] || hb=15
+  if heartbeat_needed; then
+    t=$(( now_s + hb * 60 ))
+    if [ -z "$earliest" ] || [ "$t" -lt "$earliest" ]; then earliest="$t"; fi
+  fi
+  # 順番待ちがあるとき、並列の上限が変わる次の時刻（夜の始まり／終わり・上書きの期限）の1分後にも起こす。
+  # 上限を全部のリポジトリで数えるとき（PARALLEL_SCOPE=global）は、ほかのリポジトリの順番待ちも数える（夜が明けて空きができたら、
+  # このリポジトリの見張り役が、ほかのリポジトリの順番待ちも始める）
+  local queued_all
+  queued_all=$(( ${queued:-0} + $(global_other_queued 2> /dev/null || echo 0) ))
+  if [ "$queued_all" -gt 0 ]; then
+    t=$(parallel_next_change "$now_s")
+    if [ -n "$t" ]; then
+      t=$(( t + 60 ))
+      if [ -z "$earliest" ] || [ "$t" -lt "$earliest" ]; then earliest="$t"; fi
+    fi
   fi
   [ -z "$earliest" ] && return 0
   # 1回の待ちは最大 RETRY_TIMER_MAX_MIN 分（ジョブの時間の上限 6時間に収める）。それより先なら、起きた見張り役がかけ直す
@@ -128,6 +178,28 @@ set_retry_timer() {
   fi
 }
 
+# 間引いてはいけない物があるか（期限の来た ai:retry、または順番待ちがあって HOLD_BLOCK_MIN を過ぎたマージ待ちのPR）。あれば 0
+# ai:retry は set_retry_timer と同じ取り方（retry_due_at <= 今）。ai:stuck・ai:skip の付いた物は数えない
+due_work_pending() {
+  local n now_s queued pr state due
+  now_s=$(date +%s)
+  for n in $(open_numbers_with_label "ai:retry" all); do
+    has_label_or_unreadable "$n" "ai:stuck" && continue
+    has_label_or_unreadable "$n" "ai:skip" && continue
+    due=$(retry_due_at "$n")
+    RETRY_DUE_CACHE[$n]="$due"
+    [ "$due" -le "$now_s" ] && return 0
+  done
+  queued=$(count_open_issues_with_label "ai:queue" 2> /dev/null) || queued=0
+  if [ "${queued:-0}" -gt 0 ]; then
+    remember_hold_prs
+    while read -r pr state; do
+      [ "$state" = expired ] && return 0
+    done < <(hold_prs 2> /dev/null)
+  fi
+  return 1
+}
+
 # ---- 0. 続けて動くのを間引く ----
 # ほかのワークフローが終わるたび（workflow_run）に動くと、作業が続くリポジトリでは1時間に20回近く、全部を見直す（2026年11月18日、
 # パイプラインの鍵の回数制限＝全部のリポジトリで1時間5000回の半分近くを、見張り役だけで使っていた）。止まりの判定は「5〜45分動きが無い」
@@ -139,11 +211,18 @@ if [ "${GITHUB_EVENT_NAME:-}" = workflow_run ] && [[ "$WATCHDOG_SLOT_MIN" =~ ^[0
   [[ "${GITHUB_RUN_ID:-}" =~ ^[0-9]+$ ]]; then
   if recent_runs=$(GH_TOKEN="${READ_TOKEN:-}" gh api "repos/$REPO/actions/workflows/watchdog.yml/runs?per_page=50" 2> /dev/null) &&
     watchdog_slot_taken "$recent_runs" "$GITHUB_RUN_ID" "$(date +%s)" "$WATCHDOG_SLOT_MIN"; then
-    echo "この${WATCHDOG_SLOT_MIN}分の枠では、もう見張りが済んでいるので、今回は何もしません（次の枠・定期の見張り・目覚ましで見ます）"
-    # 済んだあとに付いた ai:retry・ai:hold の目覚ましだけは、かけ忘れない（目覚ましをかけるのは見張り役だけ）。一覧は2回ほどで読める
-    use_open_snapshot || true
-    set_retry_timer
-    exit 0
+    # 期限の来たやり直し・マージ待ちがあれば、間引かずに全部を見る（間引くと、次の枠か定期の起動まで残る）。一覧は写しから読む
+    if use_open_snapshot; then SNAPSHOT_LOADED=1; fi
+    if due_work_pending; then
+      # 写しの期限は間引く回だけ使う。全部を見る間に付け直された ai:retry の期限を、古い写しで読まない
+      RETRY_DUE_CACHE=()
+      echo "この${WATCHDOG_SLOT_MIN}分の枠では見張りが済んでいますが、期限の来たやり直し・マージ待ちがあるので、全部を見ます"
+    else
+      echo "この${WATCHDOG_SLOT_MIN}分の枠では、もう見張りが済んでいるので、今回は何もしません（次の枠・定期の見張り・目覚ましで見ます）"
+      # 済んだあとに付いた ai:retry・ai:hold の目覚ましだけは、かけ忘れない（目覚ましをかけるのは見張り役だけ）。一覧は2回ほどで読める
+      set_retry_timer
+      exit 0
+    fi
   fi
 fi
 
@@ -151,7 +230,9 @@ fi
 # （pipeline-lib.sh の use_open_snapshot。ラベルごとの一覧・ラベルの確かめのたびに API を呼ばない）。
 # 一覧は、ページをまたいで全部読む（api_list。100件までなら API は1回のまま。per_page=100 だけだと、101件目からの
 # Issue・PR を見張れず、止まったままになる）。写しを読めなければ、今までどおり、その都度 API から読む
-use_open_snapshot || echo "::warning::開いている Issue・PR の一覧を読めなかったので、その都度 API から読みます"
+if [ "${SNAPSHOT_LOADED:-}" != 1 ]; then
+  use_open_snapshot || echo "::warning::開いている Issue・PR の一覧を読めなかったので、その都度 API から読みます"
+fi
 open_prs=$(open_pulls_json)
 # 実装AIのブランチ（claude/issue-N-...）のPRがopenであるか
 has_open_pr_for_issue() {
@@ -344,20 +425,24 @@ for st in in_progress queued; do
 done
 for n in $(open_numbers_with_label "ai:implement"); do
   case "$handled" in *" $n "*) continue ;; esac
-  if [ "$implement_running" = unknown ]; then
-    echo "実装AIの実行の一覧を読めないので、実装の止まりは今回は見ません"
-    break
-  fi
-  if [ "$implement_running" -gt 0 ]; then
-    echo "実装AIの実行が動いている（${implement_running} 件）ので、実装の止まりは今回は見ません"
-    break
-  fi
   has_label_or_unreadable "$n" "ai:stuck" && continue
   has_label_or_unreadable "$n" "ai:retry" && continue
   has_label_or_unreadable "$n" "ai:skip" && continue
   has_open_pr_for_issue "$n" && continue
   m=$(issue_idle_min "$n") || { echo "#$n：更新時刻を読めないので、今回は見ません"; continue; }
   [ "$m" -lt "$IDLE_IMPLEMENT_MIN" ] && continue
+  # 確実に止まった時間（HARD）未満では、実装の実行が動いている間・一覧を読めない間は触らない。
+  # HARD 以上は、実行が動いていても（ジョブの上限を過ぎているので）止まったとみなす
+  if [ "$m" -lt "$IDLE_IMPLEMENT_HARD_MIN" ]; then
+    if [ "$implement_running" = unknown ]; then
+      echo "#$n：実装AIの実行の一覧を読めないので、実装の止まりは今回は見ません"
+      continue
+    fi
+    if [ "$implement_running" -gt 0 ]; then
+      echo "#$n：実装AIの実行が動いている（${implement_running} 件）ので、実装の止まりは今回は見ません"
+      continue
+    fi
+  fi
   mark_for_retry "$n" implement "実装AIの終了が確認できないまま${m}分たちました"
 done
 
@@ -366,7 +451,6 @@ done
 # 次へ進む。work が時間切れ・取り消しになる、実行環境が落ちる、後片付けが途中で落ちると、ai:mocks が残ったまま誰も拾わない
 # （失敗の知らせも ai:retry も付かない）。IDLE_MOCKS_MIN 分なにも起きず、画面案のジョブも動いていなければ、やり直し待ちにする。
 # やり直すのは、同じ画面案の回で1回だけ（Opus を最大100分動かすので、何度も回さない）。やり直しても止まったら、人間に回す
-mocks_running=""
 for n in $(open_numbers_with_label "ai:mocks"); do
   case "$handled" in *" $n "*) continue ;; esac
   has_label_or_unreadable "$n" "ai:stuck" && continue
@@ -374,20 +458,8 @@ for n in $(open_numbers_with_label "ai:mocks"); do
   has_label_or_unreadable "$n" "ai:skip" && continue
   m=$(issue_idle_min "$n") || { echo "#$n：更新時刻を読めないので、今回は見ません"; continue; }
   [ "$m" -lt "$IDLE_MOCKS_MIN" ] && continue
-  # 画面案のジョブが動いている・待っている間は、止まったとみなさない（時間がたった物があるときだけ調べる。どの Issue の実行かは
-  # 分からないので、1つでも動いていれば今回は見ない）。読めなければ「動いていない」とみなす（時間の上限は、もう過ぎている）
-  if [ -z "$mocks_running" ]; then
-    mocks_running=0
-    for st in in_progress queued; do
-      c=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/workflows/claude-mocks.yml/runs?status=$st&per_page=30" \
-        -q '[.workflow_runs[] | select(.status != "completed")] | length' 2> /dev/null) || c=0
-      mocks_running=$(( mocks_running + ${c:-0} ))
-    done
-  fi
-  if [ "$mocks_running" -gt 0 ]; then
-    echo "画面案の実行が動いている（${mocks_running} 件）ので、画面案の止まりは今回は見ません"
-    break
-  fi
+  # IDLE_MOCKS_MIN は画面案のジョブの上限（100分）＋後片付け（10分）より長いので、動いている実行があっても
+  # この時間たった物は止まっている（どの Issue の実行かは分からないので、実行の確認はしない）
   # この画面案の回で、もうやり直したか：いちばん新しい「画面案のコメント」（前の回が終わった印）・人間の再開より後に、やり直しの印がある
   retried=$(all_comments "$n" | jq --arg mk "$MOCKS_RETRY_MARK" --arg resume "$RESUME_MARK" '
     (map(select((.body | contains("<!-- ai-mocks: ")) or (.body | contains($resume))) | .created_at) | max // "") as $since
@@ -702,8 +774,8 @@ fix_labels() { # 番号 コメント 外すラベル...
   fixed=$(( fixed + 1 ))
 }
 # 一覧は 3.5 で読んだ物を使う（3.5〜3.8 が付け外しするのは ai:plan・ai:skip・ai:blocked で、ここで見る組み合わせは作らない）
-open_items=$(printf '%s' "$open_items_json" | jq -r '.[] | [.number, ([.labels[].name] | join(","))] | @tsv')
-while IFS=$'\t' read -r n labels; do
+open_items=$(printf '%s' "$open_items_json" | jq -r '.[] | [.number, ([.labels[].name] | join(",")), (if .pull_request then "pr" else "issue" end)] | @tsv')
+while IFS=$'\t' read -r n labels kind; do
   [ -z "$n" ] && continue
   [ "$fixed" -ge 20 ] && break
   case ",$labels," in
@@ -719,8 +791,11 @@ while IFS=$'\t' read -r n labels; do
   case ",$labels," in
     *,ai:retry,*)
       if [ -z "$(retry_comment "$n")" ]; then
-        fix_labels "$n" "ai:retry が付いていますが、やり直しの記録が無いので、ai:retry を外して ai:stuck にしました。人間が確認してください" ai:retry
-        add_label "$n" "ai:stuck"
+        # ai:retry を外す・ai:stuck を付ける・コメント・通知は、stop_for_human／stop_issue_for_human がまとめて行う（二重にコメントしない）
+        stop_reason="ai:retry が付いていますが、やり直しの記録が無いので、ai:retry を外して ai:stuck にしました。人間が確認してください（見張り役がラベルの矛盾を直しました）"
+        if [ "$kind" = pr ]; then stop_for_human "$n" "$stop_reason"; else stop_issue_for_human "$n" "$stop_reason"; fi
+        echo "#$n：ai:retry の記録が無いので、ai:stuck にしました"
+        fixed=$(( fixed + 1 ))
       fi
       ;;
   esac
@@ -742,6 +817,8 @@ while IFS=$'\t' read -r n labels; do
 done <<< "$closed_items"
 
 # ---- 4. 順番待ちを進める ----
+# 上限は、PARALLEL_SCOPE（既定 global）なら全部のリポジトリで合わせて数え、空きがあれば、ほかのリポジトリの順番待ちも始める。
+# 本体で呼ぶ（$(…) にしない）：ここで決めた広さ・ほかのリポジトリの順番待ちを、8. の目覚ましが使う
 start_next_in_queue || echo "順番待ちを進められませんでした"
 
 # ---- 8. 次のやり直しの時刻（と、マージ待ちのPRが順番待ちを止めなくなる時刻）に、見張り役を起こす目覚ましをかける ----

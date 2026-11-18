@@ -469,7 +469,8 @@ echo "== レビューAI：PRのコードがある作業フォルダのスクリ�
 result=$(python3 - "$WORKFLOWS" <<'PY4'
 import sys, yaml
 steps = yaml.safe_load(open(f"{sys.argv[1]}/claude-review.yml"))["jobs"]["review"]["steps"]
-print("ok" if not any(".github/scripts/" in st.get("run", "") for st in steps) else "ng")
+# main の版を API（contents/.github/scripts/…）で取って $RUNNER_TEMP で動かすのは良い（作業フォルダの版ではない）
+print("ok" if not any(".github/scripts/" in st.get("run", "").replace("contents/.github/scripts/", "") for st in steps) else "ng")
 PY4
 )
 assert_eq "レビューのジョブ" "ok" "$result"
@@ -663,5 +664,36 @@ PYX
 )
   assert_eq "$f：並列の Variable を渡す" "ok" "$result"
 done
+
+echo "== 順番待ち：飛ばされる実行は別の組にして、本物のきっかけの待ちを置き換えない。鍵は持ち主のリポジトリ全部に効く（#216）"
+result=$(python3 - "$WORKFLOWS/queue.yml" <<'PYQ'
+import sys, yaml, re
+d = yaml.safe_load(open(sys.argv[1]))
+norm = lambda t: re.sub(r"\s+", " ", t).strip()
+cond = norm(d["jobs"]["next"]["if"])
+group = norm(d["concurrency"]["group"])
+print("ok" if cond in group and "queue-skip-" in group and "github.run_id" in group else "ng")
+PYQ
+)
+assert_eq "queue.yml：組の条件がジョブの if と同じ" "ok" "$result"
+for f in queue.yml watchdog.yml claude-plan.yml; do
+  assert_contains "$f：鍵に owner" "$(cat "$WORKFLOWS/$f")" 'owner: ${{ github.repository_owner }}'
+done
+echo "== 他人のコメントを AI に渡さない（#152・#196）：企画・レビュー・画面案は trusted-comments.sh を main の版で動かし、--comments で読ませない"
+for f in claude-plan.yml claude-review.yml claude-mocks.yml; do
+  wf="$(cat "$WORKFLOWS/$f")"
+  assert_contains "$f：trusted-comments.sh を main の版で取る" "$wf" 'contents/.github/scripts/trusted-comments.sh?ref=$DEFAULT_BRANCH'
+  assert_contains "$f：信頼できる人のコメントだけを集める" "$wf" 'bash "$RUNNER_TEMP/trusted-comments.sh" "$NUMBER"'
+  # 「--comments は付けない」と書いた行以外に、--comments を使う所が無い
+  bad=$(grep -n -- '--comments' "$WORKFLOWS/$f" | grep -v -e '付けない' -e 'なし）' || true)
+  assert_eq "$f：AI への指示や手順で --comments を使わない" "" "$bad"
+done
+assert_eq "企画：2つの指示とも thread.md を読む" "2" "$(grep -c '作業フォルダ直下の `thread.md` を Read で読む' "$WORKFLOWS/claude-plan.yml")"
+assert_contains "画面案：mocks/issue.txt は信頼できる物だけ" "$(cat "$WORKFLOWS/claude-mocks.yml")" 'cp "$RUNNER_TEMP/thread.md" mocks/issue.txt'
+
+echo "== 最初の準備：作者の配り先（.github/sync-targets）を消したら、それもコミットする（#155・#196）"
+wf="$(cat "$WORKFLOWS/bootstrap.yml")"
+assert_contains "配り先を変えたときもコミットする" "$wf" "env.CHANGED_SYNC_TARGETS == '1'"
+assert_contains "sync-targets を add する" "$wf" "git add .github/sync-targets"
 
 finish

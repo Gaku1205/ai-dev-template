@@ -41,9 +41,17 @@ if fields or flist:
 _rm=re.match(r'^repos/([^/]+/[^/]+)',path)
 _repo=_rm.group(1) if _rm else None
 if _repo and _repo.lower() in [x.lower() for x in st.get('fail_repos',[])]: sys.stderr.write('HTTP 403: Resource not accessible by integration\n'); sys.exit(1)
+# 状態の全体（save は全体を書く）。repos：ほかのリポジトリの状態（同じ形。{'o/r2': {'labels':…, 'issues_meta':…}}）。
+# そのリポジトリへの呼び出しは、その中だけで答える（並列の上限を全部のリポジトリで数えるテスト用）
+ROOT=st
+_own=os.environ.get('GITHUB_REPOSITORY','o/r')
+if _repo and _repo.lower()!=_own.lower() and _repo in st.get('repos',{}):
+    st=st['repos'][_repo]
+    for _k,_v in {'next_id':0,'comments':[],'labels':{},'issue_updated':{},'pulls':[],'checks':[],'runs':[],'jobs':[],'branches':[],'authors':{}}.items(): st.setdefault(_k,_v)
+    for _p in st['pulls']: _p.setdefault('head',{}).setdefault('repo',{'full_name':_repo})
 # 別のリポジトリ（GITHUB_REPOSITORY ではない所）の Issue・PR：状態だけを other_repos から返す（無ければ 404。非公開で読めない待ち先を表す）
 _m=re.match(r'^repos/([^/]+/[^/]+)/issues/(\d+)$',path.split('?')[0])
-if _m and method=='GET' and _m.group(1).lower()!=os.environ.get('GITHUB_REPOSITORY','o/r').lower():
+if st is ROOT and _m and method=='GET' and _m.group(1).lower()!=_own.lower():
     _o=st.get('other_repos',{}).get(_m.group(1),{}).get(_m.group(2))
     if _o is None: sys.stderr.write('HTTP 404: Not Found\n'); sys.exit(1)
     if q:
@@ -59,7 +67,7 @@ def out(obj):
         if r.returncode: sys.stderr.write(r.stderr); sys.exit(1)
     else:
         print(json.dumps(obj))
-def save(): json.dump(st,open(ST,'w'))
+def save(): json.dump(ROOT,open(ST,'w'))
 # 一覧（配列）を、本物と同じくページに分けて返す。1ページは per_page 件（既定 30）。
 #   --paginate が無ければ、1ページ目だけ（101件目からは見えない）
 #   --paginate と -q：ページごとに jq を当てる（本物の gh と同じ。全体の件数・並べ替えを -q だけでは出せない）
@@ -79,10 +87,27 @@ if base=='search/issues':
     from urllib.parse import unquote
     if st.get('search_fail'): sys.stderr.write('HTTP 502\n'); sys.exit(1)
     _q=unquote(re.search(r'[?&]q=([^&]+)',path).group(1))
+    # ラベルで探す（user:持ち主 is:issue is:open label:"ai:queue"）：このリポジトリと repos の全部から、開いている Issue（PRを除く）を返す。
+    # search_lag の "o/r2#5" は出ない（付けたばかりで、まだ索引に無い）
+    _lm=re.search(r'label:"?([^"\s]+)"?',_q)
+    if _lm:
+        _items=[]
+        for _rn,_sub in [(_own,ROOT)]+list(ROOT.get('repos',{}).items()):
+            _meta=_sub.get('issues_meta',{}); _prs={str(p.get('number')) for p in _sub.get('pulls',[])}
+            for n,L in _sub.get('labels',{}).items():
+                if _lm.group(1) not in L or n in _prs or _meta.get(n,{}).get('state','open')!='open': continue
+                if '%s#%s'%(_rn,n) in ROOT.get('search_lag',[]): continue
+                _items.append({'number':int(n),'repository_url':'https://api.github.com/repos/'+_rn,'labels':[{'name':x} for x in L],'state':'open','title':_meta.get(n,{}).get('title','t')})
+        _res={'total_count':len(_items),'items':_items}
+        out([_res] if slurp else _res); sys.exit(0)
     _t=re.search(r'"([^"]*)" in:title',_q).group(1)
     _meta=st.get('issues_meta',{})
     out({'items':[{'number':int(n),'title':mt.get('title',''),'state':mt.get('state','open')} for n,mt in _meta.items()
         if mt.get('title')==_t and n not in st.get('search_hidden',[]) and (' is:open' not in _q or mt.get('state','open')=='open')]}); sys.exit(0)
+# GitHub App の鍵が届くリポジトリの一覧：st['installation_repos']。無ければ断る（PIPELINE_TOKEN では読めない、を表す）
+if base=='installation/repositories':
+    if 'installation_repos' not in st: sys.stderr.write('HTTP 403: This endpoint requires an installation token\n'); sys.exit(1)
+    out({'total_count':len(st['installation_repos']),'repositories':[{'full_name':x} for x in st['installation_repos']]}); sys.exit(0)
 if re.match(r'repos/[^/]+/[^/]+$',base): out({'is_template':st.get('is_template',False),'homepage':st.get('homepage')}); sys.exit(0)
 # 公開（deployments）：st['deployments'] = [{'id':1,'environment':'github-pages','url':'https://…'}]
 if base=='deployments':
@@ -164,7 +189,7 @@ if base=='issues':
     # fail_open_list：ラベルで絞らない「開いている物の一覧」だけ読めない（502。写し＝use_open_snapshot が作れないときのテスト用）
     if lab is None and want=='open' and st.get('fail_open_list'): sys.stderr.write('HTTP 502\n'); sys.exit(1)
     # 本物の一覧と同じく、本文（body）も返す（写しから本文を読むため）
-    res=[{'number':int(n),'title':meta.get(n,{}).get('title','t'),'state':meta.get(n,{}).get('state','open'),'body':meta.get(n,{}).get('body',''),'updated_at':st['issue_updated'].get(n,now),'labels':[{'name':x} for x in L],'closed_at':meta.get(n,{}).get('closed_at')} for n,L in st['labels'].items() if (lab is None or lab in L) and (want=='all' or meta.get(n,{}).get('state','open')==want)]
+    res=[{'number':int(n),'title':meta.get(n,{}).get('title','t'),'state':meta.get(n,{}).get('state','open'),'body':meta.get(n,{}).get('body',''),'updated_at':st['issue_updated'].get(n,now),'user':{'login':st.get('authors',{}).get(n,'o')},'labels':[{'name':x} for x in L],'closed_at':meta.get(n,{}).get('closed_at'),**({'pull_request':{}} if any(str(p.get('number'))==n for p in st.get('pulls',[])) else {})} for n,L in st['labels'].items() if (lab is None or lab in L) and (want=='all' or meta.get(n,{}).get('state','open')==want)]
     paged(res); sys.exit(0)
 m=re.match(r'pulls/(\d+)/comments$',base)
 if m:
@@ -254,7 +279,17 @@ m=re.match(r'actions/workflows/([^/]+)/dispatches$',base)
 if m and method=='POST':
     st.setdefault('dispatches',[]).append({'workflow':m.group(1),**fields}); save(); sys.exit(0)
 if base=='actions/runs' and st.get('runs_fail'): sys.stderr.write('HTTP 502: Bad Gateway\n'); sys.exit(1)
-if base=='actions/runs': out({'workflow_runs':st.get('runs',[])}); sys.exit(0)
+if base=='actions/runs':
+    _runs=list(st.get('runs',[]))
+    # CI の実行（name == "CI"）が runs に無ければ、check run のうち GitHub Actions の物から1つの CI の実行を作る
+    # （古いテストは check run だけで CI の状態を表している）。ci_runs_none があれば作らない（実行が見つからない、を表す）
+    if 'head_sha=' in path and not st.get('ci_runs_none') and not any(r.get('name')=='CI' for r in _runs):
+        _ac=[c for c in st.get('checks',[]) if (c.get('app') or {}).get('slug')=='github-actions']
+        if _ac:
+            _done=all(c.get('status')=='completed' for c in _ac)
+            _ok=all(c.get('conclusion') in ('success','neutral','skipped') for c in _ac)
+            _runs.append({'id':9000,'name':'CI','event':'pull_request','created_at':'2026-01-01T00:00:00Z','status':'completed' if _done else 'in_progress','conclusion':('success' if _ok else 'failure') if _done else None})
+    out({'workflow_runs':_runs}); sys.exit(0)
 if base.startswith('compare/'): out({'ahead_by':st.get('ahead_by',0)}); sys.exit(0)
 m=re.match(r'commits/([^/]+)$',base)
 if m and m.group(1) in st.get('commit_fail',[]): sys.stderr.write('HTTP 502\n'); sys.exit(1)

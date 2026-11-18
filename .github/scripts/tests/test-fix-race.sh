@@ -209,6 +209,29 @@ assert_contains "最新のコミットへの依頼" "$(comments_of 58)" "auto-fi
 assert_contains "コンフリクトの文" "$(comments_of 58)" "git merge origin/main"
 assert_eq "依頼は2つ" "2" "$(requests)"
 assert_not_contains "レビューは付けない（動かない）" "$(labels_of 58)" "ai:review"
+assert_not_contains "空のコミットは足さない" "$out" "newcommit"
+assert_not_contains "動かし直さない" "$out" "空のコミットで動かし直します"
+assert_eq "ブランチへ空のコミットが入っていない" "0" "$(python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print(len(s.get('new_commits',[]))+len(s.get('ref_updates',[])))")"
+
+echo "== その依頼に修正AIが変更なしで終わる → 「push した」と読み違えず、変更なしの分類に進む"
+# 依頼の sha（def）がいまの先頭（def）と同じなので、変更なし。分類できなければ人間に回す
+state "[$(req 7 7 def | sed "s/$(t 7)/$now/g"),$(finished 8 8 | sed "s/$(t 8)/$now/g")]" def
+state_py "s['pulls'][0]['mergeable_state']='dirty'"
+# PRの説明は変わっていない（依頼の印のハッシュを、いまの説明のハッシュにそろえる）
+body_hash=$(run_lib 'pr_body_hash 58' | tail -1)
+state_py "
+for c in s['comments']:
+    c['body'] = c['body'].replace('000000000000', '$body_hash')"
+out=$(after_mention "$now")
+assert_not_contains "「直して push した」側に進まない" "$out" "CIを待たずに解消を依頼しました"
+assert_contains "人間に回す（変更なしの分類）" "$(labels_of 58)" "ai:stuck"
+
+echo "== コンフリクトしていない PR で CI が承認待ち → 今までどおり空のコミットで動かし直す"
+state "[$(req 5 5 abc | sed "s/$(t 5)/$now/g"),$(finished 6 6 | sed "s/$(t 6)/$now/g")]" def
+state_py "s['runs']=[{'id':11,'name':'CI','status':'completed','conclusion':'action_required','created_at':'2026-01-01T00:00:00Z','head_sha':'def'}]"
+out=$(after_mention "$now")
+assert_contains "動かし直す" "$out" "空のコミットで動かし直します"
+assert_contains "空のコミットを足した" "$out" "newcommit を足しました"
 
 echo "== 同じコミットに直す依頼が出ていれば頼まない"
 # きっかけの依頼（abc。いちばん新しい）の前に、いまの先頭コミット（def）への依頼が、別の経路から出ていて、まだ終わっていない

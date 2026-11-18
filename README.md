@@ -94,7 +94,7 @@ Vercelの無料プランには、1日に公開できる回数の上限があり�
 
 - 合否を決めるのはCI。AIの「できました」は信じない
 - オーナー以外が作った Issue・コメントでは、AIは動かない
-- `.github/`・`docs/pipeline.md`・`docs/pipeline-setup.md`・`CLAUDE.md`・`AGENTS.md`・`pipeline.json` を変えるPRは、CIとレビューが通っても自動でマージせず、人間に任せて通知する。仕組みそのものがAIの判断だけで書き換わらないようにするため。例外はテンプレートから配られた更新の PR（人間が書いてテンプレートの CI を通った物なので、配り先の CI が通れば自動でマージする）
+- `.github/`・`.claude/`・`docs/pipeline.md`・`docs/pipeline-setup.md`・`CLAUDE.md`・`AGENTS.md`・`pipeline.json` を変えるPRは、CIとレビューが通っても自動でマージせず、人間に任せて通知する。仕組みそのものがAIの判断だけで書き換わらないようにするため。例外は、テンプレート自身（`pipeline-self-edit: auto`）が `.github/scripts/`・`docs/pipeline.md`・README だけを変えるPR（自動でマージする）と、テンプレートから配られた更新の PR（人間が書いてテンプレートの CI を通った物なので、配り先の CI が通れば自動でマージする）
 - AIは `.github/`・`docs/pipeline.md`・`CLAUDE.md`・依存パッケージを触らない
 - 進行役（`pipeline.yml`）はmainにある版が動くので、PRの中身で判断を書き換えられない
 - 自動の修正は3回まで（最後の1回は opus）、自動のやり直しは10回まで。無限に回らない。超えたら `ai:stuck` で人間に回す

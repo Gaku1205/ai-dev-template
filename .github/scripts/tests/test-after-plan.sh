@@ -67,6 +67,17 @@ assert_eq "重ならなければ、今までどおり並列で実装へ" "ai:imp
 init_state '{"labels":{"3":["ai:plan"],"8":["ai:implement"]},"issues_meta":{"3":{"body":"本文\n<!-- ai-touches: src/lib/a.ts -->"}}}'
 run_plan "READY" > /dev/null
 assert_eq "進行中の物に印が無ければ、今までどおり企画AIの判断" "ai:implement" "$(labels_of 3)"
+echo "== 止まった実装中の物（ai:stuck）は席に数えない：上限1でも並列で実装へ。触るファイルが重なれば待つ"
+init_state '{"labels":{"3":["ai:plan"],"8":["ai:implement","ai:stuck"]},"issues_meta":{"3":{"body":"本文\n<!-- ai-touches: src/lib/b.ts -->"},"8":{"body":"本文\n<!-- ai-touches: src/lib/a.ts -->"}}}'
+out=$(MAX_PARALLEL=1 run_plan "READY")
+assert_eq "重ならないので実装へ" "ai:implement" "$(labels_of 3)"
+assert_contains "実装中は0" "$out" "実装中 0"
+init_state '{"labels":{"3":["ai:plan"],"8":["ai:implement","ai:stuck"]},"issues_meta":{"3":{"body":"本文\n<!-- ai-touches: src/lib/a.ts -->"},"8":{"body":"本文\n<!-- ai-touches: src/lib/a.ts -->"}}}'
+MAX_PARALLEL=1 run_plan "READY" > /dev/null
+assert_eq "重なるので順番待ち" "ai:queue" "$(labels_of 3)"
+init_state '{"labels":{"3":["ai:plan"],"1":["ai:implement","ai:stuck"]},"issues_meta":{"3":{"body":"本文\n<!-- ai-touches: src/lib/b.ts -->"},"1":{"body":"本文\n<!-- ai-touches: src/lib/a.ts -->"}}}'
+MAX_PARALLEL=1 run_plan "READY" > /dev/null
+assert_eq "止まった物の番号が小さくても、数え直しで引かない" "ai:implement" "$(labels_of 3)"
 
 echo "== 仕様書だけが重なるなら、順番待ちにしない／印を書き忘れた Issue は、本文のファイル名から印を補う"
 touch_state "src/lib/a.ts, docs/spec.md" "src/lib/b.ts, docs/spec.md"

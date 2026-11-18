@@ -47,6 +47,31 @@ assert_contains "実行中なので待つ" "$out" "CIが実行中です"
 assert_not_contains "ai:review は付かない" "$(labels_of 58)" "ai:review"
 assert_not_contains "直す依頼は出ない" "$(comments_of 58)" "@claude"
 
+echo "== PR・コンフリクト中（dirty）でCIが0件 → 空のコミットを足さず、解消を頼む"
+setup_pr "[]"
+state_py "s['pulls'][0]['mergeable_state']='dirty'"
+out=$(run_resume 58 true)
+assert_not_contains "空のコミットを足さない" "$out" "newcommit"
+assert_eq "ブランチを更新しない" "0" "$(python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print(len(s.get('new_commits',[]))+len(s.get('ref_updates',[])))")"
+assert_contains "解消を頼む" "$(comments_of 58)" "git merge origin/main"
+assert_contains "先頭への依頼の印" "$(comments_of 58)" "auto-fix-sha: abc"
+
+echo "== 配布のPR（pipeline-sync/*）はコンフリクトでも頼まない"
+setup_pr "[]"
+state_py "s['pulls'][0]['mergeable_state']='dirty'; s['pulls'][0]['head']['ref']='pipeline-sync/x'"
+out=$(run_resume 58 true)
+assert_not_contains "解消を頼まない" "$(comments_of 58)" "git merge origin/main"
+assert_not_contains "空のコミットも足さない" "$out" "newcommit"
+
+echo "== PR・コンフリクトしていない・CIが0件 → 今までどおり空のコミットで動かし直す"
+setup_pr "[]"
+state_py "s['pulls'][0]['mergeable_state']='clean'"
+nosleep=$(mktemp -d)
+printf '#!/bin/sh\nexit 0\n' > "$nosleep/sleep"
+chmod +x "$nosleep/sleep"
+out=$(PATH="$nosleep:$PATH" run_resume 58 true)
+assert_contains "動かし直す" "$out" "newcommit を足しました"
+
 echo "== PRではなくIssue（ai:implement・PRなし）→ ai:implement が付き直る"
 init_state '{"labels":{"7":["ai:implement"]}}'
 out=$(run_resume 7 false)
