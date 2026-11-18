@@ -65,6 +65,7 @@ init_state '{"labels":{"7":["ai:implement"]},"issues_meta":{"7":{"title":"t","st
 printf '%s' '[{"type":"result","subtype":"success","result":"このブランチでは既に直っていたため、コードは変えていません。コミット 5ec18d9 で対応済み。","permission_denials":[]}]' > "$exec_file"
 run_open > /dev/null
 assert_eq "閉じる" "closed" "$(python3 -c "import json,os;print(json.load(open(os.environ['MOCK_STATE']))['issues_meta']['7']['state'])")"
+assert_not_contains "人間に回さない" "$(labels_of 7)" "ai:stuck"
 assert_not_contains "ai:implement を外す" "$(labels_of 7)" "ai:implement"
 assert_contains "理由と開き直し方" "$(comments_of 7)" "開き直してください"
 assert_contains "AIの言葉を残す" "$(comments_of 7)" "5ec18d9"
@@ -102,6 +103,5 @@ printf '%s' "$clean" > "$exec_file"
 out=$(run_open 2>&1) || true
 assert_not_contains "Branch not found で止まらない" "$out" "失敗したコマンド"
 assert_contains "読めなかったブランチを書く" "$out" "claude/issue-7-gone"
-assert_not_contains "人間に回さない" "$(labels_of 7)" "ai:stuck"
 
 finish
