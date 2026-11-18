@@ -16,6 +16,16 @@ on:
     types: [completed]
   workflow_dispatch:
 
+# 並列の上限（agent-desk の設定が Actions の Variable に書く。pipeline-lib.sh の parallel_limit_decide が読む）。
+# 渡していなかったので、設定で昼の数を変えても、いつも既定の3で動いていた（2026-11-18）
+env:
+  PARALLEL_DAY: ${{ vars.PARALLEL_DAY }}
+  PARALLEL_NIGHT: ${{ vars.PARALLEL_NIGHT }}
+  PARALLEL_NIGHT_HOURS: ${{ vars.PARALLEL_NIGHT_HOURS }}
+  PARALLEL_TZ: ${{ vars.PARALLEL_TZ }}
+  PARALLEL_OVERRIDE: ${{ vars.PARALLEL_OVERRIDE }}
+  MAX_PARALLEL: ${{ vars.MAX_PARALLEL }}
+
 concurrency:
   group: watchdog
   cancel-in-progress: false
