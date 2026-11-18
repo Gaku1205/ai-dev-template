@@ -7,7 +7,7 @@ make_label() {
 }
 make_label "ai:implement" "5E9BF7" "実装AIが作業を始める"
 make_label "ai:review" "5E9BF7" "レビューAIが確認する"
-make_label "ai:queue" "BFD4F2" "順番待ち。前の物がマージされたら自動で実装が始まる"
+make_label "ai:queue" "BFD4F2" "順番待ち。並列の上限に空きがあり、触るファイルが進行中の物と重ならなければ、自動で実装が始まる"
 make_label "ai:blocked" "BFD4F2" "他のIssue・PRの完了待ち。待ち先が全部閉じたら、見張り役が自動で企画に戻す"
 make_label "ai:found" "C5DEF5" "使ってみる役（公開後に本番を試す）・監査役（仕様書の食い違いを探す）が見つけて作った Issue"
 make_label "priority:high" "D93F0B" "急ぎ。順番待ちから先に実装に回す"
