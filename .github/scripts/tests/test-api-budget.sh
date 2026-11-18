@@ -32,7 +32,12 @@ assert_contains "自分の番号が無い：間引かない" "$(taken "$(runs_js
 
 echo "== 見張り役：workflow_run で起きて、同じ枠でもう見張りが済んでいれば、何もしない"
 # #9 は、企画（ai:plan）のまま50分動きが無い（全部見れば、やり直し待ちになる）
+# 枠の区切り（時計の10分ごと）をテストの途中でまたぐと結果が変わるので、区切りまで60秒を切っていたら、次の枠まで待つ
 now_s=$(date +%s)
+if [ $(( 600 - now_s % 600 )) -lt 60 ]; then
+  sleep $(( 600 - now_s % 600 + 1 ))
+  now_s=$(date +%s)
+fi
 slot_start=$(( now_s - now_s % 600 ))
 state_with_run() { # 前の見張りの結果 作られた時刻（epoch）
   init_state '{"labels":{"9":["ai:plan"]},"issue_updated":{"9":"'"$(ago 50)"'"},"wf_runs":{"watchdog.yml":[{"id":150,"status":"completed","conclusion":"'"$1"'","created_at":"'"$(iso "$2")"'"}]}}'
