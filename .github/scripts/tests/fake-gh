@@ -263,7 +263,8 @@ if m: out({'commit':{'committer':{'date':'2026-01-01T00:00:00Z'}},'files':[{'fil
 if base=='pulls':
     paged(st.get('pulls',[])); sys.exit(0)
 if base=='branches':
-    paged([{'name':b['name']} for b in st.get('branches',[])]); sys.exit(0)
+    # ghost_branches：一覧には出るが、1つずつ読むと見つからない（一覧のあとに消えた）ブランチ
+    paged([{'name':b['name']} for b in st.get('branches',[])] + [{'name':g} for g in st.get('ghost_branches',[])]); sys.exit(0)
 m=re.match(r'branches/(.+)$',base)
 if m:
     for b in st.get('branches',[]):

@@ -84,8 +84,16 @@ ${PERM_RETRY_MARK}"
 # いちばん新しいコミットがある claude/issue-<番号>- ブランチを探す
 branch=""
 latest=""
-for b in $(gh api "repos/$REPO/branches?per_page=100" --paginate -q ".[].name | select(startswith(\"claude/issue-${ISSUE}-\"))"); do
-  date=$(gh api "repos/$REPO/branches/$b" -q .commit.commit.committer.date)
+# 一覧の読み取りは一時的に失敗することがある（途中で切れた JSON・502）ので3回まで試す。
+# 1つのブランチが読めない（一覧のあとに消えた・名前が壊れて返った）ときは、そのブランチだけ飛ばす（agent-desk #456 で、Branch not found で止まった）
+branches=""
+for _try in 1 2 3; do
+  if branches=$(gh api "repos/$REPO/branches?per_page=100" --paginate -q ".[].name | select(startswith(\"claude/issue-${ISSUE}-\"))" 2> /dev/null); then break; fi
+  branches=""
+  sleep 5
+done
+for b in $branches; do
+  date=$(gh api "repos/$REPO/branches/$b" -q .commit.commit.committer.date 2> /dev/null) || { echo "::warning::ブランチ $b を読めなかったので飛ばします"; continue; }
   if [[ "$date" > "$latest" ]]; then
     latest="$date"
     branch="$b"
