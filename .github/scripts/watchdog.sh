@@ -691,7 +691,7 @@ while IFS=$'\t' read -r n labels; do
   [ -z "$n" ] && continue
   [ "$fixed" -ge 20 ] && break
   stale=()
-  for l in ai:stuck ai:retry ai:queue ai:blocked; do
+  for l in ai:stuck ai:retry ai:queue ai:blocked ai:implement; do
     case ",$labels," in *,"$l",*) stale+=("$l") ;; esac
   done
   [ "${#stale[@]}" -eq 0 ] && continue

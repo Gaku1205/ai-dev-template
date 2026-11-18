@@ -254,6 +254,18 @@ PY2
 )
 assert_eq "sync.yml の待ちと配る本体" "$(printf 'wait-cancel\nsync-needs-wait\nsync-no-cancel\ntemplate-only')" "$result"
 
+echo "== after-ci.sh の PIPELINE_CHECK_STEPS は、ci.yml の手順の名前と合っている"
+steps_json=$(grep -m1 "^PIPELINE_CHECK_STEPS=" "$SCRIPTS_DIR/after-ci.sh" | sed -E "s/^PIPELINE_CHECK_STEPS='(.*)'\$/\\1/")
+result=$(python3 - "$WORKFLOWS/ci.yml" "$steps_json" <<'PY2'
+import sys, json, yaml
+d = yaml.safe_load(open(sys.argv[1]))
+names = {s.get("name") for j in d["jobs"].values() for s in j.get("steps", [])}
+missing = [n for n in json.loads(sys.argv[2]) if n not in names]
+print("ok" if not missing and json.loads(sys.argv[2]) else "missing:" + ",".join(missing))
+PY2
+)
+assert_eq "名前が ci.yml にある" "ok" "$result"
+
 echo "== やり直しの目覚まし：見張り役は目覚ましを動かせる（actions: write）。目覚ましは1つだけ"
 assert_contains "watchdog.yml：actions: write" "$(cat "$WORKFLOWS/watchdog.yml")" "actions: write"
 assert_contains "retry-timer.yml：新しい物が古い物を止める" "$(cat "$WORKFLOWS/retry-timer.yml")" "cancel-in-progress: true"

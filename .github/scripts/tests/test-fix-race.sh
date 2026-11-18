@@ -104,6 +104,24 @@ assert_contains "やり直しの印のまま、最新のコミット" "$(comment
 assert_contains "やり直しの印のまま" "$(comments_of 58 | tail -n 3)" "<!-- auto-fix-retry -->"
 assert_eq "回数は増えない" "1" "$(fix_count)"
 
+echo "== 出し直した依頼で上限に届いた → 止めた理由に、元の依頼の種類が出る"
+stale_limit() { # 元の依頼の文
+  local m
+  m=$(req 5 5 abc auto-fix "$1" | sed "s/$(t 5)/$now/g")
+  state "[$(req 1 1 aaa),$(req 3 3 bbb),$(req 7 4 ccc),$m,$(stale 6 8 5 | sed "s/>= $(t 5)/>= $now/; s/$(t 8)/$now/g")]" def
+  after_mention "$now" > /dev/null
+}
+stale_limit 'CIが失敗しました。失敗したチェックのログを確認して、原因を直してください。'
+assert_contains "CI" "$(comments_of 58)" "最後の理由：CIが失敗したままです"
+stale_limit 'レビューで指摘がありました。このPRの「Code review」のコメントを読んで直してください。'
+assert_contains "レビュー" "$(comments_of 58)" "最後の理由：レビューの指摘が直りませんでした"
+stale_limit 'レビューで指摘があり、CIでは見た目のテストも落ちています。'
+assert_contains "レビュー＋見た目" "$(comments_of 58)" "最後の理由：レビューの指摘が直りませんでした"
+stale_limit 'main とコンフリクトしていて、このままではCIもレビューも動きません。'
+assert_contains "コンフリクト" "$(comments_of 58)" "最後の理由：main とのコンフリクトが解けませんでした"
+stale_limit '見た目のテストの基準の画像を撮り直そうとしたら失敗しました。'
+assert_contains "見分けられなければ既定" "$(comments_of 58)" "最後の理由：AIが直せませんでした"
+
 echo "== 修正AIが普通に終わって push した → 今までどおり（出し直さない）"
 state "[$(req 5 5 abc | sed "s/$(t 5)/$now/g"),$(finished 6 6 | sed "s/$(t 6)/$now/g")]" def
 out=$(after_mention "$now")

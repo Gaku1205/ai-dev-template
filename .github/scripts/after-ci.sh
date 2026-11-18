@@ -10,6 +10,8 @@
 source "$(dirname "$0")/pipeline-lib.sh"
 set -e
 CI_CANCEL_MARK="<!-- auto-ci-cancel-rerun -->"
+# パイプライン自体の確認の手順の名前（ci.yml の手順の name と同じ。食い違うと tests/test-workflows.sh が落ちる）
+PIPELINE_CHECK_STEPS='["スクリプトのテスト","shellcheck","ワークフローの確認（actionlint）"]'
 
 has_pipeline_token || { echo "PIPELINE_TOKEN が無いので何もしません"; exit 0; }
 
@@ -171,19 +173,20 @@ ${VISUAL_MARK}"
       # パイプライン自体の確認（shellcheck・スクリプトのテスト）だけが落ちていて、PRが .github/ を触っていない：
       # 落ちた原因はこのPRの変更ではなく、AIは .github/ を直せない（直させても「直す物が無い」で止まる）。
       # 一時的な揺れ（実行環境の入れ替わりなど）のことがあるので、1回だけ落ちたジョブをやり直す。それでも落ちたら人間に回す
-      only_pipeline=$(printf '%s' "$failed_steps" | jq 'length > 0 and all(.[]; . == "スクリプトのテスト" or . == "shellcheck")')
+      only_pipeline=$(printf '%s' "$failed_steps" | jq --argjson names "$PIPELINE_CHECK_STEPS" 'length > 0 and all(.[]; . as $n | $names | index($n) != null)')
+      pipeline_names=$(printf '%s' "$failed_steps" | jq -r 'join("、")' 2> /dev/null || true)
       if [ "$only_pipeline" = "true" ] &&
         files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null) &&
         ! printf '%s\n' "$files" | grep -q '^\.github/'; then
         reruns=$(all_comments "$pr" | jq --arg m "$PIPELINE_TEST_MARK" '[.[] | select(.body | contains($m))] | length')
         if [ "$reruns" -lt 1 ] && GH_TOKEN="${READ_TOKEN:-$GH_TOKEN}" gh api -X POST "repos/$REPO/actions/runs/$RUN_ID/rerun-failed-jobs" > /dev/null 2>&1; then
-          comment "$pr" "パイプライン自体のテスト（スクリプトのテスト・shellcheck）だけが落ちました。このPRの変更（.github/ の外）が原因ではないので、AIには直させず、落ちたジョブを1回だけやり直します。
+          comment "$pr" "パイプライン自体の確認（${pipeline_names}）だけが落ちました。このPRの変更（.github/ の外）が原因ではないので、AIには直させず、落ちたジョブを1回だけやり直します。
 
 ${PIPELINE_TEST_MARK}"
           echo "PR #$pr：パイプライン自体のテストだけが落ちたので、CIをやり直しました"
           exit 0
         fi
-        stop_for_human "$pr" "パイプライン自体のテスト（スクリプトのテスト・shellcheck）が落ちています。このPRの変更（.github/ の外）が原因ではなく、AIは .github/ を直せないので止めました。テンプレート（ai-dev-template）の側で確かめて、直ったら CI をやり直してから ai:stuck を外してください"
+        stop_for_human "$pr" "パイプライン自体の確認（${pipeline_names}）が落ちています。このPRの変更（.github/ の外）が原因ではなく、AIは .github/ を直せないので止めました。テンプレート（ai-dev-template）の側で確かめて、直ったら CI をやり直してから ai:stuck を外してください"
         echo "PR #$pr：パイプライン自体のテストが続けて落ちたので、人間に回しました"
         exit 0
       fi
