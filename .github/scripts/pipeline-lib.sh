@@ -1035,6 +1035,15 @@ hit_max_turns() {
   [ "$subtype" = "error_max_turns" ]
 }
 
+# AIの実行記録が「正常に終わった」（結果が success で、エラーではない）か。
+# AIのアクションは、AIが正常に終わっていても、手数が --max-turns を越えていると失敗にする。そのときの見分けに使う
+ai_finished_ok() {
+  local f="${1:-}" ok
+  { [ -n "$f" ] && [ -s "$f" ] && [ ! -L "$f" ]; } || return 1
+  ok=$(jq -r 'if type == "array" then . else [.] end | map(select(type == "object" and .type == "result")) | last // {} | if .subtype == "success" and .is_error != true then "yes" else "no" end' "$f" 2> /dev/null) || return 1
+  [ "$ok" = yes ]
+}
+
 # 失敗コメントの理由に、分類（classify_failure）と、見に行けるログのURLを足す
 #   使い方：failure_reason "企画AIがエラーで止まりました" [実行記録のファイル]
 failure_reason() {
