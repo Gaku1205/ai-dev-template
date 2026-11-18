@@ -1,0 +1,97 @@
+name: Bench Plain
+
+# 比べ直し用：パイプラインを使わずに、普通の Claude Code に1回頼んだときの時間と使用量（API 換算）を測る。
+# 工場と同じ claude-code-action・同じ数え方（total_cost_usd）なので、工場の数字と並べられる。
+# 動かせるのは手動（workflow_dispatch）だけ。頼み文はオーナーが入れる物なので、外の文章は入らない。
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: 作ってほしい物（1行）
+        required: true
+        default: 飲み会の割り勘を、先輩・後輩の傾斜つきで1分で決めて、LINEに貼れる文面にするWebアプリ
+      model:
+        description: モデル
+        required: true
+        type: choice
+        options: [opus, sonnet]
+        default: opus
+
+concurrency:
+  group: bench-plain
+  cancel-in-progress: false
+
+jobs:
+  plain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      # 普通の Claude Code に合わせ、空のフォルダから始める（テンプレートのファイル・CLAUDE.md・スキルを見せない）
+      - name: 空のフォルダにする
+        run: |
+          git rm -rq --ignore-unmatch . > /dev/null
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          git -c user.name=bench -c user.email=bench@example.invalid commit -qm "空" --allow-empty
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$RUNNER_TEMP/start.txt"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - uses: anthropics/claude-code-action@v1
+        id: plain
+        continue-on-error: true
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: |
+            このフォルダは空です。次の物を、Next.js（App Router）＋TypeScript の Web アプリとして作ってください。
+            「${{ inputs.prompt }}」
+            - 質問はできません。迷ったら、自分のおすすめで決めて進めてください
+            - スマホ（幅390px）でも PC でも崩れないこと。ロジックにはテストを書くこと
+            - 最後に `npm run build` が通ること。公開（デプロイ）はしなくてよい
+          claude_args: '--model ${{ inputs.model }} --max-turns 200 --allowedTools "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Bash"'
+      - name: 時間と使用量を書く
+        if: ${{ !cancelled() }}
+        env:
+          EXEC: ${{ steps.plain.outputs.execution_file }}
+          PROMPT: ${{ inputs.prompt }}
+          MODEL: ${{ inputs.model }}
+        run: |
+          start=$(cat "$RUNNER_TEMP/start.txt"); end=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          secs=$(( $(date -d "$end" +%s) - $(date -d "$start" +%s) ))
+          cost=""; turns=""
+          if [ -n "$EXEC" ] && [ -f "$EXEC" ]; then
+            cost=$(jq -r '[.[] | select(.type == "result")] | last | .total_cost_usd // empty' "$EXEC" 2> /dev/null || true)
+            turns=$(jq -r '[.[] | select(.type == "result")] | last | .num_turns // empty' "$EXEC" 2> /dev/null || true)
+          fi
+          build="失敗"
+          if [ -f package.json ] && npm run build > "$RUNNER_TEMP/build.log" 2>&1; then build="通った"; fi
+          {
+            echo "## 普通の Claude Code（比べ直し）"
+            echo
+            echo "| 項目 | 値 |"
+            echo "| --- | --- |"
+            echo "| 頼み | $PROMPT |"
+            echo "| モデル | $MODEL |"
+            echo "| 時間 | $((secs / 60))分$((secs % 60))秒（$start → $end） |"
+            echo "| 使用量（API 換算） | \$${cost:-不明} |"
+            echo "| 往復の回数 | ${turns:-不明} |"
+            echo "| build | $build |"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: 作った物を残す
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/app"
+          tar --exclude=./node_modules --exclude=./.next --exclude=./.git -cf - . | tar -xf - -C "$RUNNER_TEMP/app"
+      - uses: actions/upload-artifact@v6
+        if: ${{ !cancelled() }}
+        with:
+          name: bench-plain-app
+          path: ${{ runner.temp }}/app
+          include-hidden-files: true
+          retention-days: 14
