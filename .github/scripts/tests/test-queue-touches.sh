@@ -16,8 +16,18 @@ paths_overlap "src/a.ts" "src/a.ts"; assert_eq "同じファイル" "0" "$?"
 paths_overlap "src/lib/" "src/lib/x.ts"; assert_eq "フォルダの中" "0" "$?"
 paths_overlap "src/lib/x.ts" "src/lib/"; assert_eq "逆向きも" "0" "$?"
 paths_overlap "src/lib/a.ts" "src/lib/b.ts"; assert_eq "別のファイルは重ならない" "1" "$?"
-paths_overlap "src/components/A.tsx" "src/app/page.tsx" 0; assert_eq "見た目のテストが無ければ画面どうしも並べる" "1" "$?"
-paths_overlap "src/components/A.tsx" "src/app/page.tsx" 1; assert_eq "見た目のテストがあれば画面どうしは重なり" "0" "$?"
+paths_overlap "src/components/A.tsx" "src/app/page.tsx"; assert_eq "別の画面のファイルは並べる" "1" "$?"
+paths_overlap "src/components/A.tsx" "src/components/A.tsx"; assert_eq "同じ画面のファイルは重なり" "0" "$?"
+paths_overlap "docs/spec.md" "docs/spec.md"; assert_eq "仕様書は数えない" "1" "$?"
+paths_overlap "docs/design.md
+src/lib/a.ts" "docs/design.md
+docs/sub/x.MD"; assert_eq "docs の下の .md（サブフォルダも）は数えない" "1" "$?"
+paths_overlap "docs/" "docs/spec.md"; assert_eq "仕様書は、フォルダ指定との包含でも数えない" "1" "$?"
+paths_overlap "docs/img/a.png" "docs/img/a.png"; assert_eq "docs の下でも .md 以外は数える" "0" "$?"
+paths_overlap "README.md" "README.md"; assert_eq "docs の外の .md は数える" "0" "$?"
+paths_overlap "docs/spec.md
+src/lib/a.ts" "docs/spec.md
+src/lib/a.ts"; assert_eq "仕様書以外が同じなら重なり" "0" "$?"
 
 echo "== 進行中の物が無い：priority:high を先に始める（番号が大きくても）"
 state_with '{"labels":{"3":["ai:queue"],"9":["ai:queue","priority:high"]}}'
@@ -134,11 +144,31 @@ next > /dev/null
 assert_eq "#3 は配布と重なるので待つ" "ai:queue" "$(labels_of 3)"
 assert_contains "#4 を始める" "$(labels_of 4)" "ai:implement"
 
-echo "== 見た目のテストがあるリポジトリ：画面どうしは並べない"
+echo "== docs/spec.md・docs/design.md だけが重なる2つは、並べて始める"
 state_with "$(python3 -c "
 import json
-print(json.dumps({'labels':{'1':['ai:implement'],'3':['ai:queue']},'contents':{'main':{'tests/visual':'[]'}},
- 'issues_meta':{'1':{'title':'a','body':'''$(body src/components/A.tsx)'''},'3':{'title':'b','body':'''$(body src/app/page.tsx)'''}}}))")"
+print(json.dumps({'labels':{'1':['ai:implement'],'3':['ai:queue']},
+ 'issues_meta':{'1':{'title':'a','body':'''$(body 'src/lib/a.ts, docs/spec.md, docs/design.md')'''},'3':{'title':'b','body':'''$(body 'src/lib/b.ts, docs/spec.md, docs/design.md')'''}}}))")"
 next > /dev/null
-assert_eq "#3 は待つ" "ai:queue" "$(labels_of 3)"
+assert_contains "#3 が実装へ" "$(labels_of 3)" "ai:implement"
+
+echo "== 見た目のテストがあるリポジトリ：別の画面のファイルは並べ、同じファイルは待つ"
+state_with "$(python3 -c "
+import json
+print(json.dumps({'labels':{'1':['ai:implement'],'3':['ai:queue'],'4':['ai:queue']},'contents':{'main':{'tests/visual':'[]'}},
+ 'issues_meta':{'1':{'title':'a','body':'''$(body src/components/A.tsx)'''},'3':{'title':'b','body':'''$(body src/app/page.tsx)'''},'4':{'title':'c','body':'''$(body src/components/A.tsx)'''}}}))")"
+next > /dev/null
+assert_contains "#3（別の画面のファイル）は始める" "$(labels_of 3)" "ai:implement"
+assert_eq "#4（同じファイル）は待つ" "ai:queue" "$(labels_of 4)"
+
+echo "== 後から入る方の docs のコンフリクトは、今までどおり AI が解く（request_fix_or_stop の仕組みは変えていない）"
+assert_eq "コンフリクトの解消を頼む処理が残っている" "1" "$(grep -c '^request_fix_or_stop()' "$SCRIPTS_DIR/pipeline-lib.sh")"
+assert_eq "重なりの判定から呼んでいない" "0" "$(sed -n '/^paths_overlap()/,/^}/p' "$SCRIPTS_DIR/pipeline-lib.sh" | grep -c request_fix_or_stop)"
+
+echo "== 企画AIが印を書き忘れた：本文のファイル名から補う（補えなければ、そのまま）"
+# shellcheck disable=SC2016
+touches_guess_from_body '`src/lib/a.ts` と `docs/spec.md`、`src/components/` を直す。`npm` は対象外、`https://x.example/a/b` も除く' > g.txt
+assert_eq "ファイル名だけ拾う" "$(printf 'src/lib/a.ts\ndocs/spec.md\nsrc/components/')" "$(cat g.txt)"
+# shellcheck disable=SC2016
+assert_eq "ファイル名が無ければ空" "" "$(touches_guess_from_body '本文だけ。`npm test` を通す')"
 finish

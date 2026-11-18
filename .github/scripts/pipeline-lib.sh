@@ -640,8 +640,6 @@ parallel_limit_decide() {
 parallel_limit() { parallel_limit_decide "$1" | cut -d' ' -f1; }
 # 画面は、今の時刻で上限を決める（ここだけが現在時刻を読む）
 current_parallel() { parallel_limit_decide "$(date +%s)"; }
-# 画面のファイル：見た目のテストがあるリポジトリでは、ここを触る物どうしは基準の画像がぶつかるので、1つずつにする
-SCREEN_PATHS_RE='^(src/)?(app|components|styles|pages)/'
 
 # 本文の印から、触るファイルを1行に1つ出す（印が無ければ何も出さない）
 touches_from_body() {
@@ -651,26 +649,51 @@ touches_from_body() {
   printf '%s\n' "$list" | tr ',' '\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's#^\./##' | grep -v '^$' || true
 }
 
+# 本文から触るファイルを推し量る（印が無いときの補い）
+touches_guess_from_body() {
+  # 本文の `src/lib/a.ts` のような、バッククォートで囲んだ / を含むファイル名を集める（URL・空白入りは除く）
+  # shellcheck disable=SC2016
+  printf '%s\n' "$1" | grep -oE '`[A-Za-z0-9_.@()-]+(/[A-Za-z0-9_.@()-]+)+/?`' | tr -d '`' | grep -vE '^(https?:|\.\./)' | awk '!seen[$0]++' | head -n 20 || true
+}
+
+# READY なのに本文に ai-touches の印が無いとき、本文のファイル名から印を作って本文の最後に足す（足せたら 0）
+ensure_touches_mark() {
+  local issue="$1" body guess list
+  body=$(gh api "repos/$REPO/issues/$issue" -q '.body // ""' 2> /dev/null) || return 1
+  [[ "$body" =~ $TOUCHES_MARK_RE ]] && return 1
+  guess=$(touches_guess_from_body "$body")
+  [ -n "$guess" ] || { echo "#$issue：本文に触るファイルの印が無く、ファイル名からも補えませんでした（順番待ちでは待つ扱いになります）"; return 1; }
+  list=$(printf '%s\n' "$guess" | paste -sd, - | sed 's/,/, /g')
+  gh api -X PATCH "repos/$REPO/issues/$issue" -f body="${body}
+
+<!-- ai-touches: ${list} -->" > /dev/null || return 1
+  echo "#$issue：企画AIが触るファイルの印を書かなかったので、本文のファイル名から補いました（${list}）"
+}
+
+# 仕様書（docs/ の下の .md。サブフォルダの中も）か。仕様書は重なりに数えない
+# （後からマージされる方が main を取り込むときのコンフリクトを AI が解く。文書は両方を残せば解ける）
+is_doc_path() {
+  local p="${1,,}"
+  [[ "$p" == docs/*.md ]]
+}
+
 # 2つの一覧（改行区切り）が重なるか。同じファイル・片方のフォルダの中にもう片方がある、を重なりとみなす。
-# 第3引数が 1 なら、画面のファイルどうしも重なりとみなす（見た目のテストの基準の画像がぶつかるため）
+# 仕様書（is_doc_path）は数えない。画面のファイルも、同じファイルだけを重なりにする
+# （見た目のテストの基準の画像のずれは、後からマージされる方の自動の撮り直し visual:update で直る）
 paths_overlap() {
-  local a b screen="${3:-0}"
+  local a b
   while IFS= read -r a; do
     [ -z "$a" ] && continue
+    is_doc_path "$a" && continue
     while IFS= read -r b; do
       [ -z "$b" ] && continue
+      is_doc_path "$b" && continue
       [ "$a" = "$b" ] && return 0
       case "$a" in */) case "$b" in "$a"*) return 0 ;; esac ;; esac
       case "$b" in */) case "$a" in "$b"*) return 0 ;; esac ;; esac
-      if [ "$screen" = 1 ] && [[ "$a" =~ $SCREEN_PATHS_RE ]] && [[ "$b" =~ $SCREEN_PATHS_RE ]]; then return 0; fi
     done <<< "$2"
   done <<< "$1"
   return 1
-}
-
-# 見た目のテスト（tests/visual/）があるリポジトリか
-repo_has_visual_tests() {
-  gh api "repos/$REPO/contents/tests/visual?ref=main" --jq 'type' > /dev/null 2>&1
 }
 
 # ---- 見張り役を間引く（watchdog.sh の 0） ----
@@ -776,7 +799,7 @@ inflight_touches() {
 # 順番待ち（ai:queue）から、次に実装に回す物を選んで始める。
 # - 進行中の物が無ければ、先頭の1つ（priority:high が付いた物を先に、その中は番号の小さい順）
 # - 進行中の物があっても、上限（MAX_PARALLEL）に達しておらず、触るファイルが進行中の物と重ならない物は、並べて始める
-#   （触るファイルが分からない物・進行中の物に分からない物があるときは、今までどおり待つ。見た目のテストがあれば画面どうしも待つ）
+#   （触るファイルが分からない物・進行中の物に分からない物があるときは、今までどおり待つ。仕様書は重なりに数えない。画面は同じファイルだけ待つ）
 # 止まっている物（ai:stuck）は数えない（企画で止まった物はコードに触れていない）
 # 待ちが長くて進行中から外したPRに、外したことを1回だけ書く（印で二重に書かない）
 note_hold_released() {
@@ -812,7 +835,7 @@ sync_hold_blocking() {
 }
 
 start_next_in_queue() {
-  local busy stuck prs inflight queue n body t rc started=0 screen=0 holds pr state files blocks="" startedlist=" " limit_info limit idle=0 nomark_started=0
+  local busy stuck prs inflight queue n body t rc started=0 holds pr state files blocks="" startedlist=" " limit_info limit idle=0 nomark_started=0
   busy=$(count_open_issues_with_label "ai:implement") || return 1
   stuck=$(count_open_issues_with_label "ai:stuck") || return 1
   prs=$(count_open_prs) || return 1
@@ -846,7 +869,6 @@ start_next_in_queue() {
   fi
   # 数える進行中の物が1つも無い（数えないPRしか開いていない）なら、印の無い Issue も1つ始められる
   if [ -z "$(printf '%s\n' "$inflight" | tr -d '[:space:]')" ]; then idle=1; fi
-  if repo_has_visual_tests; then screen=1; fi
   holds=$(hold_prs 2> /dev/null) || holds=""
   for n in $queue; do
     if [ $((busy + started)) -ge "$limit" ]; then
@@ -874,7 +896,7 @@ start_next_in_queue() {
       fi
       continue
     fi
-    if paths_overlap "$t" "$inflight" "$screen"; then
+    if paths_overlap "$t" "$inflight"; then
       echo "#$n：進行中の作業と触るファイルが重なるので、待ちます"
       continue
     fi
@@ -893,7 +915,7 @@ $t"
       while read -r pr state; do
         [ "$state" = expired ] || continue
         files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null) || continue
-        if paths_overlap "$t" "$files" "$screen"; then note_hold_released "$pr" "$n"; fi
+        if paths_overlap "$t" "$files"; then note_hold_released "$pr" "$n"; fi
       done <<< "$holds"
     fi
   done
@@ -906,7 +928,7 @@ $t"
     while read -r pr state; do
       [ "$state" = waiting ] || continue
       files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null) || continue
-      if paths_overlap "$t" "$files" "$screen"; then blocks="${blocks}${pr} ${n}
+      if paths_overlap "$t" "$files"; then blocks="${blocks}${pr} ${n}
 "; fi
     done <<< "$holds"
   done

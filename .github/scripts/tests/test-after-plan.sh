@@ -68,6 +68,22 @@ init_state '{"labels":{"3":["ai:plan"],"8":["ai:implement"]},"issues_meta":{"3":
 run_plan "READY" > /dev/null
 assert_eq "進行中の物に印が無ければ、今までどおり企画AIの判断" "ai:implement" "$(labels_of 3)"
 
+echo "== 仕様書だけが重なるなら、順番待ちにしない／印を書き忘れた Issue は、本文のファイル名から印を補う"
+touch_state "src/lib/a.ts, docs/spec.md" "src/lib/b.ts, docs/spec.md"
+run_plan "READY" > /dev/null
+assert_eq "仕様書だけが重なる：並列で実装へ" "ai:implement" "$(labels_of 3)"
+body_of() { python3 -c "import json,os;print(json.load(open(os.environ['MOCK_STATE'])).get('issues_meta',{}).get('$1',{}).get('body',''))"; }
+# shellcheck disable=SC2016
+init_state '{"labels":{"3":["ai:plan"],"8":["ai:implement"]},"issues_meta":{"3":{"body":"本文 `src/lib/a.ts` を直す"},"8":{"body":"本文\n<!-- ai-touches: src/lib/a.ts -->"}}}'
+out=$(run_plan "READY")
+assert_contains "印を補った" "$(body_of 3)" "<!-- ai-touches: src/lib/a.ts -->"
+assert_contains "補ったことをログに出す" "$out" "本文のファイル名から補いました"
+assert_eq "補った印が重なるので順番待ち" "ai:queue" "$(labels_of 3)"
+init_state '{"labels":{"3":["ai:plan"],"8":["ai:implement"]},"issues_meta":{"3":{"body":"ファイル名の無い本文"},"8":{"body":"本文\n<!-- ai-touches: src/lib/a.ts -->"}}}'
+out=$(run_plan "READY")
+assert_contains "補えないことをログに出す" "$out" "補えませんでした"
+assert_eq "補えなければ、今までどおり企画AIの判断" "ai:implement" "$(labels_of 3)"
+
 echo "== 作業回数の上限に届いた企画：ワークフローが上限を増やしてやり直しても、また届いたら、やり直さず人間に回す"
 turns_file="$MOCK_DIR/turns.json"; printf '%s' '[{"type":"result","subtype":"error_max_turns","result":""}]' > "$turns_file"
 other_file="$MOCK_DIR/other.json"; printf '%s' '[{"type":"result","subtype":"error_during_execution","result":""}]' > "$other_file"
