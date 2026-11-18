@@ -179,4 +179,30 @@ state "[$(review_ng 2 2)]" abc '["ai:review"]'
 after_review > /dev/null
 assert_eq "撮り直しのあとは頼む" "1" "$(requests)"
 
+echo "== 修正AIが push したのに main とコンフリクトしている（CIが来ない）：CIを待たず、すぐ解消を頼む"
+conflict_state() {
+  state "[$(req 5 5 abc | sed "s/$(t 5)/$now/g"),$(finished 6 6 | sed "s/$(t 6)/$now/g")]" def
+  state_py "s['pulls'][0]['mergeable_state']='dirty'"
+}
+conflict_state
+out=$(after_mention "$now")
+assert_contains "解消を頼む" "$out" "CIを待たずに解消を依頼しました"
+assert_contains "最新のコミットへの依頼" "$(comments_of 58)" "auto-fix-sha: def"
+assert_contains "コンフリクトの文" "$(comments_of 58)" "git merge origin/main"
+assert_eq "依頼は2つ" "2" "$(requests)"
+assert_not_contains "レビューは付けない（動かない）" "$(labels_of 58)" "ai:review"
+
+echo "== 同じコミットに直す依頼が出ていれば頼まない"
+state "[$(req 5 5 abc | sed "s/$(t 5)/$now/g"),$(finished 6 6 | sed "s/$(t 6)/$now/g"),$(req 7 7 def | sed "s/$(t 7)/$now/g")]" def
+state_py "s['pulls'][0]['mergeable_state']='dirty'"
+out=$(after_mention "$now")
+assert_contains "重ねて頼まない" "$out" "重ねて頼みません"
+assert_eq "依頼は2つのまま" "2" "$(requests)"
+
+echo "== mergeable が null（unknown）なら、頼まない"
+conflict_state
+state_py "s['pulls'][0]['mergeable_state']='unknown'; s['pulls'][0]['mergeable']=None"
+out=$(after_mention "$now")
+assert_eq "依頼は1つのまま" "1" "$(requests)"
+
 finish

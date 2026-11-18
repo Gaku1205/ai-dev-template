@@ -54,4 +54,21 @@ init_state '{"labels":{"64":["visual:update"]},"pulls":['"$(pr_of 64 claude/issu
 run_script watchdog.sh > /dev/null
 assert_eq "付いたばかりなら待つ" "visual:update" "$(labels_of 64)"
 
+echo "== mergeable が null（GitHub が計算中。mergeable_state は unknown）：頼まず、空のコミットも足さず、次の見張りまで待つ"
+init_state '{"labels":{"65":[]},"pulls":['"$(pr_of 65 claude/issue-5-n unknown | sed 's/"body"/"mergeable":null,"body"/')"']}'
+out=$(run_script watchdog.sh)
+assert_contains "待つと出す" "$out" "GitHub が計算中"
+assert_not_contains "解消を頼まない" "$(comments_of 65)" "git merge origin/main"
+assert_not_contains "空のコミットも足さない" "$(comments_of 65)" "空のコミット"
+assert_not_contains "人間に回さない" "$(labels_of 65)" "ai:stuck"
+state_py "s['pulls'][0]['mergeable_state']='dirty'; s['pulls'][0]['mergeable']=False"
+run_script watchdog.sh > /dev/null
+assert_contains "計算が済んで dirty なら、次の見張りで頼む" "$(comments_of 65)" "git merge origin/main"
+
+echo "== 同じ先頭コミットに、直す依頼がもう出ている：重ねて頼まない"
+init_state '{"labels":{"66":[]},"pulls":['"$(pr_of 66 claude/issue-5-o dirty)"']}'
+state_py "s['comments'].append({'id':1,'issue':'66','user':{'login':'p'},'body':'@claude x\\n<!-- auto-fix -->\\n<!-- auto-fix-sha: abc123 -->','created_at':'$(ago 3)','updated_at':'$(ago 3)'})"
+run_script watchdog.sh > /dev/null
+assert_eq "依頼は1つのまま" "1" "$(comments_of 66 | grep -c 'auto-fix-sha: abc123')"
+
 finish
