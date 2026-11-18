@@ -914,7 +914,14 @@ sync_hold_blocking() {
 # - 人間のマージ待ちが HOLD_BLOCK_MIN 分を過ぎた PR（hold_prs の expired）の Issue
 # 60分以内のマージ待ち（waiting）・時刻やラベルが読めない物は、数える
 count_active_implementing() {
-  local impl pulls holds expired n pr rc count=0
+  local list
+  list=$(active_implementing_numbers) || return 1
+  printf '%s' "$list" | grep -c . || true
+}
+
+# 上の「数える」Issue の番号を1行ずつ出す（count_active_implementing と yield_if_crowded が同じ物を数えるための元）
+active_implementing_numbers() {
+  local impl pulls holds expired n pr rc
   impl=$(open_numbers_with_label "ai:implement") || return 1
   pulls=$(open_pulls_json | jq -r '.[] | "\(.number) \(.head.ref)"') || return 1
   holds=$(hold_prs 2> /dev/null) || return 1
@@ -930,9 +937,8 @@ count_active_implementing() {
       has_label "$pr" "ai:stuck" || rc=$?
       [ "$rc" -eq 0 ] && continue
     fi
-    count=$((count + 1))
+    echo "$n"
   done
-  echo "$count"
 }
 
 start_next_in_queue() {
@@ -1048,11 +1054,13 @@ $t"
 # 引数：Issue番号、上限、触るファイル（改行区切り・空でもよい）。引いたら 0、そのまま進めるなら 1
 # 数え方は番号だけで決まる（番号の小さい方は、相手を見ても引かない）ので、2つが互いを見ても、両方は引かない
 yield_if_crowded() {
-  local issue="$1" limit="$2" mine="$3" others older=0 n body t overlap=no
+  local issue="$1" limit="$2" mine="$3" others active older=0 n body t overlap=no
   others=$(open_numbers_with_label "ai:implement" 2> /dev/null) || return 1
+  # 席に数えるのは count_active_implementing と同じ物（止まった物・長いマージ待ちは数えない）。重なりは、止まった物も見る
+  active=$(active_implementing_numbers 2> /dev/null) || return 1
   for n in $others; do
     [ "$n" -lt "$issue" ] || continue
-    older=$((older + 1))
+    if printf '%s\n' "$active" | grep -qx "$n"; then older=$((older + 1)); fi
     # PRがもうある物は、同時に始めた物ではない（PRの変えたファイルでの重なりは、付ける前に確かめ済み）
     if [ -n "$mine" ] && [ "$overlap" = no ] && ! open_pulls_json 2> /dev/null | jq -e --arg p "claude/issue-$n-" 'any(.[]; .head.ref | startswith($p))' > /dev/null 2>&1; then
       body=$(issue_body "$n" 2> /dev/null) || continue

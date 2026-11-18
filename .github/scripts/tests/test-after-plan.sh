@@ -75,6 +75,9 @@ assert_contains "実装中は0" "$out" "実装中 0"
 init_state '{"labels":{"3":["ai:plan"],"8":["ai:implement","ai:stuck"]},"issues_meta":{"3":{"body":"本文\n<!-- ai-touches: src/lib/a.ts -->"},"8":{"body":"本文\n<!-- ai-touches: src/lib/a.ts -->"}}}'
 MAX_PARALLEL=1 run_plan "READY" > /dev/null
 assert_eq "重なるので順番待ち" "ai:queue" "$(labels_of 3)"
+init_state '{"labels":{"3":["ai:plan"],"1":["ai:implement","ai:stuck"]},"issues_meta":{"3":{"body":"本文\n<!-- ai-touches: src/lib/b.ts -->"},"1":{"body":"本文\n<!-- ai-touches: src/lib/a.ts -->"}}}'
+MAX_PARALLEL=1 run_plan "READY" > /dev/null
+assert_eq "止まった物の番号が小さくても、数え直しで引かない" "ai:implement" "$(labels_of 3)"
 
 echo "== 仕様書だけが重なるなら、順番待ちにしない／印を書き忘れた Issue は、本文のファイル名から印を補う"
 touch_state "src/lib/a.ts, docs/spec.md" "src/lib/b.ts, docs/spec.md"
