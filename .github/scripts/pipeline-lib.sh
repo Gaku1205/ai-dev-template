@@ -1777,7 +1777,7 @@ review_has_findings() { # PR番号 先頭コミット
 # いまの先頭コミットに、別の依頼がもう出ていれば出し直さない（その修正AIに任せる）。MAX_STALE_FIX 回を超えたら人間に回す
 STALE_FIX_NOTE='（前の依頼は、依頼のあとにPRが更新されたため、修正AIが動きませんでした。直す回数には数えず、最新のコミットで出し直しています）'
 reissue_stale_fix() { # PR番号 動かなかった依頼のコメント（JSON）
-  local pr="$1" req="$2" body head stale message
+  local pr="$1" req="$2" body head stale message reason
   body=$(printf '%s' "$req" | jq -r .body)
   head=$(gh api "repos/$REPO/pulls/$pr" -q .head.sha)
   stale=$(count_stale_fix "$pr")
@@ -1798,6 +1798,17 @@ reissue_stale_fix() { # PR番号 動かなかった依頼のコメント（JSON�
   # 依頼の文は、コメントの1行目（「@claude 」の後ろ）。前の出し直しの断り書きは付け直す
   message=$(printf '%s\n' "$body" | sed -n '1{s/^@claude //;p;}')
   message=${message%%"$STALE_FIX_NOTE"*}
-  request_fix_or_stop "$pr" "$head" "${message}${STALE_FIX_NOTE}"
+  # 人向けの理由は、依頼の文の書き出しで種類を見分ける（after-ci.sh・after-review.sh・CONFLICT_FIX_MSG の文と合わせる）。見分けられなければ渡さない（既定の理由）
+  case "$message" in
+    CIが失敗しました*) reason="CIが失敗したままです" ;;
+    レビューで指摘があり*) reason="レビューの指摘が直りませんでした" ;;
+    "main とコンフリクト"*) reason="main とのコンフリクトが解けませんでした" ;;
+    *) reason="" ;;
+  esac
+  if [ -n "$reason" ]; then
+    request_fix_or_stop "$pr" "$head" "${message}${STALE_FIX_NOTE}" "$reason"
+  else
+    request_fix_or_stop "$pr" "$head" "${message}${STALE_FIX_NOTE}"
+  fi
   echo "PR #$pr：修正AIは「PRが更新された」ため動かなかったので、直す回数に数えず、最新のコミットで依頼を出し直しました"
 }
