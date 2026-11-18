@@ -4,10 +4,12 @@
 #            レビューAIの結果がもう出ていれば、その結果でマージへ進める（after-review.sh）。動いていれば待つ（終わったら after-review.sh が進める）。
 #            どちらでもなければ、レビューAIを動かす（ai:review を付け直す）。レビューAIは、PRができた・push された時点でCIと同時に始まる（#119）
 #   落ちた → 動いているレビューAIを取り消し、AIに直させる（上限を超えたら人間に回す）
+#   取り消された → 1回だけやり直す。また取り消されたら人間に回す
 #
 # 環境変数：CONCLUSION、HEAD_SHA、HEAD_BRANCH、RUN_ID・READ_TOKEN（CIの実行の番号と読み取り用トークン。あれば見た目のテストの失敗を見分ける）
 source "$(dirname "$0")/pipeline-lib.sh"
 set -e
+CI_CANCEL_MARK="<!-- auto-ci-cancel-rerun -->"
 
 has_pipeline_token || { echo "PIPELINE_TOKEN が無いので何もしません"; exit 0; }
 
@@ -22,6 +24,25 @@ if [ "$head" != "$HEAD_SHA" ]; then
 fi
 if has_label_or_unreadable "$pr" "ai:stuck"; then
   echo "人間の確認待ち（ai:stuck）か、ラベルを読めないので、何もしません"
+  exit 0
+fi
+
+# CIが取り消された（時間切れ・手で取り消した・実行環境が落ちた）：結果が出ていないので、成功とも失敗とも扱えない。
+# 何もしないと、PRがずっと ai:review のまま止まる（PR #161：スクリプトのテストが10分の時間切れで取り消された）。
+# 新しいコミットが来て取り消された物は、上の「新しいコミットが来ている」で終わっている。
+# 1回だけ取り消されたジョブをやり直し、2回目も取り消されたら人間に回す（AIに直させても、直す物が分からない）
+if [ "$CONCLUSION" = cancelled ]; then
+  cancels=$(all_comments "$pr" | jq --arg m "$CI_CANCEL_MARK" --arg s "$HEAD_SHA" '[.[] | select(.body | contains($m)) | select(.body | contains($s))] | length')
+  if [ "${cancels:-0}" -lt 1 ] && [ -n "${RUN_ID:-}" ] &&
+    GH_TOKEN="${READ_TOKEN:-$GH_TOKEN}" gh api -X POST "repos/$REPO/actions/runs/$RUN_ID/rerun-failed-jobs" > /dev/null 2>&1; then
+    comment "$pr" "CIが途中で取り消されました（時間切れなど）。結果が出ていないので、取り消されたジョブを1回だけやり直します（コミット ${HEAD_SHA}）。
+
+${CI_CANCEL_MARK}"
+    echo "PR #$pr：CIが取り消されたので、やり直しました"
+    exit 0
+  fi
+  stop_for_human "$pr" "CIが続けて取り消されました（時間切れなど）。CIのログで、どのジョブが時間切れになったかを確かめて、直してから CI をやり直し、ai:stuck を外してください"
+  echo "PR #$pr：CIが続けて取り消されたので、人間に回しました"
   exit 0
 fi
 

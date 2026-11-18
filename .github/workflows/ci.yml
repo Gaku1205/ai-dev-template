@@ -76,7 +76,8 @@ jobs:
   # パイプラインのスクリプトのテスト（疑似 gh。本物のGitHubには触らない）
   script-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # テストが増えて10分ぎりぎりになり、時間切れで取り消された（PR #161）。並列化（run-all.sh）と合わせて余裕を持たせる
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:

@@ -16,7 +16,7 @@ Issueを作る（メモ）。ラベルが無ければ自動で ai:plan が付く
   → 公開されたらスマホに通知                        deploy-notify.yml
   → 順番待ち（ai:queue）があれば次を始める           queue.yml
 
-CIとレビューAIを同時に動かす（#119）：レビューはCIを待たずに始める（CIの中央値 2.8分を待たない）。CIが落ちたら、同じコミットのレビューAIは取り消す（after-ci.sh の cancel_running_review）。同じコミットに、CIとレビューの両方から「直して」を二重に頼まない（fix_requested_for）。CIが後に通ったら、出ていたレビューの結果でマージへ進む（after-ci.sh → after-review.sh。review_state）
+CIとレビューAIを同時に動かす（#119）：レビューはCIを待たずに始める（CIの中央値 2.8分を待たない）。CIが落ちたら、同じコミットのレビューAIは取り消す（after-ci.sh の cancel_running_review）。同じコミットに、CIとレビューの両方から「直して」を二重に頼まない（fix_requested_for）。CIが後に通ったら、出ていたレビューの結果でマージへ進む（after-ci.sh → after-review.sh。review_state）。CIが途中で取り消されたら（時間切れなど。新しいコミットで取り消された物は除く）、取り消されたジョブを1回だけやり直し、同じコミットでまた取り消されたら `ai:stuck` で人間に回す（黙って止まらない。PR #161）
 
 止まったときの自動再開
   使用量の上限・AIのエラー・時間切れ → ai:retry を付けて、見張り役がやり直す（10回まで）   watchdog.yml
