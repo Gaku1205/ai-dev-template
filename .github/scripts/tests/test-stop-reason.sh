@@ -8,7 +8,7 @@ full_state() { # PR番号
   init_state '{"labels":{"'"$1"'":[]},"pulls":[{"number":'"$1"',"state":"open","body":"","head":{"sha":"abc123","ref":"x"},"labels":[]}]}'
   for i in 1 2 3; do
     state_py "
-s['comments'].append({'id': 900+$i, 'body': '@claude 直して\n<!-- auto-fix -->', 'user': {'login': 'github-actions[bot]'}, 'created_at': '2026-01-01T00:00:0$i"Z"', 'updated_at': '2026-01-01T00:00:0$i"Z"', 'issue': '$1'})"
+s['comments'].append({'id': 900+$i, 'body': '@claude 直して\n<!-- auto-fix -->', 'user': {'login': 'github-actions[bot]'}, 'created_at': '2026-01-01T00:00:0${i}Z', 'updated_at': '2026-01-01T00:00:0${i}Z', 'issue': '$1'})"
   done
 }
 
