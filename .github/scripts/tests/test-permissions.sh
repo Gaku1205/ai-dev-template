@@ -66,4 +66,22 @@ PY
   done <<< "$listed"
 done
 
+# 「開けない操作」の一覧：docs と pipeline-lib.sh の PERM_NEVER_OPEN が同じであること
+doc_never=$(printf '%s\n' "$section" | grep -F -- '- 開けない操作の一覧：' | head -1 | sed 's/（.*//' | grep -oE '`[^`]+`' | tr -d '`' | sort)
+lib_never=$(bash -c "source '$SCRIPTS_DIR/pipeline-lib.sh'; printf '%s\n' \"\${PERM_NEVER_OPEN[@]}\"" | sort)
+assert_eq "docs の開けない操作の一覧が、pipeline-lib.sh の PERM_NEVER_OPEN と同じ" "$lib_never" "$doc_never"
+# 開けない操作は、どのワークフローの --allowedTools にも入っていない（--disallowedTools に書くのは構わない）
+for f in "$WORKFLOWS"/claude-*.yml; do
+  allowed=$(python3 - "$f" <<'PY'
+import re, sys
+s = open(sys.argv[1], encoding='utf-8').read()
+m = re.search(r'--allowedTools\s+\\?"([^"\\]*)', s)
+print('\n'.join(m.group(1).split(',')) if m else '')
+PY
+)
+  while IFS= read -r k; do
+    if printf '%s\n' "$allowed" | grep -qxF -- "$k"; then assert_eq "$(basename "$f")：開けない操作 $k が許可に入っていない" "なし" "ある"; else PASSED=$((PASSED + 1)); fi
+  done <<< "$lib_never"
+done
+
 finish

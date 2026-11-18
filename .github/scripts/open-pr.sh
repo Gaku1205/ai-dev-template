@@ -66,8 +66,16 @@ ${PERM_RETRY_MARK}"
       echo "#$ISSUE：${what}。拒否された操作（$(permission_list_short "$raw")）を書いて、1回だけ実装をやり直します"
       return 0
     fi
-    stop_issue_for_human "$ISSUE" "実装AIは正常に終わりましたが、${what}。1回自動でやり直しても、許可されていない操作が拒否されました：$(permission_list_short "$raw")（docs/pipeline.md の「AIの許可」の表と、ワークフローの --allowedTools を見てください）。${note}（${log}）"
-    report_permission_gap "$ISSUE" "$(denied_tools "${EXECUTION_FILE:-}")"
+    keys=$(denied_tools "${EXECUTION_FILE:-}")
+    reason_text="$(permission_reason_text "$keys")"
+    # 開けない操作だけのときも、拒否された操作そのものは見せる
+    if [ -z "$reason_text" ]; then
+      reason_text="許可されていない操作が拒否されました：$(permission_list_short "$raw")（docs/pipeline.md の「AIの許可」の表と、ワークフローの --allowedTools を見てください）"
+    else
+      reason_text="許可されていない操作が拒否されました（$(permission_list_short "$raw")）。${reason_text}"
+    fi
+    stop_issue_for_human "$ISSUE" "実装AIは正常に終わりましたが、${what}。1回自動でやり直しても、${reason_text}。${note}（${log}）"
+    report_permission_gap "$ISSUE" "$keys"
     return 0
   fi
   stop_issue_for_human "$ISSUE" "実装AIは正常に終わりましたが、${what}（拒否された操作はありません）。${note:-AIが最後に言ったことは、実行記録にありません}（${log}）"

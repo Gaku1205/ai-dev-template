@@ -153,7 +153,9 @@ ${PERM_RETRY_MARK}
             echo "PR #$pr：許可の拒否（${tried}）で止まったので、1回だけ同じ依頼を出し直しました"
           else
             # 先に人間に回し、記録は後（記録が遅くて時間切れになっても宙に浮かないように）
-            stop_for_human "$pr" "AIが許可されていない操作で止まったようです（1回自動でやり直しても同じでした）。AIの報告：${report:-（なし）}／足りない許可の候補：${what}（docs/pipeline.md の「AIの許可」の表を見てください）"
+            reason_text=$(permission_reason_text "$keys" 足りない許可の候補)
+            [ -z "$reason_text" ] && reason_text="足りない許可の候補：${what}（docs/pipeline.md の「AIの許可」の表を見てください）"
+            stop_for_human "$pr" "AIが許可されていない操作で止まったようです（1回自動でやり直しても同じでした）。AIの報告：${report:-（なし）}／${reason_text}"
             report_permission_gap "$pr" "$keys"
           fi
           ;;
