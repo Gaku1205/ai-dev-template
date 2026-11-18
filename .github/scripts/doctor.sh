@@ -47,8 +47,21 @@ token_expiration()    { GH_TOKEN="${PIPELINE_TOKEN:-}" gh api -i "repos/$REPO" 2
 # App の鍵では、リポジトリの情報に permissions が付かない。App が入っているリポジトリの一覧に、このリポジトリがあるかで見る
 app_installed_here()  { GH_TOKEN="${PIPELINE_TOKEN:-}" gh api "installation/repositories?per_page=100" --paginate --jq '.repositories[].full_name' 2> /dev/null | grep -qixF "$REPO"; }
 token_can_push()      { GH_TOKEN="${PIPELINE_TOKEN:-}" gh api "repos/$REPO" --jq '.permissions.push' 2>/dev/null; }
+# リポジトリの持ち主の種類（User / Organization。読めなければ空）
+fetch_owner_type()    { gh api "repos/$REPO" --jq '.owner.type // empty' 2> /dev/null; }
+# パイプライン App の鍵で、読み取りの API（GET だけ）が通らない物を1行ずつ出す（Issue・PR・コンテンツ）
+app_read_failures() {
+  local name path
+  for name in Issues:issues PR:pulls コンテンツ:commits; do
+    path="${name#*:}"
+    GH_TOKEN="${PIPELINE_TOKEN:-}" gh api "repos/$REPO/${path}?per_page=1" > /dev/null 2>&1 || echo "${name%%:*}"
+  done
+}
 
 check_secrets() {
+  if [ "$(fetch_owner_type)" = Organization ]; then
+    warn "このリポジトリの持ち主は Organization（個人アカウント専用。人の Issue が全部 ai:skip になり、質問の答えも拾われない）" "個人アカウントのリポジトリで使う"
+  fi
   echo "**必須（3つ）：Claude のトークン・パイプラインの鍵・公開先**"; echo
   if [ "${HAS_OAUTH:-}" = 1 ]; then ok "CLAUDE_CODE_OAUTH_TOKEN が登録されている"
   else ng "CLAUDE_CODE_OAUTH_TOKEN が無い" "Settings → Secrets → Actions に、claude setup-token で作ったトークンを登録"; fi
@@ -58,13 +71,19 @@ check_secrets() {
   if [ "${HAS_PIPELINE_TOKEN:-}" != 1 ]; then
     ng "パイプラインの鍵が無い" "GitHub App（Variable PIPELINE_APP_ID と Secret PIPELINE_APP_PRIVATE_KEY）か、Secret PIPELINE_TOKEN を登録（docs/pipeline-setup.md の「必要な設定」）"
   elif [ "${USING_APP:-0}" = 1 ]; then
-    if app_installed_here; then ok "GitHub App の鍵でこのリポジトリを操作できる（回数制限はオーナーと別・期限切れなし）"
+    if app_installed_here; then
+      ok "GitHub App の鍵でこのリポジトリを操作できる（回数制限はオーナーと別・期限切れなし）"
+      local bad
+      bad=$(app_read_failures | paste -sd'・' -)
+      if [ -n "$bad" ]; then ng "GitHub App の権限が足りない（読めない物：$bad）" "App の設定（Permissions & events）で Issues・Pull requests・Contents を Read and write にし、このリポジトリのインストールで新しい権限を承認する"
+      else ok "GitHub App で Issue・PR・コンテンツを読める"; fi
     else ng "GitHub App がこのリポジトリに入っていない" "App の設定（Install App → ⚙️）で、このリポジトリを選ぶ"; fi
   elif [ "$(token_can_push)" = true ]; then
     ok "PIPELINE_TOKEN でこのリポジトリに書き込める"; check_token_expiration
     warn "GitHub App ではなく PIPELINE_TOKEN を使っている" "回数制限をオーナーと共有し、期限もある。GitHub App に切り替えるとよい（docs/pipeline-setup.md）"
   else ng "PIPELINE_TOKEN でこのリポジトリに書き込めない" "トークンの Repository access にこのリポジトリを足す"; fi
   check_deploy_required
+  echo "- ➖ Claude の GitHub アプリ：Claude Code（ここからは確かめられない。入っているか Settings → GitHub Apps で見る）"
   echo; echo "**任意（あとから足せる）**"; echo
   if [ "${HAS_NTFY:-}" = 1 ]; then ok "NTFY_TOPIC が登録されている（通知が届く）"
   else warn "NTFY_TOPIC が無い" "スマホ通知が鳴らない。ntfy のトピック名を Secret に登録"; fi

@@ -14,6 +14,8 @@ token_expiration() { echo "${EXP:-}"; }
 app_installed_here() { [ "${APP_HERE:-true}" = true ]; }
 is_template_repo() { [ "${IS_TEMPLATE:-false}" = true ]; }
 fetch_main_protected() { echo "${PROTECTED-true}"; }
+fetch_owner_type() { echo "${OWNER_TYPE:-User}"; }
+app_read_failures() { printf '%s' "${APP_BAD:-}"; }
 
 run_doctor() { out="$(main 2>&1)"; rc=$?; }
 workdir="$(mktemp -d)"; cd "$workdir" || exit 1
@@ -50,6 +52,20 @@ order="$(grep -nE '必須（3つ）|CLAUDE_CODE_OAUTH_TOKEN が|書き込める|
 sorted="$(tr ' ' '\n' <<< "$order" | sed '/^$/d' | sort -n | tr '\n' ' ')"
 assert_eq "必須→OAuth→鍵→公開先→任意→NTFY の順に出る" "$sorted" "$order"
 assert_eq "6つの見出し・行がそろっている" "6" "$(wc -w <<< "$order" | tr -d ' ')"
+
+echo "== Organization は警告、Claude のアプリは必ず ➖、App の権限不足は ❌"
+LABELS="$all_labels" DELBR=true CANPUSH=true HAS_OAUTH=1 HAS_PIPELINE_TOKEN=1 HAS_NTFY=1
+run_doctor
+assert_contains "Claude アプリは ➖" "$out" "➖ Claude の GitHub アプリ"
+assert_not_contains "個人なら警告なし" "$out" "Organization"
+OWNER_TYPE=Organization run_doctor
+assert_contains "Organization は警告" "$out" "⚠️ このリポジトリの持ち主は Organization"
+assert_eq "警告だけなら終了コード 0" "0" "$rc"
+USING_APP=1 APP_BAD=$'Issues\nPR' run_doctor
+assert_contains "権限不足は ❌" "$out" "❌ GitHub App の権限が足りない（読めない物：Issues・PR）"
+assert_eq "終了コード 1" "1" "$rc"
+USING_APP=1 run_doctor
+assert_contains "読めれば ✅" "$out" "GitHub App で Issue・PR・コンテンツを読める"
 
 echo "== トークンはあるが書き込めない"
 LABELS="$all_labels" DELBR=true CANPUSH=false HAS_OAUTH=1 HAS_PIPELINE_TOKEN=1 HAS_NTFY=1
