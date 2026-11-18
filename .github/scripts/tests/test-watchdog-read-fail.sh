@@ -37,10 +37,12 @@ out=$(run_script watchdog.sh)
 assert_eq "ai:retry を付けない" "ai:implement" "$(labels_of 9)"
 assert_contains "動いているとログに出す" "$out" "実装AIの実行が動いている（1 件）"
 
+# 見張り役は、開いている Issue・PR の一覧を最初に1回読んで、ラベルはその写しから答える（use_open_snapshot）。
+# 一覧が読めないとき（fail_open_list）は、今までどおり Issue ごとにラベルを読むので、その読み取りの失敗を確かめる
 echo "== ラベルを読めない（ai:stuck・ai:skip が付いている物）：手を出さない"
 for label in ai:stuck ai:skip; do
   for work in ai:plan ai:implement ai:mocks; do
-    init_state '{"labels":{"9":["'"$work"'","'"$label"'"]},"issue_updated":{"9":"'"$(ago 200)"'"},"read_fail_labels":["9"]}'
+    init_state '{"labels":{"9":["'"$work"'","'"$label"'"]},"issue_updated":{"9":"'"$(ago 200)"'"},"read_fail_labels":["9"],"fail_open_list":true}'
     run_script watchdog.sh > /dev/null
     assert_eq "$work＋$label：ai:retry を付けない" "$(printf '%s\n' "$work" "$label" | sort | paste -sd, -)" "$(labels_of 9)"
   done
@@ -50,7 +52,7 @@ echo "== ラベルを読めない ai:retry の Issue：やり直さず、印も�
 init_state '{"labels":{"9":["ai:plan"]}}'
 run_lib 'mark_for_retry 9 plan "エラー"' > /dev/null
 age_retry_comments 40
-state_py "s['labels']['9'].append('ai:skip'); s['read_fail_labels']=['9']"
+state_py "s['labels']['9'].append('ai:skip'); s['read_fail_labels']=['9']; s['fail_open_list']=True"
 out=$(run_script watchdog.sh)
 assert_eq "ラベルは変わらない" "ai:plan,ai:retry,ai:skip" "$(labels_of 9)"
 assert_contains "回数は増えない" "$(comments_of 9)" "count=0 kind=plan"
@@ -58,9 +60,22 @@ assert_contains "読めないとログに出す" "$out" "#9：ラベルを読め
 
 echo "== ラベルを読めないPR（ai:stuck が付いている）：CIが終わって止まっていても、続きを動かさない"
 pr='{"number":58,"state":"open","mergeable_state":"clean","body":"Closes #5","head":{"sha":"abc123","ref":"claude/issue-5-x","repo":{"full_name":"o/r"}},"labels":[],"updated_at":"'"$(ago 60)"'"}'
-init_state '{"labels":{"58":["ai:stuck"]},"read_fail_labels":["58"],"pulls":['"$pr"'],"runs":[{"id":11,"name":"CI","status":"completed","conclusion":"success","created_at":"2026-01-01T00:00:00Z"}]}'
+init_state '{"labels":{"58":["ai:stuck"]},"read_fail_labels":["58"],"fail_open_list":true,"pulls":['"$pr"'],"runs":[{"id":11,"name":"CI","status":"completed","conclusion":"success","created_at":"2026-01-01T00:00:00Z"}]}'
 run_script watchdog.sh > /dev/null
 assert_eq "ラベルは変わらない" "ai:stuck" "$(labels_of 58)"
+assert_not_contains "続きを動かす印を付けない" "$(comments_of 58)" "auto-nudge"
+
+echo "== 一覧は読めて、Issue ごとのラベルの API だけ読めない：写しから分かるので、いつもどおり判断する"
+init_state '{"labels":{"9":["ai:plan"]}}'
+run_lib 'mark_for_retry 9 plan "エラー"' > /dev/null
+age_retry_comments 40
+state_py "s['labels']['9'].append('ai:skip'); s['read_fail_labels']=['9']"
+out=$(run_script watchdog.sh)
+assert_eq "ai:skip が見えるので、ai:retry だけ外す" "ai:plan,ai:skip" "$(labels_of 9)"
+assert_contains "やり直さない" "$out" "#9：ai:skip が付いているので、やり直しません"
+init_state '{"labels":{"58":["ai:stuck"]},"read_fail_labels":["58"],"pulls":['"$pr"'],"runs":[{"id":11,"name":"CI","status":"completed","conclusion":"success","created_at":"2026-01-01T00:00:00Z"}]}'
+run_script watchdog.sh > /dev/null
+assert_eq "ai:stuck のPRは触らない" "ai:stuck" "$(labels_of 58)"
 assert_not_contains "続きを動かす印を付けない" "$(comments_of 58)" "auto-nudge"
 
 echo "== CIのあと（after-ci.sh）：ラベルを読めなければ、ai:stuck のPRに手を出さない"

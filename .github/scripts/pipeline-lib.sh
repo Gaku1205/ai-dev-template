@@ -61,25 +61,147 @@ urlencode() {
 
 # ---- Issue・PR の操作（PRもIssueと同じ番号でラベル・コメントを扱える） ----
 
+# ---- 開いている Issue・PR の写し（GitHub API の回数を減らす） ----
+# 見張り役・順番待ちは、1回の実行で「ai:○○ が付いた Issue の一覧」「このPRに ai:○○ が付いているか」を何十回も読む。
+# どれも「開いている Issue・PR の一覧」（ラベル・本文つき）1回ぶんから分かるので、use_open_snapshot を呼んだスクリプトでは、
+# 最初に一覧を1回ずつ読んで写しを持ち、その実行の間は写しから答える（パイプラインの鍵は、全部のリポジトリで1時間5000回を分け合う。
+# 開いているPRが6つのリポジトリで、見張り1回が約170回 → 約30回になる）。
+#   ・このスクリプト自身のラベルの付け外し（add_label・remove_label・take_label）は、写しにも反映する
+#   ・ラベルを外せたか分からないとき（404 以外の失敗）は、写しを捨てて、その後は今までどおり API から読む
+#   ・別のスクリプトを呼んだあと（after-ci.sh など。その中の付け外しは写しに入らない）は、use_open_snapshot で読み直す
+#   ・呼んでいないスクリプト（進行役など）は、今までどおり毎回 API から読む
+# 写しは実行の最初の時点の物なので、実行の途中（長くて1〜2分）に人間やほかのワークフローが付けたラベルは、次の実行で見る。
+# 順番待ちを始める所（take_label）と、止まりの判定の更新時刻（issue_idle_min）は、写しを使わず毎回 API で確かめる
+OPEN_ITEMS=""     # GET issues?state=open の全部（PRを含む）。空なら写しなし
+OPEN_PULLS=""     # GET pulls?state=open の全部
+HOLD_PRS_MEMO=""  # hold_prs の結果（写しがある間だけ使い回す）
+HOLD_PRS_READY=""
+
+# 写しを読む。読めなければ写しなし（今までどおり API から読む）で 1
+use_open_snapshot() {
+  local items pulls
+  drop_open_snapshot
+  items=$(api_list "repos/$REPO/issues?state=open&per_page=100" 2> /dev/null) || return 1
+  pulls=$(api_list "repos/$REPO/pulls?state=open&per_page=100" 2> /dev/null) || return 1
+  printf '%s' "$items" | jq -e 'type == "array"' > /dev/null 2>&1 || return 1
+  printf '%s' "$pulls" | jq -e 'type == "array"' > /dev/null 2>&1 || return 1
+  OPEN_ITEMS="$items"
+  OPEN_PULLS="$pulls"
+}
+
+drop_open_snapshot() {
+  OPEN_ITEMS=""
+  OPEN_PULLS=""
+  HOLD_PRS_MEMO=""
+  HOLD_PRS_READY=""
+}
+
+# 写しの中の Issue・PR のラベルを、1行に1つ出す。写しが無い・その番号が写しに無い（閉じている・あとから作られた）なら 1
+snapshot_labels() {
+  [ -n "$OPEN_ITEMS" ] || return 1
+  printf '%s' "$OPEN_ITEMS" | jq -er --arg n "$1" \
+    'map(select((.number | tostring) == $n))[0] | if . == null then false else ((.labels // []) | map(.name) | join("\n")) end' 2> /dev/null
+}
+
+# 写しのラベルを書き換える（番号 ラベル add|remove）。書き換えられなければ写しを捨てる
+snapshot_set_label() {
+  [ -n "$OPEN_ITEMS" ] || return 0
+  local next
+  if next=$(printf '%s' "$OPEN_ITEMS" | jq -c --arg n "$1" --arg l "$2" --arg op "$3" '
+      map(if (.number | tostring) == $n
+          then .labels = (((.labels // []) | map(select(.name != $l))) + (if $op == "add" then [{name: $l}] else [] end))
+          else . end)' 2> /dev/null) && [ -n "$next" ]; then
+    OPEN_ITEMS="$next"
+  else
+    drop_open_snapshot
+  fi
+  # 人間のマージ待ち（ai:hold）の判定が変わるので、覚えた結果は捨てる
+  if [ "$2" = "ai:hold" ]; then HOLD_PRS_MEMO="" HOLD_PRS_READY=""; fi
+  return 0
+}
+
+# ラベルを外した結果を写しに反映する（番号 ラベル 終了コード エラーの文）。外せた・もともと付いていない（404）なら写しからも外す。
+# ほかの失敗（通信・GitHub 側のエラー）は、付いているか分からないので写しを捨てる
+snapshot_after_remove() {
+  if [ "$3" -eq 0 ] || grep -q 'HTTP 404' <<< "$4"; then
+    snapshot_set_label "$1" "$2" remove
+  else
+    drop_open_snapshot
+  fi
+  return 0
+}
+
+# 開いている Issue・PR のうち、ラベルが付いた物の配列（JSON。PRを含む）。ラベルが空なら全部。読めなければ失敗
+open_items_json() {
+  local label="${1:-}"
+  if [ -n "$OPEN_ITEMS" ]; then
+    if [ -z "$label" ]; then printf '%s\n' "$OPEN_ITEMS"; else
+      printf '%s' "$OPEN_ITEMS" | jq -c --arg l "$label" 'map(select(any(.labels[]?; .name == $l)))'
+    fi
+    return
+  fi
+  if [ -z "$label" ]; then api_list "repos/$REPO/issues?state=open&per_page=100"; else
+    api_list "repos/$REPO/issues?state=open&per_page=100&labels=$(urlencode "$label")"
+  fi
+}
+
+# ラベルが付いた、開いている Issue の番号を1行に1つ出す。第2引数が all なら PR も含める。読めなければ失敗
+open_numbers_with_label() {
+  local json
+  json=$(open_items_json "$1") || return 1
+  if [ "${2:-}" = all ]; then
+    printf '%s' "$json" | jq -r '.[].number'
+  else
+    printf '%s' "$json" | jq -r '.[] | select(.pull_request | not) | .number'
+  fi
+}
+
+# 開いているPRの配列（JSON）。読めなければ失敗
+open_pulls_json() {
+  if [ -n "$OPEN_PULLS" ]; then printf '%s\n' "$OPEN_PULLS"; return; fi
+  api_list "repos/$REPO/pulls?state=open&per_page=100"
+}
+
+# Issue の本文。写しにあれば写しから（無ければ API）。読めなければ失敗
+issue_body() {
+  if [ -n "$OPEN_ITEMS" ]; then
+    printf '%s' "$OPEN_ITEMS" | jq -er --arg n "$1" \
+      'map(select((.number | tostring) == $n))[0] | if . == null then false else (.body // "") end' 2> /dev/null && return 0
+  fi
+  gh api "repos/$REPO/issues/$1" -q '.body // ""'
+}
+
 add_label() {
-  gh api "repos/$REPO/issues/$1/labels" -f "labels[]=$2" > /dev/null
+  gh api "repos/$REPO/issues/$1/labels" -f "labels[]=$2" > /dev/null || return
+  snapshot_set_label "$1" "$2" add
 }
 
 # 付いていなくてもエラーにしない
 remove_label() {
-  gh api -X DELETE "repos/$REPO/issues/$1/labels/$(urlencode "$2")" > /dev/null 2>&1 || true
+  local err rc=0
+  err=$(gh api -X DELETE "repos/$REPO/issues/$1/labels/$(urlencode "$2")" 2>&1 > /dev/null) || rc=$?
+  snapshot_after_remove "$1" "$2" "$rc" "$err"
+  return 0
 }
 
 # ラベルを「取る」：自分が外せたときだけ成功（もう外れていたら失敗）。同時に動いた2つの処理の片方だけを進めるのに使う
 take_label() {
-  gh api -X DELETE "repos/$REPO/issues/$1/labels/$(urlencode "$2")" > /dev/null 2>&1
+  local err rc=0
+  err=$(gh api -X DELETE "repos/$REPO/issues/$1/labels/$(urlencode "$2")" 2>&1 > /dev/null) || rc=$?
+  snapshot_after_remove "$1" "$2" "$rc" "$err"
+  return "$rc"
 }
 
 # ラベルが付いているか：付いている 0、付いていない 1、読めなかった 2（API の一時的なエラーなど）。
 # 読めなかったのを「付いていない」と取り違えないように、戻り値を分ける。ai:stuck・ai:skip のように「付いていたら触らない」
-# 確かめには、下の has_label_or_unreadable を使う（読めなければ、付いているものとして触らない）
+# 確かめには、下の has_label_or_unreadable を使う（読めなければ、付いているものとして触らない）。
+# 写し（use_open_snapshot）があって、その番号が写しにあれば、API を呼ばずに写しから答える
 has_label() {
   local labels
+  if labels=$(snapshot_labels "$1"); then
+    grep -qxF -- "$2" <<< "$labels"
+    return
+  fi
   labels=$(gh api "repos/$REPO/issues/$1/labels" -q '.[].name') || return 2
   grep -qxF -- "$2" <<< "$labels"
 }
@@ -129,12 +251,11 @@ issue_title() {
 
 # ラベルが付いたopenのIssue（PRを除く）の数
 count_open_issues_with_label() {
-  api_list "repos/$REPO/issues?state=open&per_page=100&labels=$(urlencode "$1")" \
-    | jq '[.[] | select(.pull_request | not)] | length'
+  open_items_json "$1" | jq '[.[] | select(.pull_request | not)] | length'
 }
 
 count_open_prs() {
-  api_list "repos/$REPO/pulls?state=open&per_page=100" | jq 'length'
+  open_pulls_json | jq 'length'
 }
 
 # ブランチ名からopenのPRを1つ探す。見つかれば「番号 先頭コミット」を出す
@@ -552,6 +673,22 @@ repo_has_visual_tests() {
   gh api "repos/$REPO/contents/tests/visual?ref=main" --jq 'type' > /dev/null 2>&1
 }
 
+# ---- 見張り役を間引く（watchdog.sh の 0） ----
+# 同じ時間の枠（時計を slot_min 分ごとに区切った枠）で、自分より前に始まった見張りが、もう成功しているか（純粋な関数。gh は呼ばない）。
+# 引数：見張り役の実行の一覧（GET actions/workflows/watchdog.yml/runs の返事）、自分の実行の番号、現在時刻（epoch 秒）、枠の長さ（分）。
+# 成功している物があれば 0（＝今回は何もしなくてよい）。
+# 枠の中でいちばん先に成功した実行は、必ず全部を見ている（自分より前に成功が無いので、間引かれない。定期・手動は、いつも全部見る）。
+# 失敗・取り消し・飛ばされた実行は数えないので、見張りが落ちた枠では、次の実行が全部を見る
+watchdog_slot_taken() {
+  local runs="$1" me="$2" now="$3" slot_min="$4" start
+  [[ "$me" =~ ^[0-9]+$ ]] && [[ "$now" =~ ^[0-9]+$ ]] && [[ "$slot_min" =~ ^[0-9]+$ ]] && [ "$slot_min" -gt 0 ] || return 1
+  start=$(( now - now % (slot_min * 60) ))
+  printf '%s' "$runs" | jq -e --argjson me "$me" --argjson start "$start" '
+    any(.workflow_runs[]?;
+      (.id | type) == "number" and .id < $me and .conclusion == "success"
+      and ((.created_at // "") | (try fromdateiso8601 catch 0)) >= $start)' > /dev/null 2>&1 || return 1
+}
+
 # ---- 人間のマージ待ち（ai:hold）が長いPRは、順番待ちを止めない ----
 # 人間のマージ待ち＝ai:hold が付いていて、レビューまで済んでいる（またはレビューAIが動けないPRだと知らせてある）。watchdog.sh の判定と同じ。
 # 待ち時間は ai:hold が付いた時刻から数える。HOLD_BLOCK_MIN 分を過ぎたPRは、触るファイルを「進行中」から外す。
@@ -581,10 +718,15 @@ hold_wait_min() {
   echo $((($(date +%s) - at) / 60))
 }
 
-# 人間のマージ待ちのPRを「番号 expired」（待ちが長い）か「番号 waiting」（時間内・時刻が読めない）で1行ずつ出す。読めなければ失敗
+# 人間のマージ待ちのPRを「番号 expired」（待ちが長い）か「番号 waiting」（時間内・時刻が読めない）で1行ずつ出す。読めなければ失敗。
+# 写しがある間は、1回調べた結果を使い回す（remember_hold_prs で覚えた物。順番待ち・目覚ましが、同じ実行で3回調べていた）
 hold_prs() {
+  if [ -n "$HOLD_PRS_READY" ]; then
+    [ -z "$HOLD_PRS_MEMO" ] || printf '%s\n' "$HOLD_PRS_MEMO"
+    return 0
+  fi
   local pulls pr sha w
-  pulls=$(api_list "repos/$REPO/pulls?state=open&per_page=100") || return 1
+  pulls=$(open_pulls_json) || return 1
   while IFS=' ' read -r pr sha; do
     [ -z "$pr" ] && continue
     pr_awaiting_human "$pr" "$sha" || continue
@@ -594,6 +736,17 @@ hold_prs() {
   return 0
 }
 
+# hold_prs の結果を覚える（写しがあるときだけ。$(…) の中で覚えても呼んだ側に残らないので、呼ぶ側の本体で先に呼んでおく）。
+# 調べられなければ覚えない（次に hold_prs を呼んだ所が、もう一度調べる）
+remember_hold_prs() {
+  [ -n "$OPEN_ITEMS" ] || return 0
+  [ -z "$HOLD_PRS_READY" ] || return 0
+  local out
+  out=$(hold_prs 2> /dev/null) || return 0
+  HOLD_PRS_MEMO="$out"
+  HOLD_PRS_READY=1
+}
+
 # 進行中の作業が触っているファイル。1行目に「unknown」が出たら、分からない物がある（並列にしない）
 # 実装中の Issue は本文の印、open のPRは変えたファイル（AI以外のPR＝配布・依存の更新なども含む）
 # ただし、人間のマージ待ちが HOLD_BLOCK_MIN 分より長い ai:hold のPRと、ai:stuck のPRは外す
@@ -601,12 +754,12 @@ inflight_touches() {
   local n body t pr files impl pulls expired
   expired=$(hold_prs 2> /dev/null | awk '$2 == "expired" {print $1}') || expired=""
   # 一覧を読めなかったら、分からない物があるとして待つ（空の一覧とみなさない）
-  impl=$(gh api "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aimplement" --paginate -q '.[] | select(.pull_request | not) | .number' 2> /dev/null) || { echo unknown; return 0; }
-  pulls=$(gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate -q '.[] | "\(.number) \(.head.ref)"' 2> /dev/null) || { echo unknown; return 0; }
+  impl=$(open_numbers_with_label "ai:implement" 2> /dev/null) || { echo unknown; return 0; }
+  pulls=$(open_pulls_json 2> /dev/null | jq -r '.[] | "\(.number) \(.head.ref)"' 2> /dev/null) || { echo unknown; return 0; }
   for n in $impl; do
     # PRがもうあれば、PRの変えたファイルで数える（下）
     if printf '%s\n' "$pulls" | grep -q " claude/issue-$n-"; then continue; fi
-    body=$(gh api "repos/$REPO/issues/$n" -q '.body // ""' 2> /dev/null) || { echo unknown; continue; }
+    body=$(issue_body "$n" 2> /dev/null) || { echo unknown; continue; }
     t=$(touches_from_body "$body")
     if [ -z "$t" ]; then echo unknown; else printf '%s\n' "$t"; fi
   done
@@ -667,8 +820,10 @@ start_next_in_queue() {
   limit="${limit_info%% *}"
   echo "実装中 ${busy} / 停止中 ${stuck}（数えない） / openのPR ${prs}（並列の上限 ${limit}：${limit_info#* }）"
   # 並べ替えは全体でする（ページごとに並べると、2ページ目の急ぎ・番号の小さい物が後ろに回る）
-  queue=$(api_list "repos/$REPO/issues?state=open&per_page=100&labels=ai%3Aqueue" \
+  queue=$(open_items_json "ai:queue" \
     | jq -r '[.[] | select(.pull_request | not) | {n: .number, p: ([.labels[].name] | index("priority:high") != null)}] | sort_by((if .p then 0 else 1 end), .n) | .[].n') || return 1
+  # 人間のマージ待ちのPRは、この実行で1回だけ調べる（下の inflight_touches・目印の付け替えで使い回す）
+  remember_hold_prs
   if [ -z "$queue" ]; then
     echo "順番待ちはありません"
     # 待っていた Issue が無くなったPRの目印は「今は止めていません」に書き換える
@@ -698,7 +853,7 @@ start_next_in_queue() {
       echo "並列の上限（${limit}）なので、ここまでにします"
       break
     fi
-    body=$(gh api "repos/$REPO/issues/$n" -q '.body // ""') || continue
+    body=$(issue_body "$n") || continue
     t=$(touches_from_body "$body")
     if [ "$nomark_started" -eq 1 ]; then
       # 印の無い物を始めたあとは、その物が触るファイルが分からないので、この実行では続けない
@@ -745,7 +900,7 @@ $t"
   # 止まっている（時間内の）マージ待ちのPRに、待っている Issue の番号を全部集めて目印を付ける。止めなくなったPRの目印は書き換える
   for n in $queue; do
     case "$startedlist" in *" $n "*) continue ;; esac
-    body=$(gh api "repos/$REPO/issues/$n" -q '.body // ""' 2> /dev/null) || continue
+    body=$(issue_body "$n" 2> /dev/null) || continue
     t=$(touches_from_body "$body")
     [ -z "$t" ] && continue
     while read -r pr state; do
