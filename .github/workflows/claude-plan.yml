@@ -7,6 +7,16 @@ on:
   issues:
     types: [labeled]
 
+# 並列の上限（agent-desk の設定が Actions の Variable に書く。pipeline-lib.sh の parallel_limit_decide が読む）。
+# 渡していなかったので、設定で昼の数を変えても、いつも既定の3で動いていた（2026-11-18）
+env:
+  PARALLEL_DAY: ${{ vars.PARALLEL_DAY }}
+  PARALLEL_NIGHT: ${{ vars.PARALLEL_NIGHT }}
+  PARALLEL_NIGHT_HOURS: ${{ vars.PARALLEL_NIGHT_HOURS }}
+  PARALLEL_TZ: ${{ vars.PARALLEL_TZ }}
+  PARALLEL_OVERRIDE: ${{ vars.PARALLEL_OVERRIDE }}
+  MAX_PARALLEL: ${{ vars.MAX_PARALLEL }}
+
 jobs:
   # 「新サービス：」のIssueに ai:plan が付いたら、外して、工場が受け持つことを書く（テンプレート自身の企画・実装に回さない）
   factory-issue:

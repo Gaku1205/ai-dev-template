@@ -640,4 +640,16 @@ assert_eq "企画：2つの指示とも一言を入れる" "2" "$(grep -c 'steps
 assert_contains "実装：画像を取る" "$(cat "$WORKFLOWS/claude-implement.yml")" "issue-images-prompt.sh .shots/issue implement"
 assert_eq "実装：2か所とも一言を入れる" "2" "$(grep -c 'steps.images.outputs.prompt' "$WORKFLOWS/claude-implement.yml")"
 
+echo "== 並列の上限：順番待ちを進める3つのワークフローは、Actions の Variable を環境変数で渡す（渡していなかったので、いつも既定の3だった）"
+for f in queue.yml watchdog.yml claude-plan.yml; do
+  result=$(python3 - "$WORKFLOWS/$f" <<'PYX'
+import sys, yaml
+env = yaml.safe_load(open(sys.argv[1])).get("env") or {}
+need = ["PARALLEL_DAY", "PARALLEL_NIGHT", "PARALLEL_NIGHT_HOURS", "PARALLEL_TZ", "PARALLEL_OVERRIDE"]
+print("ok" if all(("vars." + k) in str(env.get(k, "")) for k in need) else "ng")
+PYX
+)
+  assert_eq "$f：並列の Variable を渡す" "ok" "$result"
+done
+
 finish
