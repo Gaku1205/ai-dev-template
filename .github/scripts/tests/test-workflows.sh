@@ -665,6 +665,20 @@ PYX
   assert_eq "$f：並列の Variable を渡す" "ok" "$result"
 done
 
+echo "== 順番待ち：飛ばされる実行は別の組にして、本物のきっかけの待ちを置き換えない。鍵は持ち主のリポジトリ全部に効く（#216）"
+result=$(python3 - "$WORKFLOWS/queue.yml" <<'PYQ'
+import sys, yaml, re
+d = yaml.safe_load(open(sys.argv[1]))
+norm = lambda t: re.sub(r"\s+", " ", t).strip()
+cond = norm(d["jobs"]["next"]["if"])
+group = norm(d["concurrency"]["group"])
+print("ok" if cond in group and "queue-skip-" in group and "github.run_id" in group else "ng")
+PYQ
+)
+assert_eq "queue.yml：組の条件がジョブの if と同じ" "ok" "$result"
+for f in queue.yml watchdog.yml claude-plan.yml; do
+  assert_contains "$f：鍵に owner" "$(cat "$WORKFLOWS/$f")" 'owner: ${{ github.repository_owner }}'
+done
 echo "== 他人のコメントを AI に渡さない（#152・#196）：企画・レビュー・画面案は trusted-comments.sh を main の版で動かし、--comments で読ませない"
 for f in claude-plan.yml claude-review.yml claude-mocks.yml; do
   wf="$(cat "$WORKFLOWS/$f")"
