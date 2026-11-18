@@ -379,7 +379,7 @@ AIの実行記録から、許可されず拒否された操作（`permission_den
 企画AIは、清書した本文の最後に「触るファイル」の印（`<!-- ai-touches: src/lib/a.ts, src/components/ -->`。/ で終わる物はフォルダ）を書く。順番待ちを進めるとき（`queue-next.sh`・見張り役。`pipeline-lib.sh` の `start_next_in_queue`）：
 
 - 進行中の物（`ai:implement` の Issue・open のPR）が無ければ、先頭の1つを始める。先頭は `priority:high` が付いた物、その中は番号の小さい順
-- 並列の上限は、時間帯と手の上書きで決まる（`pipeline-lib.sh` の `parallel_limit`。現在時刻を引数で受ける純粋な関数で、`start_next_in_queue` と `after-plan.sh` が同じ物を使う）。値は環境変数（Actions の Variable をワークフローが渡す）。上限は 1 以上の整数で、数でない・0 以下は既定値に戻す。全部空なら今までどおり 3
+- 並列の上限は、時間帯と手の上書きで決まる（`pipeline-lib.sh` の `parallel_limit`。現在時刻を引数で受ける純粋な関数で、`start_next_in_queue` と `after-plan.sh` が同じ物を使う）。値は環境変数（Actions の Variable を、`queue.yml`・`watchdog.yml`・`claude-plan.yml` がワークフローの `env` で渡す。2026-11-18 まで渡しておらず、設定を変えても既定の3で動いていた）。上限は 1 以上の整数で、数でない・0 以下は既定値に戻す。全部空なら今までどおり 3
   - `PARALLEL_DAY`：昼の上限。無ければ `MAX_PARALLEL`（既定 3）
   - `PARALLEL_NIGHT`：夜の上限（既定 1）
   - `PARALLEL_NIGHT_HOURS`：夜の時間帯。`"01-08"`（開始時-終了時。開始を含み終了を含まない＝1:00〜7:59）。`"22-06"` のように日をまたいでもよい。空・形が違う・開始と終了が同じなら夜は無し（いつも昼の上限）
