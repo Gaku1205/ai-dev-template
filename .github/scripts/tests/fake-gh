@@ -9,6 +9,9 @@ for _p in st.get('pulls',[]):
     _p.setdefault('head',{}).setdefault('repo',{'full_name':os.environ.get('GITHUB_REPOSITORY','o/r')})
 args=sys.argv[1:]
 assert args[0]=='api'
+# 呼ばれた回数を api_calls に足す（API の回数を確かめるテスト用。読むだけの呼び出しも数える）
+st['api_calls']=st.get('api_calls',0)+1
+json.dump(st,open(ST,'w'))
 args=args[1:]
 method='GET'; q=None; fields={}; flist=[]; path=None; slurp=False; paginate=False
 i=0
@@ -129,6 +132,8 @@ m=re.match(r'issues/(\d+)/labels/(.+)$',base)
 if m and method=='DELETE':
     from urllib.parse import unquote
     n=m.group(1); l=unquote(m.group(2)); L=st['labels'].setdefault(n,[])
+    # label_delete_fail：この番号のラベルは外せない（502。外せたか分からないときのテスト用）
+    if n in st.get('label_delete_fail',[]): sys.stderr.write('HTTP 502: Bad Gateway\n'); sys.exit(1)
     # 本物と同じく、付いていないラベルを外そうとしたら失敗（404）
     if l not in L: sys.stderr.write('HTTP 404: Label does not exist\n'); sys.exit(1)
     L.remove(l)
@@ -152,7 +157,10 @@ if base=='issues':
     lab=unquote(lab.group(1)) if lab else None
     stm=re.search(r'state=([a-z]+)',path); want=stm.group(1) if stm else 'open'
     meta=st.get('issues_meta',{})
-    res=[{'number':int(n),'title':meta.get(n,{}).get('title','t'),'state':meta.get(n,{}).get('state','open'),'updated_at':st['issue_updated'].get(n,now),'labels':[{'name':x} for x in L],'closed_at':meta.get(n,{}).get('closed_at')} for n,L in st['labels'].items() if (lab is None or lab in L) and (want=='all' or meta.get(n,{}).get('state','open')==want)]
+    # fail_open_list：ラベルで絞らない「開いている物の一覧」だけ読めない（502。写し＝use_open_snapshot が作れないときのテスト用）
+    if lab is None and want=='open' and st.get('fail_open_list'): sys.stderr.write('HTTP 502\n'); sys.exit(1)
+    # 本物の一覧と同じく、本文（body）も返す（写しから本文を読むため）
+    res=[{'number':int(n),'title':meta.get(n,{}).get('title','t'),'state':meta.get(n,{}).get('state','open'),'body':meta.get(n,{}).get('body',''),'updated_at':st['issue_updated'].get(n,now),'labels':[{'name':x} for x in L],'closed_at':meta.get(n,{}).get('closed_at')} for n,L in st['labels'].items() if (lab is None or lab in L) and (want=='all' or meta.get(n,{}).get('state','open')==want)]
     paged(res); sys.exit(0)
 m=re.match(r'pulls/(\d+)/comments$',base)
 if m:

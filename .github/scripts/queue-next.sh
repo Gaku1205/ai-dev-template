@@ -2,6 +2,9 @@
 # 順番待ち（ai:queue）を1つ進める。queue.yml から呼ぶ
 source "$(dirname "$0")/pipeline-lib.sh"
 has_pipeline_token || { echo "PIPELINE_TOKEN が無いので何もしません"; exit 0; }
+# 開いている Issue・PR の一覧は、最初に1回ずつ読んで写しを持つ（ラベルごとの一覧・ラベルの確かめのたびに API を呼ばない。
+# pipeline-lib.sh の use_open_snapshot）。読めなければ、今までどおり、その都度 API から読む
+use_open_snapshot || true
 # 人間がマージした『人間にお願いしたいこと』のPR：マージされた後に、Issue を待ちの状態（ai:skip）にする
 if [ "${GITHUB_EVENT_NAME:-}" = pull_request_target ] && [ -f "${GITHUB_EVENT_PATH:-}" ]; then
   merged_pr=$(jq -r 'select(.action == "closed" and .pull_request.merged == true) | .pull_request.number' "$GITHUB_EVENT_PATH" 2> /dev/null || true)
