@@ -72,6 +72,13 @@ jobs:
       - uses: actions/checkout@v6
       - name: shellcheck
         run: shellcheck -S warning -x -P SCRIPTDIR .github/scripts/*.sh .github/scripts/tests/*.sh
+      # ワークフローの式の書き間違い（GitHub の式に無い + など）は、YAML としては正しいので、動くまで気づけない。
+      # 工場（factory.yml）が #147 から全部のリポジトリで動かなくなっていた。actionlint で、マージの前に見つける。
+      # アクションの入力の名前の確かめ（actionlint の知っている版が古いことがある）と、run の中の shellcheck は外す（上でやる）
+      - name: ワークフローの確認（actionlint）
+        run: |
+          pip install --quiet --disable-pip-version-check actionlint-py==1.7.12.25 || { echo "::warning::actionlint を入れられなかったので、ワークフローの確認を飛ばします"; exit 0; }
+          actionlint -shellcheck= -ignore 'is not defined in action' .github/workflows/*.yml
 
   # パイプラインのスクリプトのテスト（疑似 gh。本物のGitHubには触らない）
   script-tests:

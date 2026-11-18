@@ -258,7 +258,7 @@ jobs:
             - 詳しいメモ（載せたい中身・見た目の雰囲気など。あればこれも守る）：
               ${{ needs.plan.outputs.detail }}
 
-            ${{ fromJSON(needs.plan.outputs.variants || '[0]')[1] != null && format('この工場は、方向の違う画面案を同時に{0}つ作り、審査で一番いい物を使います。あなたは案{1}（番号 {2}）の担当です。`.github/factory/design-department.md` の「案ごとに違う方向を担当する」に従い、番号に応じた考えを主役にしてください。ほかの案は見ません。', needs.plan.outputs.variant_count, matrix.variant + 1, matrix.variant) || '' }}
+            ${{ fromJSON(needs.plan.outputs.variants || '[0]')[1] != null && format('この工場は、方向の違う画面案を同時に{0}つ作り、審査で一番いい物を使います。あなたは案{1}（番号 {2}）の担当です。`.github/factory/design-department.md` の「案ごとに違う方向を担当する」に従い、番号に応じた考えを主役にしてください。ほかの案は見ません。', needs.plan.outputs.variant_count, fromJSON('[1, 2, 3]')[matrix.variant], matrix.variant) || '' }}
 
             ${{ needs.plan.outputs.files != '' && needs.plan.outputs.files != '[]' && 'オーナーと相談して、見た目の方向（factory-refs/issue/chosen-look.png）とざっくり画面（factory-refs/issue/chosen-mock.html・chosen-mock-1440.png・chosen-mock-390.png）がもう決まっています。方向を決め直さず、このざっくり画面の構図・色・文字を土台にして、本物の画面に仕上げてください（実例集めは、足りない部品の参考にする分だけでよい）。詳しいメモの「オーナーの注文」も守る。' || '' }}
             `.github/factory/design-department.md`（進め方）を全部読んで、そのとおりに進めてください：
