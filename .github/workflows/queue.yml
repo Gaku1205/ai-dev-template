@@ -82,10 +82,13 @@ jobs:
       - name: トークンでIssueを読めるか
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN }}
-        run: gh issue list -R "$GITHUB_REPOSITORY" --limit 1 --json number > /dev/null
+        run: gh api "repos/$GITHUB_REPOSITORY/issues?per_page=1" > /dev/null  # REST で確かめる（GraphQL の枠は agent-desk の読み取りと共有。#223）
       - name: 順番待ちを1つ進める
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
+          AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
         run: |
           # Issueが閉じた直後は、まだ一覧に反映されていないことがあるので少し待つ
           sleep 5
