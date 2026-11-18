@@ -147,6 +147,11 @@ ${broad_list}
         # オーナーのトークンで付けるので、実装AIのワークフローが動く
         GH_TOKEN="$pipeline_token" add_label "$ISSUE" "ai:implement"
         echo "#$ISSUE：実装を依頼しました"
+        # 同時に終わった企画は、互いの ai:implement を見ずに付ける。付けたあとにもう一度数え、番号の大きい方が引く
+        mine=$(touches_from_body "$(GH_TOKEN="$pipeline_token" gh api "repos/$REPO/issues/$ISSUE" -q '.body // ""' 2> /dev/null || true)")
+        if GH_TOKEN="$pipeline_token" yield_if_crowded "$ISSUE" "$limit" "$mine"; then
+          echo "#$ISSUE：同時に始めた物があり、上限・触るファイルの重なりを越えるので、順番待ちに入れ直しました"
+        fi
       fi
     else
       notify manual "Issueを清書しました" "#${ISSUE} ${title}：ai:implement を付けると実装が始まります" 3

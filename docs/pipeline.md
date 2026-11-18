@@ -389,7 +389,8 @@ AIの実行記録から、許可されず拒否された操作（`permission_den
 
 企画AIは、清書した本文の最後に「触るファイル」の印（`<!-- ai-touches: src/lib/a.ts, src/components/ -->`。/ で終わる物はフォルダ）を書く。順番待ちを進めるとき（`queue-next.sh`・見張り役。`pipeline-lib.sh` の `start_next_in_queue`）：
 
-- 進行中の物（`ai:implement` の Issue・open のPR）が無ければ、先頭の1つを始める。先頭は `priority:high` が付いた物、その中は番号の小さい順
+- 進行中の物（`ai:implement` の Issue・open のPR）が無くても、先頭の1つで終わらない。先頭を始めたあと、下の繰り返し（上限・重なり・印の無い物の決まり）に入り、上限まで並べて始める（触るファイルが重ならない物が3件・上限3なら、1回の実行で3件）。先頭は `priority:high` が付いた物、その中は番号の小さい順。印の無い物は、触るファイルが分からないので、その1つを始めたら、この実行では続けない（今までどおり）
+- 企画が同時に終わったとき：`after-plan.sh` のジョブは1つずつにしない（`concurrency` は待っている実行を置き換えで取り消し、3件以上同時だと真ん中の企画の結果が消える）。代わりに、`ai:implement` を付けた**あと**にもう一度数える（`pipeline-lib.sh` の `yield_if_crowded`）。番号の小さい実装中の Issue が上限の数以上ある、または触るファイルが重なるなら、番号の大きい方が `ai:implement` を外して `ai:queue` に入れ直す。引く側は番号だけで決まるので、2つが互いを見ても両方は引かない。付ける**前**にずらして数える案もあるが、ずらしても同時に数えれば同じ結果になり確実ではない。付けたあとに数えれば必ず相手が見えるので、こちらにした。ただし `ai:implement` を付けた時点で実装のワークフローは始まっているので、引いた Issue の実装が一度起きてしまうことはある（ラベルは `ai:queue` だけになり、`ai:queue` と `ai:implement` を同時に持たない。順番が来れば、あらためて始まる）
 - 並列の上限は、時間帯と手の上書きで決まる（`pipeline-lib.sh` の `parallel_limit`。現在時刻を引数で受ける純粋な関数で、`start_next_in_queue` と `after-plan.sh` が同じ物を使う）。値は環境変数（Actions の Variable を、`queue.yml`・`watchdog.yml`・`claude-plan.yml` がワークフローの `env` で渡す。2026-11-18 まで渡しておらず、設定を変えても既定の3で動いていた）。上限は 1 以上の整数で、数でない・0 以下は既定値に戻す。全部空なら今までどおり 3
   - `PARALLEL_DAY`：昼の上限。無ければ `MAX_PARALLEL`（既定 3）
   - `PARALLEL_NIGHT`：夜の上限（既定 1）
