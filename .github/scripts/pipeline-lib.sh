@@ -683,6 +683,22 @@ touches_from_body() {
   printf '%s\n' "$list" | tr ',' '\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's#^\./##' | grep -v '^$' || true
 }
 
+# 印の一覧（改行区切り）から、共有の大きなフォルダを1行に1つ出す（広い物が無ければ何も出さない）。
+# 広い物＝末尾が / で、深さ（/ で区切った部品の数）が2以下のフォルダ（src/・src/components/・tests/visual/・docs/ など）。
+# ファイル・深さ3以上の新しいフォルダ（src/app/(app)/lanes/）は許す。広いフォルダは中の全部と重なり扱いになり、順番待ちを止める
+touches_too_broad() {
+  local p parts
+  while IFS= read -r p; do
+    [ -z "$p" ] && continue
+    case "$p" in */) ;; *) continue ;; esac
+    parts=$(printf '%s' "${p%/}" | tr '/' '\n' | grep -c . || true)
+    [ "$parts" -le 2 ] && printf '%s\n' "$p"
+  done <<< "$1"
+  return 0
+}
+
+export TOUCHES_TOO_BROAD_MARK="<!-- touches-too-broad -->"
+
 # 本文から触るファイルを推し量る（印が無いときの補い）
 touches_guess_from_body() {
   # 本文の `src/lib/a.ts` のような、バッククォートで囲んだ / を含むファイル名を集める（URL・空白入りは除く）

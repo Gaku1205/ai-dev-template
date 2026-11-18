@@ -29,6 +29,10 @@ paths_overlap "docs/spec.md
 src/lib/a.ts" "docs/spec.md
 src/lib/a.ts"; assert_eq "仕様書以外が同じなら重なり" "0" "$?"
 
+assert_eq "広いフォルダを判定する" "$(printf 'src/\nsrc/components/\ntests/visual/\ndocs/')" "$(touches_too_broad "$(printf 'src/\nsrc/components/\ntests/visual/\ndocs/\nsrc/lib/a.ts')")"
+assert_eq "ファイル・深さ3以上の新しいフォルダは許す" "" "$(touches_too_broad "$(printf 'src/lib/a.ts\nsrc/app/(app)/lanes/\nREADME.md')")"
+assert_eq "印が空なら何も出さない" "" "$(touches_too_broad "")"
+
 echo "== 進行中の物が無い：priority:high を先に始める（番号が大きくても）"
 state_with '{"labels":{"3":["ai:queue"],"9":["ai:queue","priority:high"]}}'
 next > /dev/null

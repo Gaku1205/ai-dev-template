@@ -84,6 +84,24 @@ out=$(run_plan "READY")
 assert_contains "補えないことをログに出す" "$out" "補えませんでした"
 assert_eq "補えなければ、今までどおり企画AIの判断" "ai:implement" "$(labels_of 3)"
 
+echo "== 印に共有の大きなフォルダがある：1回だけ、ファイル単位で書き直させる（サイズは付けない）"
+init_state '{"labels":{"3":["ai:plan"]},"issues_meta":{"3":{"body":"本文\n<!-- ai-touches: src/components/, src/lib/a.ts -->"}}}'
+out=$(run_plan "READY size:S")
+assert_eq "ai:plan を付け直す（実装・順番待ち・サイズは付けない）" "ai:plan" "$(labels_of 3)"
+assert_contains "印のコメント" "$(comments_of 3)" "<!-- touches-too-broad -->"
+assert_contains "広い物の一覧" "$(comments_of 3)" "src/components/"
+assert_contains "書き直しの頼み" "$(comments_of 3)" "ファイル単位で書き直してください"
+assert_not_contains "ファイルは広い物に入れない" "$(comments_of 3)" "src/lib/a.ts"
+run_plan "READY size:S" > /dev/null
+assert_eq "2回目は今までどおり進める" "ai:implement,size:S" "$(labels_of 3)"
+init_state '{"labels":{"3":["ai:plan"],"8":["ai:implement"]},"issues_meta":{"3":{"body":"本文\n<!-- ai-touches: src/components/ -->"},"8":{"body":"本文\n<!-- ai-touches: src/components/A.tsx -->"}}}'
+run_plan "READY" > /dev/null
+run_plan "READY" > /dev/null
+assert_eq "やり直しのあとは、重なるので順番待ち" "ai:queue" "$(labels_of 3)"
+init_state '{"labels":{"3":["ai:plan"]},"issues_meta":{"3":{"body":"本文\n<!-- ai-touches: src/app/(app)/lanes/, src/lib/a.ts -->"}}}'
+run_plan "READY size:S" > /dev/null
+assert_eq "新しいフォルダ・ファイルは今までどおり" "ai:implement,size:S" "$(labels_of 3)"
+
 echo "== 作業回数の上限に届いた企画：ワークフローが上限を増やしてやり直しても、また届いたら、やり直さず人間に回す"
 turns_file="$MOCK_DIR/turns.json"; printf '%s' '[{"type":"result","subtype":"error_max_turns","result":""}]' > "$turns_file"
 other_file="$MOCK_DIR/other.json"; printf '%s' '[{"type":"result","subtype":"error_during_execution","result":""}]' > "$other_file"
