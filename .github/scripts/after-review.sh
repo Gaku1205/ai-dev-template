@@ -182,6 +182,7 @@ fi
 
 # マージできなかったときのやり直しは、種類 merge（レビューは済んでいるので、見張り役はAIを動かさず、ここ（マージの判断）だけをやり直す）
 merge_or_handle "$pr" "$HEAD_SHA" merge || exit 0
+park_issue_after_human_request_merge "$pr" || true
 notify merged "マージしました" "PR #${pr} ${title}：CIもレビューもOKだったので自動でマージしました" 2
 # 使い終わったブランチを消す（リポジトリの「Automatically delete head branches」が先に消していても構わない）
 delete_branch_if_ai "$HEAD_BRANCH"

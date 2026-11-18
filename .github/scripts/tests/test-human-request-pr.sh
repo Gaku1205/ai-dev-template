@@ -26,7 +26,14 @@ assert_contains "PRへのリンク" "$c" "/o/r/pull/5"
 assert_contains "節の中身を写す" "$c" "+ foo"
 assert_not_contains "節の外は写さない" "$c" "自動で作ったPRです"
 assert_contains "PRごとの印" "$c" "<!-- human-request-pr: #5 -->"
-assert_not_contains "進行ラベルを残さない" "$(labels_of 7)" "ai:implement"
+assert_contains "PRが開いている間は ai:implement を残す" "$(labels_of 7)" "ai:implement"
+assert_not_contains "PRが開いている間は ai:skip を付けない" "$(labels_of 7)" "ai:skip"
+
+echo "== マージされた後：進行ラベルを外して ai:skip（何度呼んでも同じ）"
+run_lib "park_issue_after_human_request_merge 5" > /dev/null
+run_lib "park_issue_after_human_request_merge 5" > /dev/null
+assert_not_contains "進行ラベルを外す" "$(labels_of 7)" "ai:implement"
+assert_contains "ai:skip を付ける" "$(labels_of 7)" "ai:skip"
 assert_contains "ほかのラベルは残す" "$(labels_of 7)" "audit"
 
 echo "== もう一度呼んでも（Refs のまま）、二重にコメントしない"
@@ -38,6 +45,11 @@ init_pr $'Closes #7\n\n## 変えたこと\nあれこれ' '["ai:implement"]'
 run_lib "defer_close_for_human_request 5" > /dev/null
 assert_contains "Closes のまま" "$(pr_body)" "Closes #7"
 assert_eq "コメントなし" "" "$(comments_of 7)"
+assert_eq "ラベルはそのまま" "ai:implement" "$(labels_of 7)"
+
+echo "== 頼みごとのコメントが無いPR：マージされても何もしない"
+init_pr $'Refs #7\n\n## 変えたこと\nあれこれ' '["ai:implement"]'
+run_lib "park_issue_after_human_request_merge 5" > /dev/null
 assert_eq "ラベルはそのまま" "ai:implement" "$(labels_of 7)"
 
 echo "== Fixes でも Refs になる"

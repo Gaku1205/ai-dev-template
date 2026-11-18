@@ -193,11 +193,24 @@ PR：${url}
 ${section}
 
 ${mark}" || return 0
-  # 人間が閉じるまで、進行のラベルは残さない。ai: のラベルが1つも無いと、見張り役が企画に回し直すので、待ちの印 ai:skip を付ける
-  local l
+  echo "PR #${pr}：『人間にお願いしたいこと』があるので、#${issue} は閉じないようにしました"
+}
+
+# 『人間にお願いしたいこと』のPRがマージされた後に、Issueの進行ラベルを外して待ちの印 ai:skip を付ける（Issue は人間が閉じるまで開いたまま）。
+# PRが開いている間やマージされずに閉じられたときは呼ばない（ai:implement が残らないと、並列の数え方と見張り役のやり直しが狂う）。
+# 頼みごとのコメント（PRごとの印）が無いPRでは何もしない。何度呼んでも同じ。使い方：park_issue_after_human_request_merge PR番号
+park_issue_after_human_request_merge() {
+  local pr="$1" body issue mark l
+  body=$(gh api "repos/$REPO/pulls/$pr" -q '.body // ""') || return 0
+  issue=$(printf '%s' "$body" | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?|refs) #[0-9]+' | head -1 | grep -oE '[0-9]+' || true)
+  [ -z "$issue" ] && issue=$(linked_issue "$pr")
+  [ -z "$issue" ] && return 0
+  mark="<!-- human-request-pr: #${pr} -->"
+  all_comments "$issue" | jq -e --arg m "$mark" 'any(.[]; .body | contains($m))' > /dev/null || return 0
+  # ai: のラベルが1つも無いと、見張り役が企画に回し直すので、待ちの印 ai:skip を付ける
   for l in ai:plan ai:implement ai:review ai:retry ai:queue; do remove_label "$issue" "$l"; done
   add_label "$issue" "ai:skip" || true
-  echo "PR #${pr}：『人間にお願いしたいこと』があるので、#${issue} は閉じないようにしました"
+  echo "PR #${pr}：マージされたので、#${issue} は人間が閉じるまで ai:skip で待たせます"
 }
 
 # Issue を作った人を、そのまま自動で動かしてよいか：オーナーと、このパイプラインのワークフロー（企画AIが分けて作る Issue は
