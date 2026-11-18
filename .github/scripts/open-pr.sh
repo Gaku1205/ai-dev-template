@@ -164,7 +164,10 @@ _実装AIの作業が終わったので、自動で作ったPRです。CIとレ�
 created=$(gh api "repos/$REPO/pulls" -f title="$ISSUE_TITLE" -f head="$branch" -f base=main -f body="$body" -q .html_url)
 echo "PRを作りました：$created"
 # CIを待たずに、レビューAIも同時に始める（#119。CIが通ったら、先に出たレビューの結果でマージへ進む）
-request_review "${created##*/}" || true
+#   ただし見た目のテストがあり本文に visual:update があるPRは、必ず撮り直しで捨てられるので、CIのあとに回す
+if ! defer_review_for_visual "${created##*/}"; then
+  request_review "${created##*/}" || true
+fi
 # 「人間にお願いしたいこと」の節があれば、マージしてもIssueを閉じないようにする
 defer_close_for_human_request "${created##*/}" || true
 remove_label "$ISSUE" "ai:retry"

@@ -37,6 +37,11 @@ out=$(ci success)
 assert_contains "頼む" "$out" "レビューを依頼しました"
 assert_contains "ai:review を付ける" "$(labels_of 58)" "ai:review"
 
+echo "== 本文に visual:update があって最初のレビューを後回しにしたPR：CIが通れば、レビューを頼む（#204）"
+state '{"labels":{"58":[]},"pulls":[{"number":58,"body":"Closes #1 visual:update","state":"open","head":{"sha":"abc","ref":"claude/issue-1-x","repo":{"full_name":"o/r"}},"updated_at":"2026-01-01T00:00:00Z","mergeable_state":"clean","user":{"login":"claude[bot]"}}]}'
+out=$(ci success)
+assert_contains "ai:review を付ける" "$(labels_of 58)" "ai:review"
+
 echo "== CIが落ちた・レビューAIが動いている → 取り消して、直すよう頼む"
 state '{"wf_runs":{"claude-review.yml":[{"id":7,"status":"in_progress"},{"id":6,"status":"completed"}]}}'
 out=$(ci failure)

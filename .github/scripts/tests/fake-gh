@@ -264,8 +264,9 @@ if base=='pulls' and method=='POST':
     # PR を作る：head を created_pulls に残す
     st.setdefault('created_pulls',[]).append({'head':fields.get('head'),'title':fields.get('title')}); save()
     out({'html_url':'https://github.com/o/r/pull/%d'%(100+len(st['created_pulls'])),'number':100+len(st['created_pulls'])}); sys.exit(0)
+# uncreated_pulls：この番号のPRは、PRを作る（POST pulls）まで一覧に出ない（open-pr.sh が「PRはもうあります」と読まないように）
 if base=='pulls':
-    paged(st.get('pulls',[])); sys.exit(0)
+    paged([p for p in st.get('pulls',[]) if st.get('created_pulls') or p['number'] not in st.get('uncreated_pulls',[])]); sys.exit(0)
 # branches_list_fail：ブランチの一覧は読めない（502。「ブランチが無い」と取り違えないかのテスト用）
 if base=='branches' and st.get('branches_list_fail'): sys.stderr.write('HTTP 502\n'); sys.exit(1)
 if base=='branches':

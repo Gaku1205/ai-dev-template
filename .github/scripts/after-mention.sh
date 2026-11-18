@@ -214,7 +214,10 @@ ${PERM_RETRY_MARK}
         echo "PR #$pr：push のあとも main とコンフリクトしているので、CIを待たずに解消を依頼しました"
       fi
     elif [ "$(review_state "$pr" "$head")" = none ]; then
-      request_review "$pr" || true
+      # 見た目のテストがあり本文に visual:update があるPRは、撮り直しで捨てられるので、レビューはCIのあとに回す
+      if ! defer_review_for_visual "$pr"; then
+        request_review "$pr" || true
+      fi
     fi
   fi
 done
