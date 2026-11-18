@@ -26,6 +26,14 @@ assert_contains "コンフリクトの解消を頼む" "$(comments_of 58)" "コ�
 assert_contains "直す依頼の印が付く" "$(comments_of 58)" "auto-fix-sha: abc"
 assert_not_contains "やり直し（ai:retry）にしない" "$(labels_of 58)" "ai:retry"
 
+echo "== 直す依頼がもう出ているコミット：取り込まない"
+case_run '["src/a.ts"]' f5c0faf 41d0f38 ',"comments":[{"id":900,"issue":"58","user":{"login":"gaku-ai-pipeline[bot]"},"created_at":"'"$(ago 1)"'","updated_at":"'"$(ago 1)"'","body":"@claude 直してください\n\n<!-- auto-fix -->\n<!-- auto-fix-sha: abc -->"}]'
+assert_eq "update-branch を呼ばない" "" "$(field update_branches)"
+
+echo "== 撮り直し（visual:update）が動いている：取り込まない"
+case_run '["src/a.ts"]' f5c0faf 41d0f38 ',"labels":{"58":["visual:update"]}'
+assert_eq "update-branch を呼ばない" "" "$(field update_branches)"
+
 echo "== PR自身が claude-review.yml を変えている：ai:hold（取り込まない）"
 case_run '["'"$WF"'"]' f5c0faf 41d0f38
 assert_eq "update-branch を呼ばない" "" "$(field update_branches)"
