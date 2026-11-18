@@ -126,6 +126,13 @@ ${broad_list}
       limit_info=$(current_parallel)
       limit="${limit_info%% *}"
       echo "企画AIの判断：${parallel:-なし} / 実装中 ${busy} / 停止中 ${stuck}（並列の上限 ${limit}：${limit_info#* }）"
+      # 上限は、PARALLEL_SCOPE（既定 global）なら全部のリポジトリで合わせて数える（#216）。重なりの判断は、このリポジトリの中だけ
+      GH_TOKEN="$pipeline_token" parallel_scope_resolve
+      all_busy="$busy"
+      if [ "$SCOPE_EFFECTIVE" = global ]; then
+        all_busy=$((busy + $(global_other_busy)))
+        echo "全部のリポジトリで実装中 ${all_busy}（上限は全部のリポジトリで合わせて数えます）"
+      fi
       # 企画AIの「並列でよい」は、企画を始めた時点の進行中の作業を見た判断。企画の間に別の Issue の実装が始まっていると
       # （まとめて Issue を書いたとき）、その作業とは見比べていない。触るファイルの印（ai-touches）が両方にあって重なるなら、待つ
       overlap=no
@@ -139,7 +146,7 @@ ${broad_list}
           fi
         fi
       fi
-      if { [ "$busy" -gt 0 ] && { [ "$parallel" != "PARALLEL" ] || [ "$busy" -ge "$limit" ]; }; } || [ "$overlap" = yes ]; then
+      if { [ "$busy" -gt 0 ] && { [ "$parallel" != "PARALLEL" ] || [ "$busy" -ge "$limit" ]; }; } || [ "$overlap" = yes ] || [ "$all_busy" -ge "$limit" ]; then
         # 終われば queue.yml が始める
         GH_TOKEN="$pipeline_token" add_label "$ISSUE" "ai:queue"
         echo "#$ISSUE：進行中の作業とぶつかる・上限なので、順番待ちに入れました"
@@ -151,6 +158,10 @@ ${broad_list}
         mine=$(touches_from_body "$(GH_TOKEN="$pipeline_token" gh api "repos/$REPO/issues/$ISSUE" -q '.body // ""' 2> /dev/null || true)")
         if GH_TOKEN="$pipeline_token" yield_if_crowded "$ISSUE" "$limit" "$mine"; then
           echo "#$ISSUE：同時に始めた物があり、上限・触るファイルの重なりを越えるので、順番待ちに入れ直しました"
+        elif [ "$SCOPE_EFFECTIVE" = global ]; then
+          # ほかのリポジトリで同時に始まった物と合わせて上限を超えたら、席に着いたのが新しい方（企画から直接始めたこの Issue）が引く
+          GH_TOKEN="$pipeline_token" global_yield_overflow "$limit" "${REPO} ${ISSUE}
+"
         fi
       fi
     else

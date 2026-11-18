@@ -19,7 +19,10 @@ setup_mock() {
   export PATH="$MOCK_DIR/bin:$PATH"
   export MOCK_STATE="$MOCK_DIR/state.json"
   export GITHUB_REPOSITORY=o/r GH_TOKEN=x READ_TOKEN=x NTFY_TOPIC=test-topic MAX_RETRY=3 RETRY_COOLDOWN_MIN=30 INTAKE_WAIT_SEC=0 MERGE_STATE_WAIT_SEC=0 MERGE_RETRY_WAIT_SEC=0 STEP_LOG_VERIFY_WAIT=0
-  unset NOTIFY_EVENTS AGENT_DESK_URL
+  # 並列の上限は、既定（global）だと全部のリポジトリで数える（検索の API が増える）。1つのリポジトリの決まりを確かめる
+  # 今までのテストは repo で動かし、全部で数えるテスト（test-parallel-scope.sh）だけが PARALLEL_SCOPE を外す
+  export PARALLEL_SCOPE=repo QUEUE_RECOUNT_WAIT_SEC=0
+  unset NOTIFY_EVENTS AGENT_DESK_URL GITHUB_STEP_SUMMARY
   trap 'rm -rf "$MOCK_DIR"' EXIT
 }
 

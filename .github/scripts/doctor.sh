@@ -58,6 +58,25 @@ app_read_failures() {
   done
 }
 
+# 並列の上限を数える広さ（pipeline-lib.sh の parallel_scope_resolve をパイプラインの鍵で動かす）。
+# 出力：「global ほかのリポジトリの数」／「repo-set」（PARALLEL_SCOPE=repo）／「repo 理由」。動かせなければ空
+fetch_parallel_scope() {
+  [ -n "${PIPELINE_TOKEN:-}" ] || return 0
+  GH_TOKEN="$PIPELINE_TOKEN" GITHUB_REPOSITORY="$REPO" GITHUB_STEP_SUMMARY="" \
+    bash -c "source '$(dirname "${BASH_SOURCE[0]}")/pipeline-lib.sh'; parallel_scope_report" 2> /dev/null || true
+}
+
+check_parallel_scope() {
+  local s
+  s="$(fetch_parallel_scope)"
+  case "$s" in
+    "global "*) ok "並列の上限は、持ち主の全部のリポジトリで合わせて数える（いま数えに入る、ほかのリポジトリ：${s#global } 個）" ;;
+    repo-set) ok "並列の上限は、このリポジトリだけで数える（Variable PARALLEL_SCOPE=repo）" ;;
+    "repo "*) warn "並列の上限を、このリポジトリだけで数えている（${s#repo }）" "パイプラインの鍵（GitHub App）を持ち主のリポジトリ全部に Install する（全部で数えると、夜は全体で1件ずつになる）。わざとなら Variable PARALLEL_SCOPE を repo にする" ;;
+    *) echo "- ➖ 並列の上限を数える広さは、確かめられなかった（パイプラインの鍵が無い・動かせない）" ;;
+  esac
+}
+
 check_secrets() {
   if [ "$(fetch_owner_type)" = Organization ]; then
     warn "このリポジトリの持ち主は Organization（個人アカウント専用。人の Issue が全部 ai:skip になり、質問の答えも拾われない）" "個人アカウントのリポジトリで使う"
@@ -223,7 +242,7 @@ main() {
   REPO="${REPO:?REPO を指定}"
   echo "## パイプラインの診断（$REPO）"
   echo; echo "### Secret"; check_secrets
-  echo; echo "### ラベル・設定"; check_labels; check_settings
+  echo; echo "### ラベル・設定"; check_labels; check_settings; check_parallel_scope
   echo; echo "### ファイル"; check_files
   echo
   if [ "$NG" -eq 0 ]; then echo "**問題なし。Issue を書けば動く。**"

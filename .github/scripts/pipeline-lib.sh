@@ -979,8 +979,19 @@ active_implementing_numbers() {
   done
 }
 
+# 順番待ちを進める入り口。並列の上限を数える広さ（PARALLEL_SCOPE）で、全部のリポジトリ（global）か、このリポジトリだけ（repo）かを決める
 start_next_in_queue() {
-  local busy stuck prs inflight queue n body t rc started=0 holds pr state files blocks="" startedlist=" " limit_info limit idle=0 nomark_started=0
+  parallel_scope_resolve
+  if [ "$SCOPE_EFFECTIVE" = global ]; then
+    start_next_in_queue_global
+  else
+    start_next_in_queue_repo
+  fi
+}
+
+# このリポジトリだけで数える（PARALLEL_SCOPE=repo・全部では数えられないとき）。今までの決まり
+start_next_in_queue_repo() {
+  local busy stuck prs inflight queue n body t rc started=0 holds pr state files startedlist=" " limit_info limit idle=0 nomark_started=0
   busy=$(count_active_implementing) || return 1
   stuck=$(count_open_issues_with_label "ai:stuck") || return 1
   prs=$(count_open_prs) || return 1
@@ -1066,7 +1077,15 @@ $t"
       done <<< "$holds"
     fi
   done
-  # 止まっている（時間内の）マージ待ちのPRに、待っている Issue の番号を全部集めて目印を付ける。止めなくなったPRの目印は書き換える
+  sync_queue_hold_marks "$queue" "$startedlist" "$holds"
+  [ "$started" -eq 0 ] && echo "今は始められる物がありません（進行中の物が終わると、もう一度見ます）"
+  return 0
+}
+
+# 止まっている（時間内の）マージ待ちのPRに、待っている Issue の番号を全部集めて目印を付ける。止めなくなったPRの目印は書き換える。
+# 引数：順番待ちの番号（空白・改行区切り）、この実行で始めた番号（" 3 4 " の形）、hold_prs の結果
+sync_queue_hold_marks() {
+  local queue="$1" startedlist="$2" holds="$3" n body t pr state files blocks=""
   for n in $queue; do
     case "$startedlist" in *" $n "*) continue ;; esac
     body=$(issue_body "$n" 2> /dev/null) || continue
@@ -1083,7 +1102,6 @@ $t"
     [ -z "$pr" ] && continue
     sync_hold_blocking "$pr" "$(printf '%s' "$blocks" | awk -v p="$pr" '$1 == p {print $2}' | tr '\n' ' ')"
   done <<< "$holds"
-  [ "$started" -eq 0 ] && echo "今は始められる物がありません（進行中の物が終わると、もう一度見ます）"
   return 0
 }
 
@@ -1126,6 +1144,291 @@ start_queued_issue() {
   comment "$next" "▶ 順番が来たので実装を始めます${why}。" || true
   add_label "$next" "ai:implement" || return 1
   echo "順番待ちの #$next を実装に回しました"
+}
+
+# ---- 並列の上限を、持ち主の全部のリポジトリで合わせて数える（PARALLEL_SCOPE=global。#216） ----
+# Claude の使用量はアカウント全体で共通なので、上限（PARALLEL_DAY・PARALLEL_NIGHT）は、同じ持ち主のパイプラインのある全部のリポジトリで合わせて数える。
+#   ・動いている数：このリポジトリは今までどおり（count_active_implementing）。ほかのリポジトリは、Search API で ai:implement・ai:queue が
+#     付いた Issue のあるリポジトリを見つけ、そのリポジトリの中で同じ決まり（active_implementing_numbers）で数える
+#   ・始める物：全部のリポジトリの ai:queue から、ai:queue が付いた時刻の古い順（priority:high を先に）。重なりの判断はそのリポジトリの中で今までどおり
+#   ・取り合い：始めたあとに数え直し、上限より多い分は、ai:queue（無ければ ai:implement）が付いた時刻の新しい方から ai:queue に戻す
+#   ・鍵がほかのリポジトリを読めない・検索できないときは、黙って広げず、このリポジトリだけで数える（repo）。Summary に ⚠️ で理由を出す
+SCOPE_RESOLVED=""      # この実行で決めたか
+SCOPE_EFFECTIVE=repo   # 決まった広さ（global / repo）
+SCOPE_REASON=""        # repo に落としたときの理由（設定で repo のときは空）
+GLOBAL_COUNTS=""       # ほかのリポジトリの動いている数（「owner/repo 数」を1行ずつ）
+GLOBAL_QUEUE_ITEMS="[]" # 検索で見つけた、全部のリポジトリの順番待ち（search/issues の items）
+
+# 広さを決める（純粋な関数）。引数：設定（PARALLEL_SCOPE）、JSON {"search_ok":true,"repos":[{"repo":"o/r2","ok":true,"why":""}]}
+# 出力：「global」か「repo 理由」（設定が repo なら「repo」だけ）。repo 以外の設定（空・global・書き間違い）は global として扱う
+parallel_scope_decide() {
+  if [ "${1:-global}" = repo ]; then echo repo; return 0; fi
+  printf '%s' "$2" | jq -r '
+    if (.search_ok | not) then "repo 検索（Search API）で、ほかのリポジトリの Issue を探せませんでした"
+    else ([(.repos // [])[] | select(.ok | not) | "\(.repo)（\(.why)）"]) as $bad
+      | if ($bad | length) > 0 then "repo 鍵で読めないリポジトリがあります：" + ($bad | join("、")) else "global" end
+    end'
+}
+
+# 全部のリポジトリの順番待ちを、始める順に「owner/repo 番号」で1行ずつ出す（純粋な関数）。
+# 引数：JSON [{"repo":"o/r","n":3,"at":"2026-11-18T10:00:00Z","p":false}]（at は ai:queue が付いた時刻、p は priority:high）。
+# priority:high を先に、その中は at の古い順（分からない物は最後）、同じならリポジトリ名・番号の順
+global_queue_order() {
+  printf '%s' "$1" | jq -r '
+    sort_by((if .p then 0 else 1 end), ((.at // "") | if . == "" then "9999" else . end), (.repo | ascii_downcase), .n)
+    | .[] | "\(.repo) \(.n)"'
+}
+
+# 取り合いで上限を超えたとき、ai:queue に戻す物を「owner/repo 番号」で1行ずつ出す（純粋な関数）。
+# 引数：上限、JSON {"active":[{"repo":"o/r","n":3,"key":"2026-…"}],"mine":[{"repo":"o/r","n":3}]}。
+# active は全部のリポジトリで動いている物（自分が始めた物も入れる）、key は席に着いた順を決める時刻（ai:queue が付いた時刻。無ければ ai:implement）。
+# key の古い順に上限の数だけ席に残し、残りのうち自分が始めた物（mine）だけを戻す（前から動いている物・ほかの実行が始めた物は触らない）。
+# key が分からない物は、いちばん古い扱い（動いている作業を、分からないまま追い出さない）。同時に動いた2つの実行が同じ一覧を見れば、同じ物を戻す
+global_overflow_pick() {
+  printf '%s' "$2" | jq -r --argjson limit "$1" '
+    def id: "\(.repo | ascii_downcase)#\(.n)";
+    ((.mine // []) | map(id)) as $mine
+    | (.active // []) | unique_by(id)
+    | sort_by(((.key // "") | if . == "" then "0000" else . end), (.repo | ascii_downcase), .n)
+    | . as $s | [range($limit; length) | $s[.]]
+    | .[] | select(id as $i | $mine | index($i)) | "\(.repo) \(.n)"'
+}
+
+# 持ち主の open の Issue のうち、ラベルが付いた物（search/issues の items の配列）。読めなければ失敗
+search_owner_issues() {
+  local q
+  q=$(urlencode "user:$OWNER is:issue is:open label:\"$1\"")
+  gh api "search/issues?q=${q}&per_page=100" --paginate --slurp | jq -c 'map(.items // []) | add // []'
+}
+
+# 検索の items から、このリポジトリ以外のリポジトリ名（owner/repo）を1行ずつ出す
+search_other_repos() {
+  printf '%s\n' "$@" | jq -rs --arg own "${REPO,,}" '
+    map(.[]?) | map((.repository_url // "") | sub("^.*/repos/"; "")) | map(select(. != "" and ascii_downcase != $own)) | unique | .[]'
+}
+
+# ほかのリポジトリで「数える」実装中の Issue の番号（active_implementing_numbers と同じ決まり）。そのリポジトリの一覧を読み直す。読めなければ失敗
+repo_active_numbers() {
+  (
+    REPO="$1"
+    use_open_snapshot || exit 1
+    active_implementing_numbers
+  )
+}
+
+# ラベルが最後に付いた時刻（events の labeled）。読めなければ空
+label_time() { # owner/repo 番号 ラベル
+  gh api "repos/$1/issues/$2/events?per_page=100" --paginate --slurp 2> /dev/null \
+    | jq -r --arg l "$3" 'add // [] | map(select(.event == "labeled" and .label.name == $l) | .created_at) | last // ""' 2> /dev/null || true
+}
+
+# 全部では数えられない理由を、ログと実行の Summary に ⚠️ で出す
+scope_warn() {
+  local msg="⚠️ 並列の上限を、このリポジトリ（${REPO}）だけで数えています：${SCOPE_REASON}。全部のリポジトリで合わせて数えるには、パイプラインの鍵（GitHub App）を持ち主のリポジトリ全部に Install してください（わざとなら Variable PARALLEL_SCOPE を repo に。docs/pipeline-setup.md「変えたい人向けの設定」）"
+  echo "::warning::${msg}"
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then printf '%s\n\n' "$msg" >> "$GITHUB_STEP_SUMMARY" || true; fi
+}
+
+# 広さを決めて、ほかのリポジトリの数・順番待ちを読む（1回の実行で1回だけ）。呼ぶ側の本体で呼ぶ（$(…) の中では、決めた物が残らない）
+parallel_scope_resolve() {
+  [ -n "$SCOPE_RESOLVED" ] && return 0
+  SCOPE_RESOLVED=1
+  SCOPE_EFFECTIVE=repo SCOPE_REASON="" GLOBAL_COUNTS="" GLOBAL_QUEUE_ITEMS="[]"
+  local setting="${PARALLEL_SCOPE:-global}" queue="[]" impl="[]" search_ok=true repos r info="[]" ok why installed="" inst_ok=0 nums counts="" decision
+  [ "$setting" = repo ] && return 0
+  if ! queue=$(search_owner_issues "ai:queue" 2> /dev/null) || ! impl=$(search_owner_issues "ai:implement" 2> /dev/null); then
+    search_ok=false queue="[]" impl="[]"
+  fi
+  repos=$(search_other_repos "$queue" "$impl")
+  # GitHub App の鍵なら、届くリポジトリの一覧で見る（公開のリポジトリは検索には出るが、App が入っていなければ書けない）。PIPELINE_TOKEN では読めないので見ない
+  if [ -n "$repos" ] && installed=$(gh api "installation/repositories?per_page=100" --paginate -q '.repositories[].full_name' 2> /dev/null); then inst_ok=1; fi
+  for r in $repos; do
+    ok=true why=""
+    if [ "$inst_ok" = 1 ] && ! grep -qixF -- "$r" <<< "$installed"; then
+      ok=false why="鍵のインストールに入っていません"
+    elif ! nums=$(repo_active_numbers "$r" 2> /dev/null); then
+      ok=false why="読めません（403・404）"
+    else
+      counts="${counts}${r} $(printf '%s' "$nums" | grep -c . || true)
+"
+    fi
+    info=$(jq -c --arg r "$r" --argjson ok "$ok" --arg w "$why" '. + [{repo: $r, ok: $ok, why: $w}]' <<< "$info")
+  done
+  decision=$(parallel_scope_decide "$setting" "$(jq -nc --argjson s "$search_ok" --argjson repos "$info" '{search_ok: $s, repos: $repos}')")
+  if [ "$decision" = global ]; then
+    SCOPE_EFFECTIVE=global
+    GLOBAL_COUNTS="$counts"
+    GLOBAL_QUEUE_ITEMS="$queue"
+  else
+    SCOPE_REASON="${decision#repo }"
+    scope_warn
+  fi
+  return 0
+}
+
+# 診断（doctor.sh）向け：広さを決めて1行で出す。「global ほかのリポジトリの数」／「repo-set」（設定で repo）／「repo 理由」
+parallel_scope_report() {
+  parallel_scope_resolve > /dev/null 2>&1
+  if [ "$SCOPE_EFFECTIVE" = global ]; then echo "global $(printf '%s' "$GLOBAL_COUNTS" | grep -c . || true)"
+  elif [ -z "$SCOPE_REASON" ]; then echo repo-set
+  else echo "repo $SCOPE_REASON"; fi
+}
+
+# ほかのリポジトリで動いている数の合計（parallel_scope_resolve のあと）
+global_other_busy() {
+  local r c sum=0
+  while read -r r c; do
+    [ -z "$r" ] && continue
+    sum=$((sum + c))
+  done <<< "$GLOBAL_COUNTS"
+  echo "$sum"
+}
+
+# ほかのリポジトリの順番待ちの数（parallel_scope_resolve のあと。repo なら 0）
+global_other_queued() {
+  [ "$SCOPE_EFFECTIVE" = global ] || { echo 0; return 0; }
+  printf '%s' "$GLOBAL_QUEUE_ITEMS" | jq --arg own "${REPO,,}" '[.[] | select(((.repository_url // "") | sub("^.*/repos/"; "") | ascii_downcase) != $own)] | length'
+}
+
+# 今のリポジトリ（REPO）の順番待ち1つを、そのリポジトリの中の決まりで始められるか見て、始められれば始める。始めたら 0、待つなら 1。
+# 決まりは start_next_in_queue_repo と同じ：進行中に触るファイルの分からない物があれば待つ・印の無い物は進行中が空のときだけ・重なれば待つ。
+# 進行中の物は毎回一覧から数え直す（始めた物は ai:implement が付くので、次の判断に入る。印の無い物を始めたら、そのリポジトリは「分からない物」で待つ）
+queue_try_start() {
+  local n="$1" inflight body t why rc holds pr state files
+  inflight=$(inflight_touches) || return 1
+  if printf '%s\n' "$inflight" | grep -qx unknown; then
+    echo "#$n：進行中の物に、触るファイルが分からない物があるので、待ちます"
+    return 1
+  fi
+  body=$(issue_body "$n") || return 1
+  t=$(touches_from_body "$body")
+  if [ -z "$t" ]; then
+    if [ -n "$(printf '%s\n' "$inflight" | tr -d '[:space:]')" ]; then
+      echo "#$n：触るファイルが分からないので、進行中の物が終わるまで待ちます"
+      return 1
+    fi
+    why="（進行中に数える作業が無いので、始めます）"
+  elif paths_overlap "$t" "$inflight"; then
+    echo "#$n：進行中の作業と触るファイルが重なるので、待ちます"
+    return 1
+  else
+    why="（進行中の作業と触るファイルが重ならないので、並べて始めます）"
+  fi
+  rc=0
+  start_queued_issue "$n" "$why" || rc=$?
+  if [ "$rc" -eq 2 ]; then
+    # ほかの処理が先に始めたか、外せなかった（書けない）か。一覧から確かめる
+    drop_open_snapshot
+    has_label "$n" "ai:implement" && return 0
+    return 1
+  fi
+  [ "$rc" -eq 0 ] || return 1
+  if [ -n "$t" ]; then
+    holds=$(hold_prs 2> /dev/null) || holds=""
+    while read -r pr state; do
+      [ "$state" = expired ] || continue
+      files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null) || continue
+      if paths_overlap "$t" "$files"; then note_hold_released "$pr" "$n"; fi
+    done <<< "$holds"
+  fi
+  return 0
+}
+
+# 全部のリポジトリで合わせて数えて、順番待ちを進める（PARALLEL_SCOPE=global）
+start_next_in_queue_global() {
+  local own_busy busy limit_info limit own_items cand r n at started=0 mine="" startedlist=" " rc holds own_queue detail
+  own_busy=$(count_active_implementing) || return 1
+  busy=$((own_busy + $(global_other_busy)))
+  detail="${REPO} ${own_busy}"
+  while read -r r n; do [ -n "$r" ] && detail="${detail}・${r} ${n}"; done <<< "$GLOBAL_COUNTS"
+  limit_info=$(current_parallel)
+  limit="${limit_info%% *}"
+  echo "全部のリポジトリで実装中 ${busy}（${detail}）（並列の上限 ${limit}：${limit_info#* }。上限は全部のリポジトリで合わせて数えます）"
+  remember_hold_prs
+  holds=$(hold_prs 2> /dev/null) || holds=""
+  # このリポジトリの順番待ちは一覧から（検索の反映の遅れで、付けたばかりの ai:queue を見落とさない）。ほかのリポジトリは検索から
+  own_items=$(open_items_json "ai:queue" | jq -c --arg r "$REPO" '[.[] | select(.pull_request | not) | {repo: $r, n: .number, p: ([.labels[].name] | index("priority:high") != null)}]') || return 1
+  own_queue=$(printf '%s' "$own_items" | jq -r '.[].n')
+  cand=$(printf '%s' "$GLOBAL_QUEUE_ITEMS" | jq -c --arg own "${REPO,,}" --argjson mine "$own_items" '
+    $mine + [.[] | ((.repository_url // "") | sub("^.*/repos/"; "")) as $r | select(($r | ascii_downcase) != $own and $r != "")
+      | {repo: $r, n: .number, p: ([(.labels // [])[].name] | index("priority:high") != null)}]')
+  if [ "$(printf '%s' "$cand" | jq 'length')" -eq 0 ]; then
+    echo "順番待ちはありません（全部のリポジトリ）"
+  elif [ "$busy" -ge "$limit" ]; then
+    echo "全部のリポジトリで並列の上限（${limit}）なので、今は始めません"
+  else
+    # ai:queue が付いた時刻を足して、古い順に並べる
+    cand=$(printf '%s' "$cand" | jq -c '.[]' | while IFS= read -r c; do
+      r=$(printf '%s' "$c" | jq -r .repo); n=$(printf '%s' "$c" | jq -r .n)
+      at=$(label_time "$r" "$n" "ai:queue")
+      printf '%s' "$c" | jq -c --arg at "$at" '. + {at: $at}'
+    done | jq -sc '.')
+    while read -r r n; do
+      [ -z "$r" ] && continue
+      if [ $((busy + started)) -ge "$limit" ]; then
+        echo "全部のリポジトリで並列の上限（${limit}）なので、ここまでにします"
+        break
+      fi
+      rc=0
+      if [ "${r,,}" = "${REPO,,}" ]; then
+        queue_try_start "$n" || rc=$?
+      else
+        echo "（${r}）"
+        ( REPO="$r"; use_open_snapshot || exit 1; queue_try_start "$n" ) || rc=$?
+      fi
+      if [ "$rc" -eq 0 ]; then
+        started=$((started + 1))
+        mine="${mine}${r} ${n}
+"
+        [ "${r,,}" = "${REPO,,}" ] && startedlist="${startedlist}${n} "
+      fi
+    done < <(global_queue_order "$cand")
+  fi
+  # 写しが捨てられていたら（ラベルを外せたか分からなかった）、目印の付け替えは API から読む
+  sync_queue_hold_marks "$own_queue" "$startedlist" "$holds"
+  if [ "$started" -gt 0 ]; then
+    global_yield_overflow "$limit" "$mine"
+  else
+    echo "今は始められる物がありません（どこかの進行中の物が終わると、もう一度見ます）"
+  fi
+  return 0
+}
+
+# 始めたあとの数え直し（取り合い）：2つのリポジトリの順番待ちが同時に動くと、互いの始めた物を見ずに上限を超える。
+# 少し待ってから（検索の反映の遅れを吸収する）全部のリポジトリで数え直し、上限より多い分のうち、自分が始めた物を ai:queue に戻す。
+# 引数：上限、自分が始めた物（「owner/repo 番号」を1行ずつ）。戻した数を出さず、ログに書く
+global_yield_overflow() {
+  local limit="$1" mine="$2" impl repos r n nums active="" total json picks key mine_json
+  sleep "${QUEUE_RECOUNT_WAIT_SEC:-5}"
+  impl=$(search_owner_issues "ai:implement" 2> /dev/null) || impl="[]"
+  repos=$( { printf '%s\n' "$REPO"; printf '%s\n' "$GLOBAL_COUNTS" | awk 'NF {print $1}'; search_other_repos "$impl" "$GLOBAL_QUEUE_ITEMS"; printf '%s' "$mine" | awk 'NF {print $1}'; } | awk 'NF && !seen[tolower($0)]++')
+  for r in $repos; do
+    nums=$(repo_active_numbers "$r" 2> /dev/null) || continue
+    for n in $nums; do active="${active}${r} ${n}
+"; done
+  done
+  active=$(printf '%s%s' "$active" "$mine" | awk 'NF && !seen[tolower($0)]++')
+  total=$(printf '%s\n' "$active" | grep -c . || true)
+  echo "数え直し：全部のリポジトリで実装中 ${total}（並列の上限 ${limit}）"
+  [ "$total" -gt "$limit" ] || return 0
+  json="[]"
+  while read -r r n; do
+    [ -z "$r" ] && continue
+    key=$(label_time "$r" "$n" "ai:queue")
+    [ -n "$key" ] || key=$(label_time "$r" "$n" "ai:implement")
+    json=$(jq -c --arg r "$r" --argjson n "$n" --arg k "$key" '. + [{repo: $r, n: $n, key: $k}]' <<< "$json")
+  done <<< "$active"
+  mine_json=$(printf '%s' "$mine" | awk 'NF' | jq -Rsc 'split("\n") | map(select(. != "") | split(" ") | {repo: .[0], n: (.[1] | tonumber)})')
+  picks=$(global_overflow_pick "$limit" "$(jq -nc --argjson a "$json" --argjson m "$mine_json" '{active: $a, mine: $m}')")
+  while read -r r n; do
+    [ -z "$r" ] && continue
+    if ( REPO="$r"; drop_open_snapshot; take_label "$n" "ai:implement" || exit 1; add_label "$n" "ai:queue" || true
+         comment "$n" "↩ ほかのリポジトリの順番待ちと同時に始まり、全部のリポジトリで並列の上限（${limit}）を超えたので、順番待ちに戻しました（\`ai:queue\` が付いたのが新しい方が戻ります）。空きができると自動で始まります。" || true ); then
+      echo "${r}#${n}：同時に始めた物があり、全部のリポジトリで上限を超えたので、順番待ちに戻しました"
+    fi
+    if [ "${r,,}" = "${REPO,,}" ]; then use_open_snapshot || drop_open_snapshot; fi
+  done <<< "$picks"
+  return 0
 }
 
 # ---- 自動のやり直し ----
