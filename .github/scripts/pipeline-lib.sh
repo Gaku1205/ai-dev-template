@@ -908,9 +908,42 @@ sync_hold_blocking() {
   fi
 }
 
+# 並列の上限と比べる「AIがいま動かしている実装の数」。ai:implement の開いている Issue から、次を除いて数える。一覧が読めなければ失敗
+# - ai:stuck が付いた Issue
+# - PR（head が claude/issue-N-）が ai:stuck の Issue
+# - 人間のマージ待ちが HOLD_BLOCK_MIN 分を過ぎた PR（hold_prs の expired）の Issue
+# 60分以内のマージ待ち（waiting）・時刻やラベルが読めない物は、数える
+count_active_implementing() {
+  local list
+  list=$(active_implementing_numbers) || return 1
+  printf '%s' "$list" | grep -c . || true
+}
+
+# 上の「数える」Issue の番号を1行ずつ出す（count_active_implementing と yield_if_crowded が同じ物を数えるための元）
+active_implementing_numbers() {
+  local impl pulls holds expired n pr rc
+  impl=$(open_numbers_with_label "ai:implement") || return 1
+  pulls=$(open_pulls_json | jq -r '.[] | "\(.number) \(.head.ref)"') || return 1
+  holds=$(hold_prs 2> /dev/null) || return 1
+  expired=$(printf '%s\n' "$holds" | awk '$2 == "expired" {print $1}')
+  for n in $impl; do
+    rc=0
+    has_label "$n" "ai:stuck" || rc=$?
+    [ "$rc" -eq 0 ] && continue
+    pr=$(printf '%s\n' "$pulls" | awk -v p=" claude/issue-$n-" 'index($0, p) {print $1; exit}')
+    if [ -n "$pr" ]; then
+      printf '%s\n' "$expired" | grep -qx "$pr" && continue
+      rc=0
+      has_label "$pr" "ai:stuck" || rc=$?
+      [ "$rc" -eq 0 ] && continue
+    fi
+    echo "$n"
+  done
+}
+
 start_next_in_queue() {
   local busy stuck prs inflight queue n body t rc started=0 holds pr state files blocks="" startedlist=" " limit_info limit idle=0 nomark_started=0
-  busy=$(count_open_issues_with_label "ai:implement") || return 1
+  busy=$(count_active_implementing) || return 1
   stuck=$(count_open_issues_with_label "ai:stuck") || return 1
   prs=$(count_open_prs) || return 1
   limit_info=$(current_parallel)
@@ -931,7 +964,8 @@ start_next_in_queue() {
     done <<< "$holds"
     return 0
   fi
-  if [ "$busy" -eq 0 ] && [ "$prs" -eq 0 ]; then
+  # 止まった実装中の Issue（PRがまだ無い物）の印は、席に数えなくても進行中のファイルに数える（inflight_touches）ので、止まった物があれば調べる
+  if [ "$busy" -eq 0 ] && [ "$prs" -eq 0 ] && [ "$stuck" -eq 0 ]; then
     # 進行中の物が無い：先頭の1つで終わらず、下の繰り返し（上限・重なり・印の無い物の決まり）で上限まで並べて始める。
     # 進行中が空なので、先頭は必ず始まる（印の無い物なら、その1つだけで、この実行は終わる）
     inflight=""
@@ -1020,11 +1054,13 @@ $t"
 # 引数：Issue番号、上限、触るファイル（改行区切り・空でもよい）。引いたら 0、そのまま進めるなら 1
 # 数え方は番号だけで決まる（番号の小さい方は、相手を見ても引かない）ので、2つが互いを見ても、両方は引かない
 yield_if_crowded() {
-  local issue="$1" limit="$2" mine="$3" others older=0 n body t overlap=no
+  local issue="$1" limit="$2" mine="$3" others active older=0 n body t overlap=no
   others=$(open_numbers_with_label "ai:implement" 2> /dev/null) || return 1
+  # 席に数えるのは count_active_implementing と同じ物（止まった物・長いマージ待ちは数えない）。重なりは、止まった物も見る
+  active=$(active_implementing_numbers 2> /dev/null) || return 1
   for n in $others; do
     [ "$n" -lt "$issue" ] || continue
-    older=$((older + 1))
+    if printf '%s\n' "$active" | grep -qx "$n"; then older=$((older + 1)); fi
     # PRがもうある物は、同時に始めた物ではない（PRの変えたファイルでの重なりは、付ける前に確かめ済み）
     if [ -n "$mine" ] && [ "$overlap" = no ] && ! open_pulls_json 2> /dev/null | jq -e --arg p "claude/issue-$n-" 'any(.[]; .head.ref | startswith($p))' > /dev/null 2>&1; then
       body=$(issue_body "$n" 2> /dev/null) || continue
