@@ -260,8 +260,14 @@ m=re.match(r'commits/([^/]+)$',base)
 if m and m.group(1) in st.get('commit_fail',[]): sys.stderr.write('HTTP 502\n'); sys.exit(1)
 if m: st['commit_calls']=st.get('commit_calls',0)+1; save()
 if m: out({'commit':{'committer':{'date':'2026-01-01T00:00:00Z'}},'files':[{'filename':f} for f in st.get('commit_files',{}).get(m.group(1),[])]}); sys.exit(0)
+if base=='pulls' and method=='POST':
+    # PR を作る：head を created_pulls に残す
+    st.setdefault('created_pulls',[]).append({'head':fields.get('head'),'title':fields.get('title')}); save()
+    out({'html_url':'https://github.com/o/r/pull/%d'%(100+len(st['created_pulls'])),'number':100+len(st['created_pulls'])}); sys.exit(0)
 if base=='pulls':
     paged(st.get('pulls',[])); sys.exit(0)
+# branches_list_fail：ブランチの一覧は読めない（502。「ブランチが無い」と取り違えないかのテスト用）
+if base=='branches' and st.get('branches_list_fail'): sys.stderr.write('HTTP 502\n'); sys.exit(1)
 if base=='branches':
     # ghost_branches：一覧には出るが、1つずつ読むと見つからない（一覧のあとに消えた）ブランチ
     paged([{'name':b['name']} for b in st.get('branches',[])] + [{'name':g} for g in st.get('ghost_branches',[])]); sys.exit(0)
