@@ -147,8 +147,12 @@ set_retry_timer() {
     t=$(( now_s + hb * 60 ))
     if [ -z "$earliest" ] || [ "$t" -lt "$earliest" ]; then earliest="$t"; fi
   fi
-  # 順番待ちがあるとき、並列の上限が変わる次の時刻（夜の始まり／終わり・上書きの期限）の1分後にも起こす
-  if [ "${queued:-0}" -gt 0 ]; then
+  # 順番待ちがあるとき、並列の上限が変わる次の時刻（夜の始まり／終わり・上書きの期限）の1分後にも起こす。
+  # 上限を全部のリポジトリで数えるとき（PARALLEL_SCOPE=global）は、ほかのリポジトリの順番待ちも数える（夜が明けて空きができたら、
+  # このリポジトリの見張り役が、ほかのリポジトリの順番待ちも始める）
+  local queued_all
+  queued_all=$(( ${queued:-0} + $(global_other_queued 2> /dev/null || echo 0) ))
+  if [ "$queued_all" -gt 0 ]; then
     t=$(parallel_next_change "$now_s")
     if [ -n "$t" ]; then
       t=$(( t + 60 ))
@@ -813,6 +817,8 @@ while IFS=$'\t' read -r n labels; do
 done <<< "$closed_items"
 
 # ---- 4. 順番待ちを進める ----
+# 上限は、PARALLEL_SCOPE（既定 global）なら全部のリポジトリで合わせて数え、空きがあれば、ほかのリポジトリの順番待ちも始める。
+# 本体で呼ぶ（$(…) にしない）：ここで決めた広さ・ほかのリポジトリの順番待ちを、8. の目覚ましが使う
 start_next_in_queue || echo "順番待ちを進められませんでした"
 
 # ---- 8. 次のやり直しの時刻（と、マージ待ちのPRが順番待ちを止めなくなる時刻）に、見張り役を起こす目覚ましをかける ----
