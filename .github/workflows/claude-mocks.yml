@@ -46,11 +46,21 @@ jobs:
           if [ -f package.json ] && [ "$(jq -r '.scripts.start != null' package.json)" = true ]; then
             npm ci --no-audit --no-fund && npm run build && node .github/scripts/shot.mjs --serve --out mocks/now --widths 1440,390 /
           fi
-      - name: Issue を読む
+      # 他人のコメントを AI に渡さない（#152・#196）：信頼できる書き手の物だけを mocks/issue.txt にする。
+      # スクリプトは main の版を API で取って動かす（PR のコードは動かさない）。読めなかったら、その旨だけを書いて続ける（黙って全部は渡さない）
+      - name: 信頼できる人のコメントだけを集める
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE: ${{ github.event.issue.number }}
-        run: gh issue view "$ISSUE" --comments > mocks/issue.txt
+          PIPELINE_APP_ID: ${{ vars.PIPELINE_APP_ID }}
+          NUMBER: ${{ github.event.issue.number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          gh api -H "Accept: application/vnd.github.raw" "repos/$GITHUB_REPOSITORY/contents/.github/scripts/trusted-comments.sh?ref=$DEFAULT_BRANCH" > "$RUNNER_TEMP/trusted-comments.sh"
+          if ! bash "$RUNNER_TEMP/trusted-comments.sh" "$NUMBER" > "$RUNNER_TEMP/thread.md"; then
+            echo "（#$NUMBER のコメントを読めなかった。本文だけを gh で読む。--comments は付けない）" > "$RUNNER_TEMP/thread.md"
+          fi
+          cp "$RUNNER_TEMP/thread.md" mocks/issue.txt
+          if [ -d .git ]; then echo "mocks/issue.txt" >> .git/info/exclude; fi
       # 起こしたボット（パイプラインの App や、工場の相談の github-actions）を、AIのアクションが断らないようにする。
       # AI自身（claude[bot]）は許さない。Secret は使わない
       - name: 起こしたボットを許可に入れる
