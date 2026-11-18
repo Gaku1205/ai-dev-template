@@ -1139,20 +1139,97 @@ permission_hints_from_text() {
 # 題名が完全に同じIssueの番号を、小さい順に1行ずつ出す。使い方：find_issues_by_title 題名 open|all
 # search API（題名と repo: で絞る。Issueが100件を超えても見つかる）を先に使い、見つからなければ新しい一覧でも探す
 # （search は作った直後に出ないことがある）。一覧が読めなかったときだけ失敗で終わる（「無い」と取り違えない）
+#   第3引数にリポジトリを書くと、そこを探す（既定はこのリポジトリ）
 find_issues_by_title() {
-  local title="$1" state="$2" q found
-  q=$(jq -rn --arg t "\"$title\" in:title repo:$REPO type:issue$([ "$state" = open ] && echo ' is:open')" '$t | @uri')
+  local title="$1" state="$2" repo="${3:-$REPO}" q found
+  q=$(jq -rn --arg t "\"$title\" in:title repo:$repo type:issue$([ "$state" = open ] && echo ' is:open')" '$t | @uri')
   found=$(gh api "search/issues?q=${q}&per_page=100" -q ".items[] | select(.title == \"$title\") | .number" 2> /dev/null | sort -n) || found=""
   if [ -z "$found" ]; then
-    found=$(gh api "repos/$REPO/issues?state=${state}&per_page=100" -q ".[] | select(.title == \"$title\") | .number" | sort -n) || return 1
+    found=$(gh api "repos/$repo/issues?state=${state}&per_page=100" -q ".[] | select(.title == \"$title\") | .number" | sort -n) || return 1
   fi
   printf '%s\n' "$found" | awk 'NF'
 }
 
-# 許可の不足を、記録用のIssue（閉じたまま）にコメントで残し、同じ不足が2回目なら、直すためのIssueを自動で作る
+# 方針として開けない操作の一覧（docs/pipeline.md の「AIの許可」の「開けない操作」と同じ。食い違うと tests/test-permissions.sh が落ちる）。
+# ここに無い操作の不足だけが、「許可が足りない」Issue になる
+PERM_NEVER_OPEN=('Bash(rm:*)' 'Bash(sed:*)' 'Bash(curl:*)' 'Bash(git push --force:*)' 'Bash(git rebase:*)' 'Bash(gh pr merge:*)')
+
+# 許可の書き方 KEY が、開けない操作の一覧にあるか（0 = ある）
+permission_never_open() {
+  local k
+  for k in "${PERM_NEVER_OPEN[@]}"; do
+    [ "$k" = "$1" ] && return 0
+  done
+  return 1
+}
+
+# 拒否された操作（許可の書き方、改行区切り）から、止まった理由の文を作る。
+# 開けない操作は「開けない操作を試した（AIへの指示を直す所）」、それ以外の物だけを「足りない許可」に書く。
+#   使い方：permission_reason_text 許可の書き方 [「足りない許可」の言い方]
+permission_reason_text() {
+  local label="${2:-足りない許可}" k never="" other="" out=""
+  while IFS= read -r k; do
+    [ -z "$k" ] && continue
+    if permission_never_open "$k"; then never+="${never:+$'\n'}$k"; else other+="${other:+$'\n'}$k"; fi
+  done <<< "$1"
+  [ -n "$never" ] && out="開けない操作を試した（AIへの指示を直す所）：$(permission_list_short "$never")"
+  if [ -n "$other" ]; then
+    out+="${out:+。}${label}：$(permission_list_short "$other")（docs/pipeline.md の「AIの許可」の表と、ワークフローの --allowedTools を見てください）"
+  fi
+  printf '%s' "$out"
+}
+
+# テンプレート（ai-dev-template）のリポジトリ名を出す。環境変数 PIPELINE_TEMPLATE_REPO → 最近の配布PRの印
+# （<!-- pipeline-sync-src: owner/repo@sha -->）の順。分からなければ何も出さない
+template_repo() {
+  local t="${PIPELINE_TEMPLATE_REPO:-}"
+  if [ -z "$t" ]; then
+    t=$(gh api "repos/$REPO/pulls?state=all&per_page=30" -q '.[] | select(.head.ref | startswith("pipeline-sync/")) | .body // ""' 2> /dev/null \
+      | sed -n 's/.*pipeline-sync-src: \([^@ ]*\)@.*/\1/p' | head -n 1) || t=""
+  fi
+  if grep -Eq '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$' <<< "$t"; then printf '%s' "$t"; fi
+  return 0
+}
+
+# 「AIの許可が足りない」を、テンプレートの Issue 1つにまとめる（同じ題名の開いた Issue のうち、最小の番号がまとめ先。
+# 無ければ作り、ラベル audit を付ける。audit が無くて作れなければ、ラベルなしで作る）。アプリの番号はコメントで足す。
+# 読めない・作れないときは失敗で終わる（呼んだ側がアプリに作る）。使い方：report_gap_to_template テンプレート 題名 キー 回数 記録Issue 番号
+report_gap_to_template() {
+  local tpl="$1" title="$2" key="$3" n="$4" ledger="$5" from="$6" list target mine=""
+  list=$(find_issues_by_title "$title" open "$tpl") || return 1
+  target=$(printf '%s\n' "$list" | head -n 1)
+  if [ -z "$target" ]; then
+    local body="### 背景
+アプリ \`${REPO}\` で、AIが \`${key}\` を許可されておらず、${n}回止まりました（記録：${REPO}#${ledger}）。同じ不足が別のアプリでも起きたら、下のコメントに \`<アプリ>#<番号>\` を足します。
+
+### やること（マネージャーが行う。\`.github/\` を触るのでAIには回さない）
+- docs/pipeline.md の「AIの許可」の表を見て、どのAIにこの操作が要るかを決める
+- 要るなら、そのワークフローの \`--allowedTools\` に足し、表にも書く（tests/test-permissions.sh が食い違いを見つける）
+- 要らない操作なら、AIへの指示の方を直す"
+    mine=$(gh api -X POST "repos/$tpl/issues" -f title="$title" -f body="$body" -f 'labels[]=audit' -q .number 2> /dev/null) \
+      || mine=$(gh api -X POST "repos/$tpl/issues" -f title="$title" -f body="$body" -q .number 2> /dev/null) || return 1
+    # 同時に作った別のアプリがいたら、最小の番号をまとめ先にする
+    list=$(find_issues_by_title "$title" open "$tpl") || list=""
+    target=$(printf '%s\n' "$list" | head -n 1)
+    [ -n "$target" ] || target="$mine"
+    if [ "$mine" != "$target" ]; then
+      gh api -X PATCH "repos/$tpl/issues/$mine" -f state=closed > /dev/null 2>&1 || true
+      mine=""
+    fi
+  fi
+  gh api "repos/$tpl/issues/$target/comments" -f body="\`${REPO}#${from}\`：\`${key}\` の不足（${n}回目）" > /dev/null 2>&1 || return 1
+  if [ -n "$mine" ]; then
+    notify stuck "AIの許可が足りません" "同じ不足（${key}）が${n}回起きたので、${tpl} に Issue #${target} を作りました" 4
+  fi
+  return 0
+}
+
+# 許可の不足を、記録用のIssue（閉じたまま）にコメントで残し、同じ不足が2回目なら、直すためのIssueを自動で作る。
+#   開けない操作（PERM_NEVER_OPEN）は記録だけ（Issue は作らない）。
+#   それ以外はテンプレートに1つにまとめる（届かないときだけ、このリポジトリに ai:skip・pipeline ラベルで作る）
 #   使い方：report_permission_gap 番号 "許可の書き方（改行区切り）"
 report_permission_gap() {
-  local from="$1" keys key ledger ledgers l n n1 title existing created
+  local from="$1" keys key ledger ledgers l n n1 title existing created tpl
   # 1回に記録するのは最初の PERM_REPORT_MAX 件まで（多すぎると、1件ずつのAPI呼び出しでジョブが時間切れになる）
   keys=$(printf '%s\n' "$2" | awk 'NF' | head -n "${PERM_REPORT_MAX:-3}")
   while IFS= read -r key; do
@@ -1169,6 +1246,8 @@ report_permission_gap() {
     comment "$ledger" "<!-- perm-gap: ${key} -->
 #${from} で、AIが許可されていない操作を試して止まりました：\`${key}\`" || true
     # 回数は、見つかった記録のIssue全部のコメントを合わせて数える（重なって作られた分を失わない）
+    # 開けない操作は、記録のコメントだけ残す（直すIssueは作らない）
+    permission_never_open "$key" && continue
     n=0
     while IFS= read -r l; do
       [ -z "$l" ] && continue
@@ -1177,10 +1256,16 @@ report_permission_gap() {
     done <<< "$ledgers"
     if [ "$n" -ge 2 ]; then
       title="AIの許可が足りない：${key}"
+      # テンプレートにまとめる。届かない（名前が分からない・読めない・作れない）ときだけ、このリポジトリに作る
+      tpl=$(template_repo)
+      if [ -n "$tpl" ] && report_gap_to_template "$tpl" "$title" "$key" "$n" "$ledger" "$from"; then
+        continue
+      fi
       existing=$(find_issues_by_title "$title" open) || return 0
       if [ -z "$existing" ]; then
-        created=$(gh api -X POST "repos/$REPO/issues" -f title="$title" -f 'labels[]=ai:skip' \
-          -f body="### 背景
+        created=$(gh api -X POST "repos/$REPO/issues" -f title="$title" -f 'labels[]=ai:skip' -f 'labels[]=pipeline' \
+          -f body="<!-- pipeline-maintenance -->
+### 背景
 AIが \`${key}\` を許可されておらず、${n}回止まりました（記録：#${ledger}）。
 
 ### やること（マネージャーが行う。\`.github/\` を触るのでAIには回さない）
@@ -1201,7 +1286,7 @@ handle_ai_failure() {
   # 使用量の上限で止まったのなら、途中に拒否された操作があっても、許可の不足として人間に回さない（上限は待てば直る。
   # 拒否は、AIが別のやり方で先へ進めていることが多い）。上限のリセットを待ってやり直す（retry_ai_failure）
   if [ -n "$denied" ] && [ -z "$(limit_signal "$file")" ]; then
-    reason="$(failure_reason "$label" "$file")。足りない許可：$(permission_list_short "$denied")（docs/pipeline.md の「AIの許可」の表と、ワークフローの --allowedTools を見てください）"
+    reason="$(failure_reason "$label" "$file")。$(permission_reason_text "$denied")"
     # 先に人間に回す（ラベル・コメント・通知）。記録は後。記録が遅くてジョブが時間切れになっても、宙に浮かないように
     case "$kind" in
       plan) remove_label "$num" "ai:plan"; stop_issue_for_human "$num" "$reason" ;;

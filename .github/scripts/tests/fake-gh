@@ -37,6 +37,10 @@ while i<len(args):
     else: path=a; i+=1
 if fields or flist:
     if method=='GET': method='POST'
+# fail_repos：このリポジトリへの呼び出しは全部断る（403。テンプレートに鍵が届かない、を表す）
+_rm=re.match(r'^repos/([^/]+/[^/]+)',path)
+_repo=_rm.group(1) if _rm else None
+if _repo and _repo.lower() in [x.lower() for x in st.get('fail_repos',[])]: sys.stderr.write('HTTP 403: Resource not accessible by integration\n'); sys.exit(1)
 # 別のリポジトリ（GITHUB_REPOSITORY ではない所）の Issue・PR：状態だけを other_repos から返す（無ければ 404。非公開で読めない待ち先を表す）
 _m=re.match(r'^repos/([^/]+/[^/]+)/issues/(\d+)$',path.split('?')[0])
 if _m and method=='GET' and _m.group(1).lower()!=os.environ.get('GITHUB_REPOSITORY','o/r').lower():
@@ -149,7 +153,7 @@ if m:
 if base=='issues' and method=='POST':
     meta=st.setdefault('issues_meta',{})
     num=str(max([int(k) for k in list(st['labels'])+list(meta)]+[100])+1)
-    meta[num]={'title':fields.get('title',''),'state':'open','body':fields.get('body','')}
+    meta[num]={'title':fields.get('title',''),'state':'open','body':fields.get('body',''),'repo':_repo}
     st['labels'][num]=list(flist); save(); out({'number':int(num)}); sys.exit(0)
 if base=='issues':
     lab=re.search(r'labels=([^&]+)',path); 

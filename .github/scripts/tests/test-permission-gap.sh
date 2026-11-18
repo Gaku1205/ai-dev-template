@@ -59,7 +59,8 @@ issues=$(python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));
 assert_contains "2回目で、直すIssueが作られる" "$issues" "AIの許可が足りない：Bash(git merge:*)|open"
 assert_eq "記録用のIssueは1つだけ" "1" "$(printf '%s\n' "$issues" | grep -c '自動の記録')"
 new=$(python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print([n for n,m in s['issues_meta'].items() if '許可が足りない' in m['title']][0])")
-assert_eq "直すIssueには ai:skip が付く（AIを動かさない）" "ai:skip" "$(labels_of "$new")"
+assert_eq "テンプレートに届かないので、アプリに ai:skip と pipeline が付く（AIを動かさない）" "ai:skip,pipeline" "$(labels_of "$new")"
+assert_contains "本文の頭に pipeline-maintenance の印が付く" "$(python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print(s['issues_meta']['$new']['body'].split('\n')[0])")" "<!-- pipeline-maintenance -->"
 run_lib "report_permission_gap 7 'Bash(git merge:*)'" > /dev/null
 assert_eq "3回目でも、直すIssueは増えない" "1" "$(python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print(sum('許可が足りない' in m['title'] for m in s['issues_meta'].values()))")"
 
@@ -137,6 +138,74 @@ s['next_id']=10
 $(gap_comments 300 2)"
 run_lib "report_permission_gap 7 'Bash(git merge:*)'" > /dev/null
 assert_eq "直すIssueは1つのまま" "1" "$(count_py "sum('許可が足りない' in m['title'] for m in s['issues_meta'].values())")"
+
+echo "== 開けない操作：2回起きても、直すIssueは作らない（記録のコメントは残る）"
+init_state '{}'
+for _ in 1 2 3; do PIPELINE_TEMPLATE_REPO=o/tmpl run_lib "report_permission_gap 7 'Bash(rm:*)'" > /dev/null; done
+assert_eq "Issue は記録用の1つだけ" "1" "$(count_py "len(s['issues_meta'])")"
+assert_eq "記録のコメントは3回分残る" "3" "$(count_py "sum('perm-gap: Bash(rm:*)' in c['body'] for c in s['comments'])")"
+assert_eq "直すIssueは無い" "0" "$(count_py "sum('許可が足りない' in m['title'] for m in s['issues_meta'].values())")"
+for k in 'Bash(sed:*)' 'Bash(curl:*)' 'Bash(git push --force:*)' 'Bash(git rebase:*)' 'Bash(gh pr merge:*)'; do
+  assert_eq "$k は開けない操作" "0" "$(run_lib "permission_never_open '$k'; echo \$?")"
+done
+assert_eq "git merge は開けない操作ではない" "1" "$(run_lib "if permission_never_open 'Bash(git merge:*)'; then echo 0; else echo 1; fi")"
+
+echo "== 開けるかもしれない操作：2回目でテンプレートに1つ（audit）。3回目・別アプリはコメントが増えるだけ"
+init_state '{}'
+export PIPELINE_TEMPLATE_REPO=o/tmpl
+run_lib "report_permission_gap 7 'Bash(git merge:*)'" > /dev/null
+assert_eq "1回目は作らない" "0" "$(count_py "sum('許可が足りない' in m['title'] for m in s['issues_meta'].values())")"
+run_lib "report_permission_gap 9 'Bash(git merge:*)'" > /dev/null
+assert_eq "2回目でテンプレートに1つできる" "1" "$(count_py "sum('許可が足りない' in m['title'] and m['repo']=='o/tmpl' for m in s['issues_meta'].values())")"
+gap=$(count_py "[n for n,m in s['issues_meta'].items() if '許可が足りない' in m['title']][0]")
+assert_eq "ラベルは audit だけ（ai:skip は付けない）" "audit" "$(labels_of "$gap")"
+assert_contains "アプリの番号がコメントに書かれる" "$(comments_of "$gap")" "o/r#9"
+assert_contains "通知が送られる" "$(cat "$MOCK_DIR/curl.log")" "o/tmpl に Issue #$gap"
+run_lib "report_permission_gap 7 'Bash(git merge:*)'" > /dev/null
+GITHUB_REPOSITORY=o/other run_lib "report_permission_gap 3 'Bash(git merge:*)'" > /dev/null
+assert_eq "3回目・別アプリでも Issue は増えない" "1" "$(count_py "sum('許可が足りない' in m['title'] for m in s['issues_meta'].values())")"
+assert_contains "別アプリの番号はコメントで増える" "$(comments_of "$gap")" "o/other#3"
+assert_contains "3回目の番号もコメントで増える" "$(comments_of "$gap")" "o/r#7"
+
+echo "== テンプレートの Issue が閉じられていたら、新しく作る"
+state_py "s['issues_meta']['$gap']['state']='closed'"
+run_lib "report_permission_gap 7 'Bash(git merge:*)'" > /dev/null
+assert_eq "開いた Issue が新しくできる" "2" "$(count_py "sum('許可が足りない' in m['title'] for m in s['issues_meta'].values())")"
+
+echo "== テンプレートの名前を、配布PRの印から読む"
+unset PIPELINE_TEMPLATE_REPO
+init_state '{"pulls":[{"number":5,"state":"closed","body":"x<!-- pipeline-sync --><!-- pipeline-sync-src: o/fromsync@abc123 -->","head":{"sha":"a","ref":"pipeline-sync/abc123"}}]}'
+assert_eq "印から o/fromsync" "o/fromsync" "$(run_lib "template_repo")"
+init_state '{}'
+assert_eq "印も環境変数も無ければ空" "" "$(run_lib "template_repo")"
+
+echo "== リポジトリ自身がテンプレートのとき：そのリポジトリに作る（audit 付き）"
+init_state '{}'
+PIPELINE_TEMPLATE_REPO=o/r run_lib "report_permission_gap 7 'Bash(git merge:*)'" > /dev/null
+PIPELINE_TEMPLATE_REPO=o/r run_lib "report_permission_gap 9 'Bash(git merge:*)'" > /dev/null
+self=$(count_py "[n for n,m in s['issues_meta'].items() if '許可が足りない' in m['title']][0]")
+assert_eq "audit が付く" "audit" "$(labels_of "$self")"
+
+echo "== テンプレートに届かないとき：アプリに ai:skip・pipeline・印つきで作る"
+init_state '{"fail_repos":["o/tmpl"]}'
+PIPELINE_TEMPLATE_REPO=o/tmpl run_lib "report_permission_gap 7 'Bash(git merge:*)'" > /dev/null
+PIPELINE_TEMPLATE_REPO=o/tmpl run_lib "report_permission_gap 9 'Bash(git merge:*)'" > /dev/null
+app=$(count_py "[n for n,m in s['issues_meta'].items() if '許可が足りない' in m['title']][0]")
+assert_eq "アプリに ai:skip と pipeline" "ai:skip,pipeline" "$(labels_of "$app")"
+assert_eq "アプリ（o/r）に作られる" "o/r" "$(count_py "s['issues_meta']['$app']['repo']")"
+assert_contains "本文の頭に印" "$(count_py "s['issues_meta']['$app']['body']")" "<!-- pipeline-maintenance -->"
+
+echo "== 止まった理由の文言：開けない操作と、足りない許可を分ける"
+assert_eq "開けない操作だけ" "開けない操作を試した（AIへの指示を直す所）：Bash(rm:*)、Bash(sed:*)" "$(run_lib "permission_reason_text \"\$(printf 'Bash(rm:*)\\nBash(sed:*)')\"")"
+mixed=$(run_lib "permission_reason_text \"\$(printf 'Bash(rm:*)\\nBash(git merge:*)')\"")
+assert_contains "混じるとき：開けない操作" "$mixed" "開けない操作を試した（AIへの指示を直す所）：Bash(rm:*)"
+assert_contains "混じるとき：足りない許可はその物だけ" "$mixed" "足りない許可：Bash(git merge:*)（"
+assert_not_contains "開けない操作を足りない許可に書かない" "$mixed" "足りない許可：Bash(rm:*)"
+write d3 '[{"type":"result","subtype":"error_during_execution","result":"","permission_denials":[{"tool_name":"Bash","tool_input":{"command":"rm -rf x"}}]}]'
+init_state '{"labels":{"7":["ai:implement"]}}'
+run_lib "handle_ai_failure 7 implement '実装AIが止まりました' '$MOCK_DIR/d3.json'" > /dev/null
+assert_contains "止めるコメントに「開けない操作を試した」" "$(comments_of 7)" "開けない操作を試した（AIへの指示を直す所）：Bash(rm:*)"
+assert_not_contains "「足りない許可」とは書かない" "$(comments_of 7)" "足りない許可："
 
 echo "== 修正AIが「許可されていない」と報告して、変更が入らなかった（自動のやり直しは済み）：足りない許可の候補を書いて人間に回す"
 pr='{"number":58,"body":"x","state":"open","head":{"sha":"abc","ref":"claude/issue-54-x"},"updated_at":"2026-01-01T00:00:00Z"}'
