@@ -21,10 +21,32 @@ init_state '{"labels":{"1":["ai:implement"],"2":["ai:queue"]}}'
 run_script queue-next.sh > /dev/null
 assert_eq "#2 は待ったまま" "ai:queue" "$(labels_of 2)"
 
-echo "== 実装で止まった物（ai:implement が残っている）があるあいだも進めない"
-init_state '{"labels":{"1":["ai:implement","ai:stuck"],"2":["ai:queue"]}}'
-run_script queue-next.sh > /dev/null
+echo "== 実装で止まった物（ai:implement が残っている）は席に数えない：夜の上限1でも、触るファイルが重ならない順番待ちは始まる"
+bodies='"issues_meta":{"1":{"title":"a","body":"本文\n<!-- ai-touches: src/lib/a.ts -->"},"2":{"title":"b","body":"本文\n<!-- ai-touches: src/lib/b.ts -->"}}'
+init_state '{"labels":{"1":["ai:implement","ai:stuck"],"2":["ai:queue"]},'"$bodies"'}'
+out=$(MAX_PARALLEL=1 run_script queue-next.sh)
+assert_eq "#2 が実装に回る" "ai:implement" "$(labels_of 2)"
+assert_contains "実装中は0" "$out" "実装中 0"
+
+echo "== 止まった物と触るファイルが重なる順番待ちは待つ"
+init_state '{"labels":{"1":["ai:implement","ai:stuck"],"2":["ai:queue"]},"issues_meta":{"1":{"title":"a","body":"本文\n<!-- ai-touches: src/lib/a.ts -->"},"2":{"title":"b","body":"本文\n<!-- ai-touches: src/lib/a.ts -->"}}}'
+MAX_PARALLEL=1 run_script queue-next.sh > /dev/null
 assert_eq "#2 は待ったまま" "ai:queue" "$(labels_of 2)"
+
+echo "== PRが ai:stuck の Issue も席に数えない"
+stuckpr='{"number":5,"state":"open","body":"","head":{"sha":"abc","ref":"claude/issue-1-x"},"labels":[{"name":"ai:stuck"}],"updated_at":"2026-01-01T00:00:00Z"}'
+init_state '{"labels":{"1":["ai:implement"],"5":["ai:stuck"],"2":["ai:queue"]},"pulls":['"$stuckpr"'],"files":["src/lib/a.ts"],"issues_meta":{"2":{"title":"b","body":"本文\n<!-- ai-touches: src/lib/b.ts -->"}}}'
+out=$(MAX_PARALLEL=1 run_script queue-next.sh)
+assert_eq "#2 が実装に回る" "ai:implement" "$(labels_of 2)"
+
+echo "== 60分を過ぎたマージ待ちは席に数えない／60分以内は数える"
+review='{"id":901,"issue":"5","user":{"login":"github-actions[bot]"},"created_at":"2026-11-17T00:00:00Z","updated_at":"2026-11-17T00:00:00Z","body":"## Code review\n\nNo issues found."}'
+holdpr='{"number":5,"state":"open","mergeable_state":"clean","head":{"ref":"claude/issue-1-x","sha":"abc"},"labels":[{"name":"ai:hold"}]}'
+for min in 90 10; do
+  init_state '{"labels":{"1":["ai:implement"],"5":["ai:hold"],"2":["ai:queue"]},"events":{"5":[{"event":"labeled","label":{"name":"ai:hold"},"created_at":"'"$(ago $min)"'"}]},"pulls":['"$holdpr"'],"files":["src/lib/a.ts"],"comments":['"$review"'],"issues_meta":{"2":{"title":"b","body":"本文\n<!-- ai-touches: src/lib/b.ts -->"}}}'
+  MAX_PARALLEL=1 run_script queue-next.sh > /dev/null
+  if [ "$min" = 90 ]; then assert_eq "90分：#2 が始まる" "ai:implement" "$(labels_of 2)"; else assert_eq "10分：#2 は待つ" "ai:queue" "$(labels_of 2)"; fi
+done
 
 echo "== openのPRがあるあいだは進めない"
 init_state '{"labels":{"2":["ai:queue"]},"pulls":['"$pr"']}'

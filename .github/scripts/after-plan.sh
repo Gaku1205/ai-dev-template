@@ -118,10 +118,10 @@ ${broad_list}
       add_label "$ISSUE" "$size"
     fi
     if [ -n "$pipeline_token" ]; then
-      # 並列にしてよいかは企画AIが2行目で判断（PARALLEL / WAIT）。止まっている物があるとき、
-      # すでに今の上限の数だけ動いているときは、AIの判断にかかわらず待つ
+      # 並列にしてよいかは企画AIが2行目で判断（PARALLEL / WAIT）。すでに今の上限の数だけ動いているとき
+      # （数えるのは AIがいま動かしている物だけ。止まった物・長く待たれたマージ待ちは数えない）は、AIの判断にかかわらず待つ
       parallel=$(sed -n 2p plan-result.txt 2> /dev/null | tr -d '\r ' || true)
-      busy=$(GH_TOKEN="$pipeline_token" count_open_issues_with_label "ai:implement")
+      busy=$(GH_TOKEN="$pipeline_token" count_active_implementing)
       stuck=$(GH_TOKEN="$pipeline_token" count_open_issues_with_label "ai:stuck")
       limit_info=$(current_parallel)
       limit="${limit_info%% *}"
@@ -129,7 +129,7 @@ ${broad_list}
       # 企画AIの「並列でよい」は、企画を始めた時点の進行中の作業を見た判断。企画の間に別の Issue の実装が始まっていると
       # （まとめて Issue を書いたとき）、その作業とは見比べていない。触るファイルの印（ai-touches）が両方にあって重なるなら、待つ
       overlap=no
-      if [ "$busy" -gt 0 ] && [ "$parallel" = "PARALLEL" ]; then
+      if { [ "$busy" -gt 0 ] || [ "$stuck" -gt 0 ]; } && [ "$parallel" = "PARALLEL" ]; then
         mine=$(touches_from_body "$(GH_TOKEN="$pipeline_token" gh api "repos/$REPO/issues/$ISSUE" -q '.body // ""' 2> /dev/null || true)")
         if [ -n "$mine" ]; then
           inflight=$(GH_TOKEN="$pipeline_token" inflight_touches) || inflight=unknown
@@ -139,7 +139,7 @@ ${broad_list}
           fi
         fi
       fi
-      if [ "$busy" -gt 0 ] && { [ "$parallel" != "PARALLEL" ] || [ "$stuck" -gt 0 ] || [ "$busy" -ge "$limit" ] || [ "$overlap" = yes ]; }; then
+      if { [ "$busy" -gt 0 ] && { [ "$parallel" != "PARALLEL" ] || [ "$busy" -ge "$limit" ]; }; } || [ "$overlap" = yes ]; then
         # 終われば queue.yml が始める
         GH_TOKEN="$pipeline_token" add_label "$ISSUE" "ai:queue"
         echo "#$ISSUE：進行中の作業とぶつかる・上限なので、順番待ちに入れました"
