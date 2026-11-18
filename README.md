@@ -2,7 +2,7 @@
 
 **Issueにやりたいことを1行書くだけで、AIが清書・実装・レビュー・修正・マージ・公開まで進める**、個人開発用のリポジトリの土台です。
 
-人間がやるのは「何を作るか決める」ことと、AIが判断に迷って止まったときの確認だけ。合否はAIではなくCI（確認コマンド。Next.js なら型チェック・リント・テスト・ビルド）が決めます。
+人間がやるのは「何を作るか決める」ことと、AIが判断に迷って止まったときの確認だけ。合否はAIではなくCI（確認コマンド。Next.js なら型チェック・リント・テスト・ビルド。package-lock.json があれば npm audit --omit=dev --audit-level=high も。テンプレートでは落とし、配り先のアプリでは警告だけ）が決めます。
 
 **言語も公開先も選べます。** 何も書かなければ Next.js＋Vercel。リポジトリ直下の `pipeline.json` に書けば、Python・Go・Java・.NET などで動き、公開先は AWS App Runner（Web・API）、GitHub Releases（exe などの配布物）、Expo（スマホアプリ）から選べます（`docs/pipeline-setup.md`「言語と公開先」）。
 
@@ -62,13 +62,13 @@ Next.js＋Vercel なら、必須は次の3つだけ。ほかの設定は既定�
 | 言葉 | 意味 |
 | --- | --- |
 | 進行役 | AIの作業のあいだをつなぐスクリプト（`pipeline.yml`・`.github/scripts/`）。次にどのAIを動かすか、マージするかを決める |
-| 見張り役 | 30分ごとと、ほかの作業が終わるたびに動き、止まった物・取りこぼした物を拾ってやり直す（`watchdog.yml`） |
+| 見張り役 | 定期の起動（GitHub の都合で、ほとんど来ない）と、ほかの作業が終わるたびに動く。待ちが残っている間は、目覚ましで15分ごとに見る（`WATCHDOG_HEARTBEAT_MIN`）。止まった物・取りこぼした物を拾ってやり直す（`watchdog.yml`） |
 | 配る・配り先 | テンプレートの仕組み（`.github/`）の更新を、テンプレートから作ったリポジトリへ PR で届けること |
 | 清書 | 1行のメモを、AIが実装できる Issue（やること・受け入れ条件）に書き直すこと |
 | opus・sonnet・haiku | Claude のモデルの名前。大きい作業ほど強いモデルを使う |
 
 **補足：Setup Labels（必要なら）**
-ラベルが足りないときだけ、Actions の **Setup Labels** を手で1回実行する。ただし、Bootstrap より先にこれを実行すると、Bootstrap は「ラベルがもうある」として何もしないので、`CLAUDE.md` の節の削除と診断も飛ばされる。その場合は、`CLAUDE.md` の「ai-dev-template 自身の作業」の節を手で消し、Doctor を手で実行する。
+Actions の **Setup Labels**（`setup-labels.yml`）は、main に `labels.sh` の変更が push されると自動で動き、ラベルの色と説明をそろえる。手で実行するのは、ラベルが足りないときだけ（Run workflow で1回）。Bootstrap がまだ（`ai:plan` のラベルが無い）ときの push では、何もしない。ただし、Bootstrap より先にこれを（手で）実行すると、Bootstrap は「ラベルがもうある」として何もしないので、`CLAUDE.md` の節の削除と診断も飛ばされる。その場合は、`CLAUDE.md` の「ai-dev-template 自身の作業」の節を手で消し、Doctor を手で実行する。
 
 テンプレート（本体）の更新（`.github/`・`docs/pipeline.md`・`docs/pipeline-setup.md`・`.claude/skills/`）は、本体の main でCIが通った版だけが、このテンプレートから作ったリポジトリ（自動）と、本体の `.github/sync-targets` に書いた配り先へ自動で配られる（この自動配布は本体だけが動かす）。
 
