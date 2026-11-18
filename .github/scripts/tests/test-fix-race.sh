@@ -193,7 +193,8 @@ assert_eq "依頼は2つ" "2" "$(requests)"
 assert_not_contains "レビューは付けない（動かない）" "$(labels_of 58)" "ai:review"
 
 echo "== 同じコミットに直す依頼が出ていれば頼まない"
-state "[$(req 5 5 abc | sed "s/$(t 5)/$now/g"),$(finished 6 6 | sed "s/$(t 6)/$now/g"),$(req 7 7 def | sed "s/$(t 7)/$now/g")]" def
+# きっかけの依頼（abc。いちばん新しい）の前に、いまの先頭コミット（def）への依頼が、別の経路から出ていて、まだ終わっていない
+state "[$(req 4 4 def),$(req 5 5 abc | sed "s/$(t 5)/$now/g")]" def
 state_py "s['pulls'][0]['mergeable_state']='dirty'"
 out=$(after_mention "$now")
 assert_contains "重ねて頼まない" "$out" "重ねて頼みません"
