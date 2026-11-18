@@ -11,6 +11,9 @@
 #   撮り直しを頼まれたが、main とのコンフリクトが残っている → 撮り直しは動かないので付けない。拒否された操作があれば出し直し、無ければ人間に回す
 #   分類できない               → 人間に回す（ai:stuck）
 #
+# 修正AIが「PRが更新されたので動かない」（PR #N was updated after the trigger）と返して何もせずに終わったときは、
+# 直す回数に数えず、最新のコミットで同じ依頼を出し直す（reissue_stale_fix。いまの先頭コミットに別の依頼が出ていれば出し直さない）
+#
 # 環境変数：RUN_STARTED（対応が始まった時刻）、CONCLUSION（対応のワークフローの結果）、READ_TOKEN（ワークフローのトークン、actions: read）、
 #           EXECUTION_FILE（あれば。修正AIの実行記録。拒否された操作を読む）、
 #           PR_NUMBER（あれば。対応したPRの番号。無ければ EXECUTION_FILE と同じフォルダの pr.txt。どちらも無ければ全PRを見る）
@@ -19,6 +22,10 @@ source "$(dirname "$0")/pipeline-lib.sh"
 set -e
 
 has_pipeline_token || { echo "PIPELINE_TOKEN が無いので何もしません"; exit 0; }
+
+# ここは修正AIが終わったあとに動く。この先で出す依頼（コンフリクトの解消など）は、同じコミットへの前の依頼が
+# 「まだ終わっていない」ように見えても（修正AIの返事に「Claude finished」が無い、など）、重ねて頼んでよい（request_fix_or_stop）
+export FIX_RUN_ENDED=1
 
 started=$(date -d "$RUN_STARTED" +%s)
 
@@ -49,6 +56,14 @@ for pr in $prs; do
   created=$(date -d "$(printf '%s' "$last" | jq -r .created_at)" +%s)
   # この対応のきっかけになった依頼か（依頼の直後に始まった対応か）
   if [ "$created" -gt "$started" ] || [ $((started - created)) -gt 180 ]; then
+    continue
+  fi
+
+  # 修正AIが「PRが更新されたので動かない」と返して、何もせずに終わった（依頼のあとに、別の push が先に入った）：
+  # 「直してpushした」と読み違えない。その依頼は直す回数に数えず、最新のコミットで出し直す（reissue_stale_fix）
+  if all_comments "$pr" | jq -e --arg stale "$STALE_FIX_RE" --argjson id "$(printf '%s' "$last" | jq '.id // 0')" \
+    "$STALE_FIX_JQ"'stale_ids | index($id) != null' > /dev/null; then
+    reissue_stale_fix "$pr" "$last"
     continue
   fi
 
