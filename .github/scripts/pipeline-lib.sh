@@ -18,6 +18,13 @@ OWNER="${REPO%%/*}"
 # AIに自動で直させる回数の上限（CIの失敗とレビューの指摘を合わせて数える）。超えたら人間に回す
 MAX_AUTO_FIX="${MAX_AUTO_FIX:-2}"
 AUTO_FIX_MARK="<!-- auto-fix -->"
+# main とのコンフリクトの解消をAIに頼める回数の上限。直す回数（MAX_AUTO_FIX＋強いモデルの1回）とは別に数える
+# （並列で main が進むたびに、PRの中身と関係なく直す回数が減って、本物の指摘を直せずに止まらないように。agent-desk PR #528）
+MAX_CONFLICT_FIX="${MAX_CONFLICT_FIX:-3}"
+# コンフリクトの解消の依頼に付ける印（count_auto_fix が種類ごとに数える）
+CONFLICT_KIND_MARK="<!-- auto-fix-kind: conflict -->"
+# 基準の画像だけのコンフリクトを、AIを呼ばずにパイプラインが解いた印（先頭コミットごと。同じ先頭で2回は試さない）
+CONFLICT_IMAGES_MARK="auto-conflict-images:"
 RESUME_MARK="<!-- auto-resume -->"
 # shellcheck disable=SC2034  # after-ci.sh など、この下を読み込む側のスクリプトで使う
 VISUAL_MARK="<!-- auto-visual-update -->"
@@ -410,12 +417,100 @@ stop_issue_for_human() {
 }
 
 # 「再開」の記録（人間が ai:stuck を外したとき resume.sh が書く）より後に、AIに自動で直させた回数。
-# 修正AIが「PRが更新されたので動かない」と返した依頼（STALE_FIX_RE）は、何も直していないので数えない
+# 修正AIが「PRが更新されたので動かない」と返した依頼（STALE_FIX_RE）は、何も直していないので数えない。
+# 種類ごとに数える：fix（既定。CIの失敗・レビューの指摘など）と conflict（main とのコンフリクトの解消。印 CONFLICT_KIND_MARK）。
+#   使い方：count_auto_fix PR番号 [fix|conflict]
 count_auto_fix() {
-  all_comments "$1" | jq --arg mark "$AUTO_FIX_MARK" --arg resume "$RESUME_MARK" --arg stale "$STALE_FIX_RE" "$STALE_FIX_JQ"'
+  all_comments "$1" | count_auto_fix_in "${2:-fix}"
+}
+
+# count_auto_fix の数え方そのもの（入力から出力が決まる）。標準入力にコメントの配列（JSON）、引数に種類（fix|conflict）
+count_auto_fix_in() {
+  jq --arg mark "$AUTO_FIX_MARK" --arg kmark "$CONFLICT_KIND_MARK" --arg kind "${1:-fix}" \
+    --arg resume "$RESUME_MARK" --arg stale "$STALE_FIX_RE" "$STALE_FIX_JQ"'
     stale_ids as $void
     | (map(select(.body | contains($resume)) | .created_at) | max // "") as $since
-    | [.[] | select((.body | contains($mark)) and .created_at > $since) | select(.id as $i | $void | index($i) | not)] | length'
+    | [.[] | select((.body | contains($mark)) and .created_at > $since) | select(.id as $i | $void | index($i) | not)
+        | select((.body | contains($kmark)) == ($kind == "conflict"))] | length'
+}
+
+# 見た目のテストの基準の画像の置き場所（glob。1行に1つ）。pipeline.json の visual_baseline（文字列か配列）。無ければ tests/visual/**/*.png
+baseline_image_globs() {
+  local f="${STACK_FILE:-pipeline.json}" g=""
+  if [ -f "$f" ]; then
+    g=$(jq -r '.visual_baseline // empty | if type == "array" then .[] else . end | select(type == "string" and . != "")' "$f" 2> /dev/null) || g=""
+  fi
+  [ -n "$g" ] || g='tests/visual/**/*.png'
+  printf '%s\n' "$g"
+}
+
+# コンフリクトしたファイルが全部、基準の画像か（入力から出力が決まる）。標準入力にファイルの一覧（1行に1つ）、引数に glob（1行に1つ）。
+# 全部が画像なら 0。1つでも画像でない・一覧が空なら 1。glob の ** は0個以上のフォルダ、* と ? はフォルダをまたがない
+only_baseline_images() { # glob の一覧
+  jq -R -s -e --arg globs "$1" '
+    def glob_re: "^" + (gsub("(?<c>[.+()^$|{}\\[\\]\\\\])"; "\\\(.c)")
+      | gsub("\\*\\*/"; "\u0001") | gsub("\\*\\*"; "\u0002") | gsub("\\*"; "[^/]*") | gsub("\\?"; "[^/]")
+      | gsub("\u0001"; "(.*/)?") | gsub("\u0002"; ".*")) + "$";
+    ($globs | split("\n") | map(select(. != "") | glob_re)) as $res
+    | (split("\n") | map(select(. != ""))) as $files
+    | ($files | length) > 0 and ($res | length) > 0 and all($files[]; . as $f | any($res[]; . as $r | $f | test($r)))' > /dev/null 2>&1
+}
+
+# 基準の画像だけのコンフリクトを、AIを呼ばずに解く：main を取り込むマージのコミットを API で作り（画像は main の側を取る）、
+# PRのブランチに push してから visual:update で撮り直す（今の自動の撮り直しと同じ流れ）。解けたら 0（何も頼まない）。
+# 画像以外も両方で変わっている・読めない・fork のPR・同じ先頭でもう試した、などは 1（呼び出し元が今までどおりAIに頼む）。
+# 両方で変わったファイル（merge base からの変更の重なり）をコンフリクトとみなす（本物のコンフリクトより広いので、迷えばAIに回る）
+resolve_baseline_conflict() { # PR番号
+  local pr="$1" info head ref base mark base_cmp main_cmp main_sha both n tree entries base_tree new_tree new_commit
+  info=$(gh api "repos/$REPO/pulls/$pr" 2> /dev/null) || return 1
+  pr_head_is_repo "$info" || return 1
+  head=$(printf '%s' "$info" | jq -r '.head.sha // ""')
+  ref=$(printf '%s' "$info" | jq -r '.head.ref // ""')
+  base=$(printf '%s' "$info" | jq -r '.base.ref // "main"')
+  [ -n "$head" ] && [ -n "$ref" ] || return 1
+  [[ "$ref" == pipeline-sync/* ]] && return 1
+  mark="<!-- ${CONFLICT_IMAGES_MARK} ${head} -->"
+  all_comments "$pr" | jq -e --arg m "$mark" 'any(.[]; .body | contains($m))' > /dev/null 2>&1 && return 1
+  # PRの側の変更（merge base → PRの先頭）と、main の側の変更（merge base → main）
+  base_cmp=$(gh api "repos/$REPO/compare/$base...$head" 2> /dev/null) || return 1
+  main_cmp=$(gh api "repos/$REPO/compare/$head...$base" 2> /dev/null) || return 1
+  # 一覧は300件で切れる。切れていれば重なりが分からないので、AIに任せる
+  [ "$(printf '%s' "$base_cmp" | jq '(.files // []) | length')" -lt 300 ] || return 1
+  [ "$(printf '%s' "$main_cmp" | jq '(.files // []) | length')" -lt 300 ] || return 1
+  both=$(jq -n -r --argjson a "$base_cmp" --argjson b "$main_cmp" '
+    def names: [(.files // [])[] | .filename, (.previous_filename // empty)] | unique;
+    ($a | names) - (($a | names) - ($b | names)) | .[]') || return 1
+  printf '%s\n' "$both" | only_baseline_images "$(baseline_image_globs)" || return 1
+  n=$(printf '%s\n' "$both" | awk 'NF' | wc -l | tr -d ' ')
+  main_sha=$(gh api "repos/$REPO/git/ref/heads/$base" -q '.object.sha' 2> /dev/null) || return 1
+  [ -n "$main_sha" ] || return 1
+  # main の側で変わったファイルを、main の木の中身（モードも）のまま、PRの先頭の木に重ねる（消えた物は消す）
+  tree=$(gh api "repos/$REPO/git/trees/$main_sha?recursive=1" 2> /dev/null) || return 1
+  [ "$(printf '%s' "$tree" | jq -r '.truncated // false')" = false ] || return 1
+  entries=$(jq -n -c --argjson c "$main_cmp" --argjson t "$tree" '
+    ([$t.tree[] | select(.type == "blob") | {key: .path, value: .}] | from_entries) as $m
+    | [($c.files // [])[]
+        | (if .status == "renamed" and .previous_filename then {path: .previous_filename, mode: "100644", type: "blob", sha: null} else empty end),
+          (if .status == "removed" then {path: .filename, mode: "100644", type: "blob", sha: null}
+           else ($m[.filename] // null) as $e | if $e then {path: .filename, mode: $e.mode, type: "blob", sha: $e.sha} else error("missing") end end)]') || return 1
+  base_tree=$(gh api "repos/$REPO/git/commits/$head" -q '.tree.sha' 2> /dev/null) || return 1
+  new_tree=$(jq -n -c --arg b "$base_tree" --argjson e "$entries" '{base_tree: $b, tree: $e}' |
+    gh api -X POST "repos/$REPO/git/trees" --input - -q .sha 2> /dev/null) || return 1
+  [ -n "$new_tree" ] || return 1
+  new_commit=$(jq -n -c --arg t "$new_tree" --arg h "$head" --arg m "$main_sha" --arg base "$base" \
+    '{message: ("Merge " + $base + " into PR（基準の画像のコンフリクトは " + $base + " の側を取る。自動）"), tree: $t, parents: [$h, $m]}' |
+    gh api -X POST "repos/$REPO/git/commits" --input - -q .sha 2> /dev/null) || return 1
+  [ -n "$new_commit" ] || return 1
+  # 早送りだけ（force しない）。その間に誰かが push していたら断られるので、AIに任せる
+  jq -n -c --arg s "$new_commit" '{sha: $s, force: false}' |
+    gh api -X PATCH "repos/$REPO/git/refs/heads/$ref" --input - > /dev/null 2>&1 || return 1
+  comment "$pr" "main とのコンフリクトが、見た目のテストの基準の画像（${n}枚）だけだったので、AIを呼ばずに main を取り込みました（画像は main の側を取りました。直す回数にもコンフリクトの回数にも数えません）。このあと基準の画像をCIの環境で撮り直します。
+
+${mark}
+${VISUAL_MARK}" || true
+  add_label "$pr" "visual:update" || true
+  echo "PR #$pr：基準の画像だけのコンフリクト（${n}枚）を、AIを呼ばずに解いて、撮り直しを依頼しました"
+  return 0
 }
 
 # 「再開」の記録より後に、修正AIが「PRが更新されたので動かない」と返した回数
@@ -430,9 +525,11 @@ pr_body_hash() {
   gh api "repos/$REPO/pulls/$1" -q '.body // ""' | sha1sum | cut -c1-12
 }
 
-# AIに直させる。上限を超えていたら人間に回す
+# AIに直させる。上限を超えていたら人間に回す。
+#   使い方：request_fix_or_stop PR番号 先頭コミット 依頼の文 [人向けの理由] [種類 fix|conflict]
+#   種類 conflict（main とのコンフリクトの解消）は、直す回数ではなく、別の上限（MAX_CONFLICT_FIX）で数える（request_conflict_fix_or_stop）
 request_fix_or_stop() {
-  local pr="$1" sha="$2" message="$3" human_reason="${4:-}"
+  local pr="$1" sha="$2" message="$3" human_reason="${4:-}" kind="${5:-fix}"
   local count total model_mark="" note=""
   # 同じ先頭コミットに、まだ終わっていない依頼があれば、重ねて頼まない（回数にも数えない）。
   # CI・レビュー・基準の画像の撮り直し（visual-update.yml）・見張り役のどこから呼ばれても、修正AIが同じコミットで2つ同時に動かないように。
@@ -441,6 +538,28 @@ request_fix_or_stop() {
   if [ -z "${FIX_RUN_ENDED:-}" ] && fix_requested_for "$pr" "$sha"; then
     echo "PR #$pr：このコミットにはもう直すよう頼んであるので、重ねて頼みません（直した push のあとに、CIとレビューがもう一度動きます）"
     return 0
+  fi
+  if [ "$kind" = conflict ]; then
+    # 基準の画像だけのコンフリクトは、AIを呼ばずに解く（どちらの回数も使わない）
+    if resolve_baseline_conflict "$pr"; then
+      return 0
+    fi
+    count=$(count_auto_fix "$pr" conflict)
+    if [ "$count" -ge "$MAX_CONFLICT_FIX" ]; then
+      human_reason=$(printf '%s' "$human_reason" | tr '\r\n' '  ' | sed 's/  */ /g; s/^ //; s/ $//')
+      [ -n "$human_reason" ] || human_reason="main とのコンフリクトが解けませんでした"
+      stop_for_human "$pr" "main とのコンフリクトが$((count + 1))回続きました（AIに解消を頼めるのは${MAX_CONFLICT_FIX}回まで。最後の理由：${human_reason}）"
+      return
+    fi
+    comment "$pr" "@claude ${message}
+
+解消したら、確認コマンド（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）を全部通してから、このPRのブランチにpushしてください。（自動の依頼・コンフリクトの解消 $((count + 1))/${MAX_CONFLICT_FIX}。直す回数には数えません）
+
+${AUTO_FIX_MARK}
+${CONFLICT_KIND_MARK}
+<!-- auto-fix-sha: ${sha} -->
+<!-- auto-fix-body: $(pr_body_hash "$pr") -->"
+    return
   fi
   count=$(count_auto_fix "$pr")
   # 普通のモデルで MAX_AUTO_FIX 回直しても駄目なら、最後に1回だけ、いちばん強いモデル（opus）で直す
@@ -467,18 +586,24 @@ ${AUTO_FIX_MARK}
 <!-- auto-fix-body: $(pr_body_hash "$pr") -->${model_mark}"
 }
 
+# main とのコンフリクトの解消を頼む（直す回数とは別に、MAX_CONFLICT_FIX 回まで。基準の画像だけならAIを呼ばずに解く）
+#   使い方：request_conflict_fix_or_stop PR番号 先頭コミット 依頼の文 [人向けの理由]
+request_conflict_fix_or_stop() {
+  request_fix_or_stop "$1" "$2" "$3" "${4:-main とのコンフリクトが解けませんでした}" conflict
+}
+
 # PR のマージの状態（GitHub が計算し終わるまで少し待つ）：clean / dirty（main と衝突）/ blocked / behind / unknown など
 # もう一度レビューに回す（ai:review を付け直すと、labeled イベントでレビューAIが動く）。
 # ただし main とコンフリクトしているPRでは、GitHub が pull_request のワークフローを動かさないので、レビューAIは起きない。
 # そのまま付け直すと誰も動かずに止まる（tochi-rirekisho PR #5：PRの説明を直した後のレビューが起きず、9時間止まった）。
-# コンフリクトしていれば、先にAIに解消させる（直す回数に数える。解消して push されると、CIのあとでレビューに回る）
+# コンフリクトしていれば、先にAIに解消させる（直す回数ではなく、コンフリクトの回数に数える。解消して push されると、CIのあとでレビューに回る）
 # shellcheck disable=SC2016 # 文の中の `…` はそのまま見せる（コマンドとして動かさない）
 CONFLICT_FIX_MSG='main とコンフリクトしていて、このままではCIもレビューも動きません。`git fetch origin main` のあと `git merge origin/main` でコンフリクトを解消してください。両方の変更の意図を残し、どちらかを捨てるときはPRにコメントで理由を書いてください。解消したら確認コマンド（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）を全部通して push してください。'
 request_review() { # PR番号
   local pr="$1" sha
   if [ "$(pr_merge_state "$pr")" = dirty ]; then
     sha=$(gh api "repos/$REPO/pulls/$pr" -q .head.sha)
-    request_fix_or_stop "$pr" "$sha" "$CONFLICT_FIX_MSG" "main とのコンフリクトが解けませんでした"
+    request_conflict_fix_or_stop "$pr" "$sha" "$CONFLICT_FIX_MSG" "main とのコンフリクトが解けませんでした"
     echo "PR #$pr：main とコンフリクトしていてレビューが動かないので、先にAIに解消を依頼しました"
     return 0
   fi
@@ -550,7 +675,7 @@ merge_or_handle() {
   state=$(pr_merge_state "$pr")
   if [ "$state" = dirty ]; then
     # 同時に進めた別の PR が先にマージされ、同じファイルを触っていたとき
-    request_fix_or_stop "$pr" "$sha" "レビューのあとに main が進み、コンフリクトでマージできませんでした。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し（docs/spec.md・docs/design.md も両方の決まりを残す）、どちらかを捨てるときはPRにコメントで理由を書いてください。解消したら確認コマンド（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）を全部通して push してください。" "main とのコンフリクトが解けませんでした"
+    request_conflict_fix_or_stop "$pr" "$sha" "レビューのあとに main が進み、コンフリクトでマージできませんでした。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し（docs/spec.md・docs/design.md も両方の決まりを残す）、どちらかを捨てるときはPRにコメントで理由を書いてください。解消したら確認コマンド（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）を全部通して push してください。" "main とのコンフリクトが解けませんでした"
     echo "PR #$pr：main と衝突してマージできないので、AIに解消を依頼しました"
   else
     # CI 以外のチェック（Vercel など）が落ちていて、GitHub がマージを断ったのかもしれない。落ちているチェックがあれば、名前と理由を書く
@@ -2212,7 +2337,10 @@ reissue_stale_fix() { # PR番号 動かなかった依頼のコメント（JSON�
     "main とコンフリクト"*) reason="main とのコンフリクトが解けませんでした" ;;
     *) reason="" ;;
   esac
-  if [ -n "$reason" ]; then
+  # コンフリクトの解消の依頼は、同じ種類のまま出し直す（直す回数ではなく、コンフリクトの回数で数える）
+  if printf '%s' "$body" | grep -qF "$CONFLICT_KIND_MARK"; then
+    request_conflict_fix_or_stop "$pr" "$head" "${message}${STALE_FIX_NOTE}" "main とのコンフリクトが解けませんでした"
+  elif [ -n "$reason" ]; then
     request_fix_or_stop "$pr" "$head" "${message}${STALE_FIX_NOTE}" "$reason"
   else
     request_fix_or_stop "$pr" "$head" "${message}${STALE_FIX_NOTE}"

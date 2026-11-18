@@ -379,6 +379,11 @@ ${MOCKS_RETRY_MARK}"
         model_mark="
 <!-- auto-fix-model: opus -->"
       fi
+      # コンフリクトの解消の依頼なら、種類の印も残す（やり直しはどちらの回数にも数えないが、何の依頼かを残す）
+      if printf '%s' "$last_request" | grep -qF "$CONFLICT_KIND_MARK"; then
+        model_mark="${model_mark}
+${CONFLICT_KIND_MARK}"
+      fi
       write_retry_record "$n" "$next" "$kind" "$reason" "" "$limit_first"
       remove_label "$n" "ai:retry"
       comment "$n" "${request}
@@ -520,7 +525,7 @@ for pr in $(printf '%s' "$open_prs" | jq -r '.[].number'); do
     if [ "$merge_state" = dirty ]; then
       asked=$(all_comments "$pr" | jq --arg mark "auto-fix-sha: $head" '[.[] | select(.body | contains($mark))] | length')
       if [ "$asked" -eq 0 ]; then
-        request_fix_or_stop "$pr" "$head" "main とコンフリクトしていて、このPRのCIが動いていません（コンフリクトがあるとCIは動きません）。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し（docs/spec.md・docs/design.md も両方の決まりを残す）、どちらかを捨てるときはPRにコメントで理由を書いてください。" "main とのコンフリクトが解けませんでした"
+        request_conflict_fix_or_stop "$pr" "$head" "main とコンフリクトしていて、このPRのCIが動いていません（コンフリクトがあるとCIは動きません）。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し（docs/spec.md・docs/design.md も両方の決まりを残す）、どちらかを捨てるときはPRにコメントで理由を書いてください。" "main とのコンフリクトが解けませんでした"
       else
         # 頼んだのに応答が無いまま IDLE_ORPHAN_MIN 分たったら、やり直し→人間へ（CIが無いので、3.4 には来ない）
         handle_lost_conflict_request "$pr" "$head" "$ref" || true
@@ -539,7 +544,7 @@ for pr in $(printf '%s' "$open_prs" | jq -r '.[].number'); do
       remove_label "$pr" "visual:update"
       relabel_mark="<!-- auto-visual-relabel: ${head} -->"
       if [ "$(pr_merge_state "$pr")" = dirty ]; then
-        request_fix_or_stop "$pr" "$head" "基準の画像の撮り直し（visual:update）が、${m}分たっても動いていません。main とコンフリクトしているためです（コンフリクトがあると、撮り直しもCIも動きません）。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。画像など、中身を混ぜられないファイルは \`git checkout --theirs -- パス\` で main の側を取って \`git add\` し、PR に「見た目を変えたので visual:update ラベルで基準の画像を撮り直してください」とコメントしてください。" "main とのコンフリクトが解けず、基準の画像の撮り直しが動きませんでした"
+        request_conflict_fix_or_stop "$pr" "$head" "基準の画像の撮り直し（visual:update）が、${m}分たっても動いていません。main とコンフリクトしているためです（コンフリクトがあると、撮り直しもCIも動きません）。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。画像など、中身を混ぜられないファイルは \`git checkout --theirs -- パス\` で main の側を取って \`git add\` し、PR に「見た目を変えたので visual:update ラベルで基準の画像を撮り直してください」とコメントしてください。" "main とのコンフリクトが解けず、基準の画像の撮り直しが動きませんでした"
       elif all_comments "$pr" | jq -e --arg mk "$relabel_mark" 'any(.[]; .body | contains($mk))' > /dev/null; then
         stop_for_human "$pr" "基準の画像の撮り直し（visual:update）を付け直しても、撮り直しが動きませんでした（Actions の Visual Update を確認してください）"
       else
@@ -591,7 +596,7 @@ ${relabel_mark}"
         # 同じ先頭コミットへの依頼は1回だけ
         if [[ "$ref" != pipeline-sync/* ]] && [ "$(pr_merge_state "$pr")" = dirty ]; then
           if ! printf '%s' "$comments" | jq -e --arg mk "auto-fix-sha: $head" 'any(.[]; .body | contains($mk))' > /dev/null; then
-            request_fix_or_stop "$pr" "$head" "人間のマージ待ちの間に main が進み、コンフリクトしています。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し（docs/spec.md・docs/design.md も両方の決まりを残す）、どちらかを捨てるときはPRにコメントで理由を書いてください。" "main とのコンフリクトが解けませんでした"
+            request_conflict_fix_or_stop "$pr" "$head" "人間のマージ待ちの間に main が進み、コンフリクトしています。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し（docs/spec.md・docs/design.md も両方の決まりを残す）、どちらかを捨てるときはPRにコメントで理由を書いてください。" "main とのコンフリクトが解けませんでした"
           else
             # 頼んだのに応答が無いまま IDLE_ORPHAN_MIN 分たったら、やり直し→人間へ
             handle_lost_conflict_request "$pr" "$head" "$ref" || true

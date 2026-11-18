@@ -56,7 +56,7 @@ ${RESUME_MARK}"
       if [[ "$ref" == pipeline-sync/* ]]; then
         echo "PR #$NUMBER：配布のPRなので、コンフリクトの解消は頼みません"
       else
-        request_fix_or_stop "$NUMBER" "$head" "$CONFLICT_FIX_MSG" "main とのコンフリクトが解けませんでした"
+        request_conflict_fix_or_stop "$NUMBER" "$head" "$CONFLICT_FIX_MSG" "main とのコンフリクトが解けませんでした"
         echo "PR #$NUMBER：main とコンフリクトしているので、空のコミットは足さず、解消を依頼しました"
       fi
     else
