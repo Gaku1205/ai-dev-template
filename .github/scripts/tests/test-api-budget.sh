@@ -109,6 +109,8 @@ state_with_run success "$slot_start"
 run_lib 'mark_for_retry 9 plan "上限"' > /dev/null
 out=$(GITHUB_EVENT_NAME=workflow_run GITHUB_RUN_ID=200 run_script watchdog.sh)
 assert_contains "期限が来ていない ai:retry：間引く" "$out" "もう見張りが済んでいるので、今回は何もしません"
+# 期限を読み直さないので、12回（読み直すと13回になる。この判定が入る前と同じ回数）
+assert_eq "間引く回の API の回数：ai:retry の期限を二重に読まない" "12" "$(calls)"
 # 順番待ちがあって、ai:hold が付いて HOLD_BLOCK_MIN を過ぎたPR
 review='{"id":901,"issue":"20","user":{"login":"github-actions[bot]"},"created_at":"2026-11-17T00:00:00Z","updated_at":"2026-11-17T00:00:00Z","body":"## Code review\n\nNo issues found."}'
 pr20='{"number":20,"state":"open","mergeable_state":"clean","head":{"ref":"claude/issue-9-x","sha":"abc"},"labels":[{"name":"ai:hold"}]}'

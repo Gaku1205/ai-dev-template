@@ -111,13 +111,17 @@ heartbeat_needed() {
       and ((.number | tostring) as $n | ($hold | contains(" " + $n + " ")) | not))' > /dev/null 2>&1
 }
 
+# 番号ごとの retry_due_at の写し（due_work_pending が読んだ物を set_retry_timer が使い回す。コメントの API を増やさない）
+declare -A RETRY_DUE_CACHE=()
+
 set_retry_timer() {
   local earliest="" n t now_s runs
   [ "${RETRY_TIMER:-on}" = "off" ] && return 0
   now_s=$(date +%s)
   for n in $(open_numbers_with_label "ai:retry" all); do
     has_label_or_unreadable "$n" "ai:stuck" && continue
-    t=$(retry_due_at "$n")
+    t="${RETRY_DUE_CACHE[$n]:-}"
+    [ -n "$t" ] || t=$(retry_due_at "$n")
     [ "$t" -gt "$now_s" ] || continue
     if [ -z "$earliest" ] || [ "$t" -lt "$earliest" ]; then earliest="$t"; fi
   done
@@ -173,12 +177,14 @@ set_retry_timer() {
 # 間引いてはいけない物があるか（期限の来た ai:retry、または順番待ちがあって HOLD_BLOCK_MIN を過ぎたマージ待ちのPR）。あれば 0
 # ai:retry は set_retry_timer と同じ取り方（retry_due_at <= 今）。ai:stuck・ai:skip の付いた物は数えない
 due_work_pending() {
-  local n now_s queued pr state
+  local n now_s queued pr state due
   now_s=$(date +%s)
   for n in $(open_numbers_with_label "ai:retry" all); do
     has_label_or_unreadable "$n" "ai:stuck" && continue
     has_label_or_unreadable "$n" "ai:skip" && continue
-    [ "$(retry_due_at "$n")" -le "$now_s" ] && return 0
+    due=$(retry_due_at "$n")
+    RETRY_DUE_CACHE[$n]="$due"
+    [ "$due" -le "$now_s" ] && return 0
   done
   queued=$(count_open_issues_with_label "ai:queue" 2> /dev/null) || queued=0
   if [ "${queued:-0}" -gt 0 ]; then
