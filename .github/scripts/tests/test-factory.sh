@@ -421,6 +421,29 @@ mk_site "$S"
 run_factory site-nodesign nextjs "説明" DESIGN_FILE="$T/design-bad.md" SITE_DIR="$S" > /dev/null
 assert_contains "デザイン仕様が雛形のままなら入れない" "$(file_in o/site-nodesign src/app/page.tsx)" "greeting"
 
+echo "== サーバーの要らない案は GitHub Pages：pipeline.json と next.config を Pages の形にし、Vercel は使わず、理由を書く"
+out=$(run_factory pages-app nextjs "データは端末だけの家計メモ" VERCEL_TOKEN=v S_VERCEL_TOKEN=vt)
+r=o/pages-app
+assert_eq "公開先は github-pages（build に基準のパス）" '[{"kind":"github-pages","build":"PAGES_BASE_PATH=/pages-app npm run build"}]' "$(file_in $r pipeline.json | jq -c .deploy)"
+assert_contains "確認コマンドも入る" "$(file_in $r pipeline.json | jq -c '.checks[].run')" "npm run typecheck"
+nc=$(file_in $r next.config.ts)
+assert_contains "next.config：export" "$nc" 'output: "export"'
+assert_contains "next.config：trailingSlash" "$nc" "trailingSlash: true"
+assert_contains "next.config：images.unoptimized" "$nc" "images: { unoptimized: true }"
+assert_contains "next.config：basePath" "$nc" "basePath"
+assert_eq "vercel.json は消える" "" "$(file_in $r vercel.json)"
+assert_contains "最初のコメントに理由" "$(cat "$T/comment.txt")" "公開先は GitHub Pages：サーバーで動く物"
+assert_contains "設計メモ（仕様書）に理由" "$(file_in $r docs/spec.md)" "- 公開先：公開先は GitHub Pages"
+assert_contains "公開アドレス" "$(cat "$T/comment.txt")" "https://o.github.io/pages-app/"
+assert_contains "Pages を有効にする" "$(cat "$T/calls.log")" 'POST repos/o/pages-app/pages {"build_type": "workflow"}'
+assert_not_contains "Vercel を呼ばない" "$(cat "$T/calls.log")" "curl"
+assert_not_contains "Vercel の鍵を写さない" "$(cat "$T/calls.log")" "secret VERCEL_TOKEN"
+run_factory server-app nextjs "データは端末だけの家計メモ" APP_LOGIN=yes VERCEL_TOKEN=v > /dev/null
+assert_eq "ログインがあれば Vercel（pipeline.json は作らない）" "" "$(file_in o/server-app pipeline.json)"
+assert_contains "Vercel の理由を書く" "$(cat "$T/comment.txt")" "公開先は Vercel："
+assert_contains "設計メモにも書く" "$(file_in o/server-app docs/spec.md)" "- 公開先：公開先は Vercel"
+assert_contains "Vercel につなぐ" "$(cat "$T/calls.log")" "curl"
+
 echo "== GitHub Pages：公開先に github-pages があれば FACTORY_TOKEN で有効にする（無ければ呼ばない）"
 run_factory no-pages nextjs "説明" > /dev/null
 assert_not_contains "github-pages が無ければ Pages を呼ばない" "$(cat "$T/calls.log")" "/pages"
