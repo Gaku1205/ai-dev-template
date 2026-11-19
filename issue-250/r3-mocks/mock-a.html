@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>あと何回 — 今日の授業</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ground:#f2f4f7; --surface:#ffffff; --sunk:#e6e9ee; --ink:#0a0a0a; --muted:#5f636a;
+  --today:#1d5fbf; --zero:#c4242a; --pill:#e5e5e5;
+  --num:"Geist","Noto Sans JP",system-ui,sans-serif;
+  --jp:"Noto Sans JP","Geist",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --ground:#0b0c0e; --surface:#16181b; --sunk:#101114; --ink:#f4f5f7; --muted:#a3a8b0; --pill:#2a2d31; --today:#5b93e6; }
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--ground);color:var(--ink);font-family:var(--jp);font-size:15px;line-height:1.6;font-variant-numeric:tabular-nums}
+.app{display:grid;grid-template-columns:240px 1fr;min-height:100dvh}
+nav.side{padding:28px 16px;position:sticky;top:0;height:100dvh;display:flex;flex-direction:column;gap:4px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;padding:0 10px 22px}
+.brand b{font-size:24px;line-height:1}
+.side a{display:flex;justify-content:space-between;padding:6px 10px;border-radius:6px;color:var(--ink);text-decoration:none;font-size:14px}
+.side a.on{background:var(--pill);font-weight:700}
+.side a span{color:var(--muted)}
+.side .foot{margin-top:auto;background:#0a0a0a;color:#fff;border-radius:6px;padding:16px 14px 14px;font-size:13px;line-height:1.5}
+.side .foot b{display:block;font-size:17px;line-height:1.35;margin-bottom:6px}
+.side .foot code{display:block;font-family:var(--num);font-size:12px;color:#d6d8dc;margin-bottom:12px;word-break:break-all}
+.side .foot .btn{justify-content:center;width:100%;height:44px;font-size:15px;padding:0}
+main{padding:32px 40px 0 8px;min-width:0}
+
+/* 1. 今日 */
+.dayhead{display:flex;align-items:baseline;gap:24px;margin-bottom:20px}
+.dayhead h1{font-size:32px;line-height:1.1;font-weight:700}
+.dayhead p{font-size:17px}
+.dayhead p strong{color:var(--zero)}
+.today{display:grid;grid-template-columns:1.55fr 1fr;gap:12px;min-height:760px}
+.hero{background:#0a0a0a;color:#fff;border-radius:8px;padding:32px 36px;display:flex;flex-direction:column;position:relative;overflow:hidden}
+.hero .when{font-size:17px;color:#c9ccd1}
+.hours{position:absolute;right:36px;top:120px;width:300px}
+.hours p{font-size:16px;color:#c9ccd1;margin-bottom:10px}
+.hours p b{color:#fff;font-size:22px}
+.hours .hg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.hours .hg span{height:74px;border-radius:4px;background:#fff;color:#0a0a0a;font-family:var(--num);font-weight:700;font-size:15px;padding:6px 8px}
+.hours .hg span.u{background:#2a2a2a;color:#8f949b}
+.hours .hg span.rest{grid-column:span 3;height:74px;background:transparent;border:3px solid #fff;color:#fff;display:flex;align-items:center;gap:14px;padding:0 16px;font-family:var(--jp)}
+.hours .hg span.rest strong{font-size:26px;line-height:1;white-space:nowrap}
+.hours .hg span.rest small{white-space:nowrap;font-size:13px;font-weight:500;line-height:1.35;color:#d6d8dc}
+.hero h2{font-size:40px;line-height:1.2;margin-top:4px;max-width:50%}
+.big{display:flex;align-items:flex-end;gap:14px;margin-top:auto}
+.big .ato{white-space:nowrap;font-size:34px;font-weight:700;padding-bottom:70px}
+.big .n{display:block;overflow:hidden;padding-top:.06em;font-family:var(--num);font-weight:700;font-size:440px;line-height:.78;letter-spacing:-.04em}
+.big .kai{white-space:nowrap;font-size:40px;font-weight:700;padding-bottom:14px}
+.hero .after{margin-top:26px;font-size:19px;display:flex;gap:28px;flex-wrap:wrap}
+.hero .after b{color:#ff8a8f}
+.acts{display:flex;gap:10px;margin-top:22px}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:56px;padding:0 28px;border-radius:6px;font-weight:700;font-size:18px;text-decoration:none}
+.btn.w{background:#fff;color:#0a0a0a}
+.btn.g{background:#2a2a2a;color:#fff}
+.btn.k{background:var(--ink);color:var(--ground)}
+.btn.p{background:var(--pill);color:var(--ink)}
+.col{display:grid;grid-template-rows:auto 1fr auto auto;gap:14px;padding-left:16px}
+.slot{padding:4px 0;font-size:16px;color:var(--muted);display:flex;gap:16px}
+.slot b{color:var(--ink);font-family:var(--num);white-space:nowrap}
+.mid{border-top:8px solid var(--ink);padding:20px 0 0;display:flex;flex-direction:column}
+.mid .when{font-size:15px;color:var(--muted)}
+.mid h3{font-size:28px;line-height:1.25}
+.facts{margin-top:14px;display:flex;flex-direction:column;gap:4px;font-size:17px}
+.facts b{font-family:var(--num);font-weight:700}
+.mid .big .n{font-size:220px;color:var(--today)}
+.mid .big .ato{padding-bottom:34px;font-size:24px}
+.mid .big .kai{font-size:28px;padding-bottom:6px}
+.mid .acts .btn{height:48px;font-size:16px}
+
+/* 共通の欄 */
+section{margin-top:96px}
+h2.sec{font-size:36px;line-height:1.2;font-weight:700;margin-bottom:8px}
+.lead{font-size:17px;margin-bottom:24px;max-width:56em}
+
+/* 2. 明日 */
+.tomorrow{display:grid;grid-template-columns:1fr 1.3fr 1fr;gap:0;border-top:8px solid var(--ink)}
+.tomorrow > div{padding:26px 28px 22px 0}
+.tomorrow .dark{padding-left:28px}
+.tomorrow .dark + div{padding-left:28px}
+.tomorrow .dark{background:#0a0a0a !important;color:#fff}
+.tomorrow .when{font-size:14px;color:var(--muted)}
+.tomorrow .dark .when{color:#c9ccd1}
+.tomorrow h3{font-size:22px}
+.tomorrow .n{font-family:var(--num);font-weight:700;font-size:150px;line-height:.9;display:block;margin-top:8px}
+.tomorrow .dark .n{font-size:190px}
+.tomorrow .sub{font-size:15px;margin-top:8px}
+
+/* 3. 週の帳面 */
+.grid{display:grid;grid-template-columns:72px repeat(5,1fr);gap:6px}
+.grid .h{font-size:16px;font-weight:700;padding:8px 12px;border-radius:6px}
+.grid .h.t{background:var(--today);color:#fff}
+.grid .p{font-size:14px;color:var(--muted);padding-top:10px}
+.grid .p b{display:block;font-family:var(--num);font-size:26px;color:var(--ink);line-height:1}
+.c{min-height:150px;border-radius:6px;padding:12px 14px;background:var(--surface);display:flex;flex-direction:column}
+.c.e{background:transparent}
+.c .nm{font-weight:700;font-size:15px;line-height:1.3}
+.c .rm{font-size:12px;color:var(--muted)}
+.c .v{margin-top:auto;display:flex;align-items:flex-end;gap:4px;font-weight:700}
+.c .v i{font-style:normal;font-size:13px;padding-bottom:6px}
+.c .v em{font-style:normal;font-family:var(--num);font-size:84px;line-height:.85}
+.c.k{background:#0a0a0a;color:#fff}.c.k .rm{color:#c9ccd1}
+.c.r{background:var(--zero);color:#fff}.c.r .rm{color:#ffd9da}
+.c.lo .v em{font-size:44px}
+.c.lo2 .v em{font-size:56px}
+.c.tc{outline:3px solid var(--today);outline-offset:-3px}
+.c.none{background:var(--sunk)}
+.c.tall{grid-row:span 2}
+.c .x{font-size:13px;margin-top:6px;font-weight:700}
+
+/* 4. もう休めない */
+.zero{background:var(--zero);color:#fff;border-radius:8px;display:grid;grid-template-columns:1.1fr 1fr;overflow:hidden}
+.zero .l{padding:40px 44px;display:flex;flex-direction:column}
+.zero .l .big{margin-top:36px}
+.zero .l h2{font-size:40px;line-height:1.2}
+.zero .l .when{font-size:17px;color:#ffe1e2}
+.zero .big .n{font-size:360px}
+.zero .big .ato{padding-bottom:54px}
+.tally{font-size:64px;line-height:1;letter-spacing:.06em;font-weight:700}
+.zero .r{background:#8f161b;padding:40px 44px;display:flex;flex-direction:column;gap:22px}
+.quote{font-size:24px;line-height:1.55;font-weight:700}
+.quote small{display:block;font-size:15px;font-weight:400;color:#ffd0d2;margin-top:6px}
+.confirm{background:#fff;color:#0a0a0a;border-radius:8px;padding:26px 28px;margin-top:auto}
+.confirm h3{font-size:24px;line-height:1.35}
+.confirm p{font-size:16px;margin-top:6px}
+.confirm .acts .btn{height:52px;font-size:17px}
+.btn.red{background:var(--zero);color:#fff}
+
+/* 5. 遅刻 */
+.late{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.late .main{border-top:8px solid var(--ink);padding:24px 0 0}
+.late .main h3{font-size:26px}
+.late .eq{display:flex;align-items:center;gap:22px;margin:18px 0 10px;flex-wrap:wrap}
+.late .eq .t{font-size:130px;font-family:var(--num);font-weight:700;line-height:.9}
+.late .eq .op{font-size:30px;font-weight:700}
+.late .eq .tt{font-size:68px;letter-spacing:.05em;font-weight:700}
+.late .main p{font-size:17px}
+.late ul{list-style:none;display:flex;flex-direction:column;gap:0;border-top:8px solid var(--ink);padding-top:8px}
+.late li{padding:14px 0;display:grid;grid-template-columns:1fr auto auto;gap:18px;align-items:center}
+.late li .nm{font-weight:700;font-size:17px}
+.late li .nm small{display:block;font-weight:400;font-size:14px;color:var(--muted)}
+.late li .cnt{font-family:var(--num);font-size:40px;font-weight:700;line-height:1}
+.late li .to{font-size:15px;text-align:right;min-width:9em}
+
+/* 6. 学期 */
+.term{display:grid;grid-template-columns:auto 1fr;gap:56px;align-items:end;border-top:8px solid var(--ink);padding:36px 0 0}
+.term .n{overflow:hidden;padding-top:.06em;font-family:var(--num);font-weight:700;font-size:300px;line-height:.78;letter-spacing:-.04em}
+.term .n small{font-size:44px;letter-spacing:0;margin-left:8px}
+.term .tl{font-size:76px;letter-spacing:.08em;font-weight:700;line-height:1;margin-bottom:14px}
+.weeks{display:grid;grid-template-columns:repeat(15,1fr);gap:4px;margin-top:22px}
+.weeks span{height:46px;border-radius:4px;background:var(--sunk);font-family:var(--num);font-size:13px;display:flex;align-items:flex-end;padding:0 0 4px 6px;color:var(--muted)}
+.weeks span.d{background:#0a0a0a;color:#fff}
+.weeks span.now{background:var(--today);color:#fff;font-weight:700}
+.term p{font-size:17px;margin-top:14px}
+
+/* 暗い画面 */
+.night{display:grid;grid-template-columns:1fr 390px;grid-template-areas:"nh ph" "sw ph";grid-template-rows:auto 1fr;gap:0 56px;align-items:start}
+.night .nh{grid-area:nh}.night .phone{grid-area:ph}.night .swap{grid-area:sw}
+.night .swap{display:flex;flex-direction:column;gap:18px;margin-top:28px;border-top:8px solid var(--ink);padding-top:20px}
+.night .swap p{display:grid;grid-template-columns:7em 1fr;gap:16px;align-items:center;font-size:17px}
+.night .swap p span{display:flex;align-items:center;gap:12px;font-family:var(--num);font-weight:700;font-size:28px}
+.night .swap i{display:inline-block;width:44px;height:44px;border-radius:4px;border:2px solid var(--ink)}
+.phone{background:#0b0c0e;color:#f4f5f7;border-radius:8px;overflow:hidden;width:390px}
+.phone .bar{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;font-weight:700}
+.phone .bar b{font-size:22px;margin-right:8px}
+.phone .d{padding:0 16px 10px;font-size:22px;font-weight:700}
+.phone .d small{font-size:14px;font-weight:400;color:#a3a8b0;margin-left:10px}
+.phone .pn{background:#23262b;margin:0 16px;border-radius:8px;padding:18px 18px 18px}
+.phone .pn .wh{font-size:13px;color:#a3a8b0}
+.phone .pn h3{font-size:26px;line-height:1.2}
+.phone .pn .big .n{font-size:330px}
+.phone .pn .big .ato{font-size:22px;padding-bottom:40px}
+.phone .pn .big .kai{font-size:28px;padding-bottom:6px}
+.phone .pn .after{font-size:15px;margin-top:10px}
+.phone .pn .after b{color:#ff8a8f}
+.phone .pn .acts{flex-direction:row;margin-top:12px}
+.phone .pn .btn{flex:1;height:56px;width:auto}
+.phone .ex{margin-top:16px;background:#000;padding:22px 16px 24px;border-top:4px solid #f4f5f7}
+.phone .ex h3{font-size:22px;line-height:1.3}
+.phone .ex code{display:block;font-family:var(--num);font-size:14px;color:#d6d8dc;margin:6px 0 14px}
+.phone .ex .btn{width:100%;height:56px}
+
+/* 7. 書き出し */
+footer{margin-top:96px;background:#0a0a0a;color:#fff;padding:44px 40px 48px;margin-right:-40px;border-radius:8px 0 0 0;display:grid;grid-template-columns:1fr auto;gap:32px;align-items:end}
+footer h2{font-size:36px;line-height:1.2}
+footer p{font-size:17px;color:#d6d8dc;margin-top:8px}
+footer p b{color:#fff}
+footer .acts{margin:0}
+
+@media (max-width:1000px){
+  .app{display:block}
+  nav.side{position:static;height:auto;flex-direction:row;align-items:center;padding:0 16px;height:52px}
+  nav.side a,nav.side .foot{display:none}
+  .brand{padding:0;font-size:16px}
+  .menu{margin-left:auto;font-size:14px;font-weight:700}
+  main{padding:4px 16px 0}
+  .dayhead{flex-direction:row;gap:12px;margin-bottom:10px}
+  .dayhead h1{font-size:24px}
+  .dayhead p{font-size:15px}.dayhead p strong{display:none}
+  .today{display:block;min-height:0}
+  .hero{padding:16px 16px 18px;border-radius:8px;margin:0 -8px}
+  .hero .when{order:1}.hero h2{order:2}.hero .big{order:3}.hours{order:4}.hero .after{order:5}.hero .acts{order:6}
+  .hero h2{font-size:28px;max-width:none;white-space:nowrap}
+  .hours{position:static;width:auto;margin-top:12px}.hours p{font-size:13px;margin-bottom:4px}.hours p b{font-size:16px}
+  .hours .hg{grid-template-columns:repeat(9,1fr);gap:3px}
+  .hours .hg span{height:28px;font-size:11px;padding:2px 3px;letter-spacing:-.03em}
+  .hours .hg span.rest{height:28px;padding:0 6px;justify-content:center}.hours .hg span.rest strong{font-size:14px}.hours .hg span.rest small{display:none}
+  .hero .when{font-size:15px}
+  .hero .big{margin-top:6px;gap:10px}
+  .big .n{font-size:420px}
+  .big .ato{font-size:22px;padding-bottom:60px}
+  .big .kai{font-size:30px;padding-bottom:8px}
+  .hero .after{font-size:15px;gap:2px 16px;margin-top:10px}
+  .hero .after span:first-child{display:none}
+  .acts{flex-direction:column}
+  .hero .acts{flex-direction:row;margin-top:12px}
+  .btn{width:100%;height:60px}
+  .hero .btn{height:56px}
+  .col{margin-top:12px;display:flex;flex-direction:column}
+  .mid .big .n{font-size:190px}
+  .mid h3{font-size:24px}
+  section{margin-top:64px}
+  h2.sec{font-size:28px}
+  .lead{font-size:15px}
+  .tomorrow{grid-template-columns:1fr}
+  .tomorrow > div{display:grid;grid-template-columns:1fr auto;align-items:end;padding:18px 20px}
+  .tomorrow .n,.tomorrow .dark .n{font-size:110px;margin:0;grid-row:span 3;grid-column:2}
+  .grid{grid-template-columns:34px repeat(5,1fr);gap:3px}
+  .grid .h{font-size:13px;padding:6px 4px;text-align:center}
+  .grid .p span{display:none}.grid .p b{font-size:18px}
+  .grid > *{min-width:0}
+  .c{min-height:92px;padding:6px 5px}
+  .c .nm{font-size:11px;line-height:1.25;word-break:break-all}
+  .c .rm,.c .v i,.c .x{display:none}
+  .c .v em{font-size:40px}.c.lo .v em,.c.lo2 .v em{font-size:26px}
+  .zero{grid-template-columns:1fr}
+  .zero .l,.zero .r{padding:24px 20px}
+  .zero .l h2{font-size:30px}
+  .zero .big .n{font-size:240px}
+  .tally{font-size:48px}
+  .quote{font-size:19px}
+  .confirm h3{font-size:20px}
+  .late{grid-template-columns:1fr}
+  .late .eq .t{font-size:96px}.late .eq .tt{font-size:48px}
+  .late li{grid-template-columns:1fr auto;padding:14px 16px}
+  .late li .to{grid-column:1/-1;text-align:left}
+  .term{grid-template-columns:1fr;gap:12px;padding:24px 20px}
+  .term .n{font-size:200px}
+  .term .tl{font-size:52px}
+  .weeks{gap:3px;grid-template-columns:repeat(8,1fr)}.weeks span{height:34px;font-size:12px;padding-left:4px}
+  .night{grid-template-columns:1fr;grid-template-areas:"nh" "ph" "sw";gap:0}
+  .night .swap{margin-top:16px;gap:12px}.night .swap p{grid-template-columns:5.5em 1fr;font-size:15px}.night .swap p span{font-size:20px}.night .swap i{width:32px;height:32px}
+  .phone{width:auto;margin:0 -16px;border-radius:0}
+  .phone .pn .big .n{font-size:300px}
+  .col{padding-left:0}
+  .tomorrow > div,.tomorrow .dark,.tomorrow .dark + div{padding:18px 0}.tomorrow .dark{padding:18px 16px;margin:0 -16px}
+  footer{margin:64px -16px 0;padding:32px 20px 40px;grid-template-columns:1fr}
+  footer h2{font-size:28px}
+}
+@media (max-width:1000px){
+  section{margin-top:44px}
+  .night{margin-top:44px}.night .lead{display:none}
+  .night .swap{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}.night .swap p{grid-template-columns:1fr;gap:2px;font-size:13px}.night .swap p span{font-size:15px;gap:6px}.night .swap i{width:26px;height:26px}
+  .mid .big .n{font-size:150px}.mid .acts{flex-direction:row}.mid .acts .btn{flex:1;height:52px}
+  .tomorrow > div,.tomorrow .dark,.tomorrow .dark + div{padding-top:12px;padding-bottom:12px}
+  .tomorrow .n,.tomorrow .dark .n{font-size:76px}
+  .zero .l,.zero .r{padding:20px 16px;gap:14px}
+  .zero .l h2{font-size:24px}.zero .l .big{margin-top:12px}
+  .zero .big .n{font-size:150px}.zero .big .ato{padding-bottom:24px}
+  .tally{font-size:36px}
+  .quote{font-size:16px}
+  .late .main{padding-top:14px}.late .eq{margin:8px 0 6px;gap:12px}.late .eq .t{font-size:64px}.late .eq .op{font-size:20px}
+  .late .main p{font-size:15px}
+  .late li{padding:8px 0;gap:2px 12px}.late li .nm{font-size:15px}.late li .nm small{font-size:13px}.late li .cnt{font-size:30px}.late li .to{font-size:13px}
+  .term{padding-top:16px}.term .n{font-size:120px}.term .tl{font-size:40px;margin-bottom:6px}.term p{font-size:15px;margin-top:8px}.weeks{margin-top:12px}
+  footer{margin-top:44px;padding:24px 16px 28px;gap:16px}footer h2{font-size:22px}footer p{font-size:14px}
+  footer .acts{flex-direction:row}footer .btn{flex:1;height:52px}
+}
+@media (max-width:1000px){
+  .phone .pn .big .n{font-size:230px}.phone .pn .big .ato{padding-bottom:28px}
+  .night .swap{grid-template-columns:repeat(4,1fr);gap:8px}.night .swap p span{flex-wrap:wrap;font-size:12px}.night .swap p span i:first-child{display:none}
+  .tomorrow{grid-template-columns:repeat(3,1fr)}
+  .tomorrow > div,.tomorrow .dark,.tomorrow .dark + div{display:flex;flex-direction:column;padding:12px 8px;margin:0}
+  .tomorrow .when{font-size:11px}.tomorrow h3{font-size:15px;line-height:1.3}.tomorrow .sub{font-size:11px;margin-top:2px}
+  .tomorrow .n,.tomorrow .dark .n{font-size:72px;margin-top:6px}
+  .late ul{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+  .late li .to{display:none}
+  .zero .l{display:grid;grid-template-columns:auto 1fr;gap:0 12px;align-items:end}
+  .zero .l .when,.zero .l h2{grid-column:1/-1}
+  .zero .l .big{grid-row:span 2;margin-top:8px}
+  .zero .l p{grid-column:1/-1}
+}
+@media (max-width:1000px){
+  .c{min-height:74px}
+  .weeks{grid-template-columns:repeat(15,1fr);gap:2px}.weeks span{height:28px;font-size:11px;padding-left:2px}
+  .term .n{font-size:100px}
+  .night h2.sec{font-size:22px}
+  .lead{font-size:14px;margin-bottom:14px}
+  .mid .big .n{font-size:130px}.mid .facts{font-size:15px;margin-top:8px}
+  .phone .ex{padding:16px 16px 18px;margin-top:12px}
+  .tally{font-size:28px}
+}
+@media (max-width:1000px){
+  section,.night{margin-top:34px}
+  footer{margin-top:34px}
+  h2.sec{font-size:26px}
+}
+@media (max-width:1000px){
+  .tomorrow > div,.tomorrow .dark,.tomorrow .dark + div{align-items:flex-start}
+  .c .nm{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+}
+@media (min-width:1001px){ .menu{display:none} }
+</style>
+</head>
+<body>
+<div class="app">
+<nav class="side">
+  <div class="brand"><b>正</b>あと何回</div>
+  <span class="menu">メニュー</span>
+  <a class="on" href="#today">今日</a>
+  <a href="#week">時間割<span>11</span></a>
+  <a href="#zero">危ない授業<span>5</span></a>
+  <a href="#late">遅刻の換算</a>
+  <a href="#term">学期の残り</a>
+  <a href="#out">書き出し・読み込み</a>
+  <div class="foot"><b>データはこのスマホの中だけ</b>2026年 後期・第9週<code>ato-nankai-2026-kouki.json</code><a class="btn w" href="#out">書き出す</a></div>
+</nav>
+<main>
+
+<div id="today">
+  <div class="dayhead">
+    <h1>11月19日 木曜</h1>
+    <p>今日は2コマ。<strong>情報処理実習は、あと1回で受験資格がなくなります。</strong></p>
+  </div>
+  <div class="today">
+    <article class="hero">
+      <div class="when">4・5限 14:40〜17:50 ・ 情報棟PC1 ・ 1回3時間</div>
+      <h2>情報処理実習</h2>
+      <div class="hours"><p>休める <b>9時間</b> のうち、使った6時間</p><div class="hg">
+        <span class="u">10/8</span><span class="u">10/8</span><span class="u">10/8</span>
+        <span class="u">11/5</span><span class="u">11/5</span><span class="u">11/5</span>
+        <span class="rest"><strong>残り3時間</strong><small>今日休むと<br>11/19 で全部埋まる</small></span></div></div>
+      <div class="big"><span class="ato">あと</span><span class="n">1</span><span class="kai">回</span></div>
+      <div class="after"><span>残り3時間＝ちょうど1回分（45時間中9時間まで）</span><span>今日休むと <b>あと0回</b></span></div>
+      <div class="acts"><a class="btn w" href="#">欠席 +1</a><a class="btn g" href="#">遅刻 +1</a></div>
+    </article>
+    <div class="col">
+      <div class="slot"><b>1限</b> 9:00 空き</div>
+      <article class="mid">
+        <div class="when">2限 10:40〜12:10 ・ 情報棟401</div>
+        <h3>データベース論</h3>
+        <div class="facts"><p><b>3分の2以上</b>の出席。15回中5回まで休める</p><p>欠席 <b>0</b>・遅刻 <b>1</b>（3回で欠席1回）</p><p>今日休むと <b>あと4回</b></p></div>
+        <div class="big"><span class="ato">あと</span><span class="n">5</span><span class="kai">回</span></div>
+        <div class="acts"><a class="btn k" href="#">欠席 +1</a><a class="btn p" href="#">遅刻 +1</a></div>
+      </article>
+      <div class="slot"><b>3限</b> 13:00 空き</div>
+      <div class="slot"><b>遅刻</b> データベース論は1回。あと2回で欠席1回分</div>
+    </div>
+  </div>
+</div>
+
+<section class="night" id="night">
+  <div class="nh">
+    <h2 class="sec">暗い画面（スマホの設定が暗いとき）</h2>
+    <p class="lead">夜の部屋や朝の布団で開いても、まぶしくないように。地を黒に、黒い面を濃い灰に替えるだけで、数字の段（0は赤・1は大きく・多いと小さく）はそのままです。</p>
+  </div>
+  <div class="phone" aria-label="暗い画面のスマホ">
+    <div class="bar"><span><b>正</b>あと何回</span><span>メニュー</span></div>
+    <div class="d">11月19日 木曜<small>今日は2コマ</small></div>
+    <div class="pn">
+      <div class="wh">4・5限 14:40〜17:50 ・ 情報棟PC1</div>
+      <h3>情報処理実習</h3>
+      <div class="big"><span class="ato">あと</span><span class="n">1</span><span class="kai">回</span></div>
+      <div class="after">今日休むと <b>あと0回</b></div>
+      <div class="acts"><a class="btn w" href="#">欠席 +1</a><a class="btn g" href="#">遅刻 +1</a></div>
+    </div>
+    <div class="ex">
+      <h3>データはこのスマホの中だけ</h3>
+      <code>ato-nankai-2026-kouki.json</code>
+      <a class="btn w" href="#">ファイルに書き出す</a>
+    </div>
+  </div>
+  <div class="swap">
+      <p>地<span><i style="background:#f2f4f7"></i>→<i style="background:#0b0c0e"></i>#0b0c0e</span></p>
+      <p>黒い面<span><i style="background:#0a0a0a"></i>→<i style="background:#23262b"></i>#23262b</span></p>
+      <p>今日の青<span><i style="background:#1d5fbf"></i>→<i style="background:#5b93e6"></i>#5b93e6</span></p>
+      <p>あと0の赤<span><i style="background:#c4242a"></i>→<i style="background:#c4242a"></i>そのまま</span></p>
+    </div>
+</section>
+
+<section>
+  <h2 class="sec">明日 11月20日 金曜</h2>
+  <p class="lead">体育実技は「15回中10回の出席」。あと1回休むと、残りは全部出るしかありません。</p>
+  <div class="tomorrow">
+    <div><span class="when">1限 9:00 ・ 3号館102</span><h3>簿記論</h3><span class="sub">欠席2・3分の2以上</span><span class="n">3</span></div>
+    <div class="dark"><span class="when">2限 10:40 ・ 体育館</span><h3>体育実技</h3><span class="sub">欠席4・15回中10回の出席</span><span class="n">1</span></div>
+    <div><span class="when">3限 13:00 ・ 研究棟S12</span><h3>社会調査ゼミ</h3><span class="sub">欠席0・8割以上</span><span class="n">3</span></div>
+  </div>
+</section>
+
+<section id="week">
+  <h2 class="sec">今週の時間割と、あと何回</h2>
+  <p class="lead">マスの数字が、その授業で休める残り。0は赤、1は黒、4回以上は小さく。</p>
+  <div class="grid">
+    <div></div><div class="h">月 11/16</div><div class="h">火 11/17</div><div class="h">水 11/18</div><div class="h t">木 11/19 今日</div><div class="h">金 11/20</div>
+
+    <div class="p"><b>1</b><span>9:00</span></div>
+    <div class="c k"><span class="nm">統計学Ⅰ</span><span class="rm">3号館201</span><div class="v"><i>あと</i><em>1</em><i>回</i></div></div>
+    <div class="c e"></div>
+    <div class="c"><span class="nm">プログラミング演習</span><span class="rm">情報棟PC2</span><div class="v"><i>あと</i><em>2</em><i>回</i></div></div>
+    <div class="c e"></div>
+    <div class="c"><span class="nm">簿記論</span><span class="rm">3号館102</span><div class="v"><i>あと</i><em>3</em><i>回</i></div></div>
+
+    <div class="p"><b>2</b><span>10:40</span></div>
+    <div class="c e"></div>
+    <div class="c lo"><span class="nm">マクロ経済学</span><span class="rm">5号館大教室</span><div class="v"><i>あと</i><em>4</em><i>回</i></div></div>
+    <div class="c e"></div>
+    <div class="c lo tc"><span class="nm">データベース論</span><span class="rm">情報棟401</span><div class="v"><i>あと</i><em>5</em><i>回</i></div></div>
+    <div class="c k"><span class="nm">体育実技</span><span class="rm">体育館</span><div class="v"><i>あと</i><em>1</em><i>回</i></div></div>
+
+    <div class="p"><b>3</b><span>13:00</span></div>
+    <div class="c k"><span class="nm">英語コミュニケーションⅡ</span><span class="rm">1号館305</span><div class="v"><i>あと</i><em>1</em><i>回</i></div></div>
+    <div class="c e"></div>
+    <div class="c none"><span class="nm">心理学概論</span><span class="rm">出席を取らない</span><div class="v"><em style="font-size:40px">—</em></div></div>
+    <div class="c e"></div>
+    <div class="c"><span class="nm">社会調査ゼミ</span><span class="rm">研究棟S12</span><div class="v"><i>あと</i><em>3</em><i>回</i></div></div>
+
+    <div class="p"><b>4</b><span>14:40</span></div>
+    <div class="c e"></div>
+    <div class="c r"><span class="nm">中国語Ⅱ</span><span class="rm">2号館108</span><div class="v"><i>あと</i><em>0</em><i>回</i></div><span class="x">次は受験資格なし</span></div>
+    <div class="c e"></div>
+    <div class="c k tall"><span class="nm">情報処理実習</span><span class="rm">情報棟PC1・180分</span><div class="v"><i>あと</i><em>1</em><i>回</i></div><span class="x">残り3時間＝1回分</span></div>
+    <div class="c e"></div>
+
+    <div class="p"><b>5</b><span>16:20</span></div>
+    <div class="c e"></div><div class="c e"></div><div class="c e"></div><div class="c e"></div>
+  </div>
+</section>
+
+<section id="zero">
+  <div class="zero">
+    <div class="l">
+      <div class="when">火曜4限 ・ 2号館108 ・ 8割以上の出席</div>
+      <h2>中国語Ⅱは、もう休めません</h2>
+      <div class="big"><span class="ato">あと</span><span class="n">0</span><span class="kai">回</span></div>
+      <div class="tally" aria-label="欠席3回">下<span style="opacity:.35">　</span></div>
+      <p style="font-size:17px;margin-top:8px">欠席3回（休める3回を全部使った）・遅刻1回（3回で欠席1回）</p>
+    </div>
+    <div class="r">
+      <p class="quote">「出席が8割に満たない者は、期末試験の受験資格を認めない。」<small>中国語Ⅱ シラバス「成績評価」より</small></p>
+      <div class="confirm">
+        <h3>受験資格がなくなるかも。それでも欠席を足しますか？</h3>
+        <p>足すと欠席4回。8割（15回中12回の出席）に届かなくなります。</p>
+        <div class="acts"><a class="btn red" href="#">欠席を足す</a><a class="btn p" href="#">やめる</a></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="late">
+  <h2 class="sec">遅刻の換算</h2>
+  <p class="lead">何回の遅刻で欠席1回か、授業ごとに自分で決めた数で数えています。</p>
+  <div class="late">
+    <div class="main">
+      <h3>統計学Ⅰ（月曜1限）</h3>
+      <div class="eq"><span class="t">4</span><span class="op">遅刻 ÷ 3 ＝</span><span class="t">1</span><span class="op">欠席分</span></div>
+      <p>あと2回遅刻すると、もう1回欠席したのと同じ。いまは <b>欠席3＋遅刻分1＝4回</b>。休めるのは5回まで。</p>
+    </div>
+    <ul>
+      <li><span class="nm">英語コミュニケーションⅡ<small>2回で欠席1回</small></span><span class="cnt">2</span><span class="to">欠席1回分。次は2回で、もう1回分</span></li>
+      <li><span class="nm">中国語Ⅱ<small>3回で欠席1回</small></span><span class="cnt">1</span><span class="to">あと2回で欠席1回分</span></li>
+      <li><span class="nm">プログラミング演習<small>3回で欠席1回</small></span><span class="cnt">1</span><span class="to">あと2回で欠席1回分</span></li>
+      <li><span class="nm">データベース論<small>3回で欠席1回</small></span><span class="cnt">1</span><span class="to">あと2回で欠席1回分</span></li>
+    </ul>
+  </div>
+</section>
+
+<section id="term">
+  <h2 class="sec">後期の残り</h2>
+  <div class="term">
+    <div class="n">21<small>回</small></div>
+    <div>
+      <div class="tl">正正正正一</div>
+      <p>10授業で休める回数の合計（心理学概論は出席を取らない）。いまは15週のうち第9週。</p>
+      <div class="weeks">
+        <span class="d">1</span><span class="d">2</span><span class="d">3</span><span class="d">4</span><span class="d">5</span><span class="d">6</span><span class="d">7</span><span class="d">8</span><span class="now">9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span>
+      </div>
+      <p>1月22日まであと6週。1回休むごとに、正の字が1画ずつ減っていきます。</p>
+    </div>
+  </div>
+</section>
+
+<footer id="out">
+  <div>
+    <h2>データは、このスマホの中だけ</h2>
+    <p>ログインはありません。機種変更の前に、ファイルに書き出して新しいスマホで読み込みます。<br>最後に書き出したのは <b>10月31日</b>（19日前）。</p>
+  </div>
+  <div class="acts"><a class="btn w" href="#">ファイルに書き出す</a><a class="btn g" href="#">読み込む</a></div>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

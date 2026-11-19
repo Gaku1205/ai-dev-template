@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>あと何回 — 木曜の帳面</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ground:#f2f4f7; --surface:#ffffff; --sunk:#e6e9ee; --ink:#0a0a0a; --muted:#5f636a;
+  --today:#1d5fbf; --zero:#c4242a; --pill:#e5e5e5;
+  --num:"Geist","Noto Sans JP",system-ui,sans-serif;
+  --jp:"Noto Sans JP","Geist",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --ground:#0b0c0e; --surface:#16181b; --sunk:#101114; --ink:#f4f5f7; --muted:#a3a8b0; --pill:#2a2d31; --today:#5b93e6; }
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--ground);color:var(--ink);font-family:var(--jp);font-size:15px;line-height:1.6;font-variant-numeric:tabular-nums}
+a{color:inherit;text-decoration:none}
+
+/* 上の帯：週の切り替え */
+.top{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:32px;padding:20px 48px}
+.brand{font-weight:700;font-size:20px;line-height:1.2;display:flex;gap:10px;align-items:center}
+.brand b{font-size:26px;line-height:1}
+.brand .date{white-space:nowrap;margin-left:-6px}
+.brand .date::before{content:"・"}
+.days{display:flex;gap:6px}
+.days a{padding:8px 18px;border-radius:6px;font-weight:700;font-size:16px;background:var(--surface)}
+.days a.t{background:var(--today);color:#fff}
+.days a small{font-weight:400;font-size:13px;margin-left:6px}
+.left{font-size:15px;text-align:right}
+.left b{font-family:var(--num);font-size:30px;margin:0 2px}
+
+/* 1. 今日の帳面 */
+.book{padding:8px 48px 0;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px}
+.rest{grid-column:1/-1;margin-top:20px}
+.free{font-size:16px;color:var(--muted);padding:14px 0 0}
+.free b{color:var(--ink);font-family:var(--num);margin-right:6px}
+.two{display:flex;gap:8px}
+.row{display:grid;grid-template-columns:100px minmax(0,1fr) auto 200px;gap:24px;align-items:center;border-top:8px solid var(--ink);padding:0 28px}
+.row .per{font-family:var(--num);font-weight:700;font-size:44px;line-height:1}
+.row .per small{display:block;font-family:var(--jp);font-weight:400;font-size:14px;color:var(--muted);margin-top:6px}
+.row.e{background:var(--sunk);min-height:64px}
+.row.e .per{font-size:24px;display:flex;gap:14px;align-items:baseline}
+.row.e .per small{margin:0}
+.row.e .nm{color:var(--muted);font-size:16px}
+.row h2{font-size:34px;line-height:1.2}
+.row .rm{font-size:16px;color:var(--muted);margin-top:4px}
+.row .rule{font-size:15px;margin-top:10px}
+.row .n{display:flex;align-items:flex-end;gap:10px;font-weight:700}
+.row .n i{white-space:nowrap;font-style:normal;font-size:24px;padding-bottom:28px}
+.row .n em{display:block;overflow:hidden;padding-top:.06em;font-style:normal;font-family:var(--num);font-size:230px;line-height:.8;letter-spacing:-.04em}
+.row .n u{text-decoration:none;font-size:28px;padding-bottom:6px}
+.row .then{display:flex;flex-direction:column;gap:10px}
+.row .then p{font-size:16px}
+.row .then p b{font-family:var(--num);font-size:30px}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:56px;padding:0 24px;border-radius:6px;font-weight:700;font-size:18px}
+.btn.k{background:var(--ink);color:var(--ground)}
+.btn.p{background:var(--pill);color:var(--ink)}
+.btn.w{background:#fff;color:#0a0a0a}
+.btn.g{background:#2a2a2a;color:#fff}
+.btn.red{background:var(--zero);color:#fff}
+.row.db{grid-template-columns:100px minmax(0,1fr) auto 300px;padding:20px 0 0}
+.row.db .n em{font-size:100px}
+.row.db .n i{padding-bottom:8px;font-size:20px}
+.row.db .n u{padding-bottom:2px;font-size:22px}
+.row.db h2{font-size:30px}
+.row.db .n em{color:var(--today)}
+.row.lab{min-height:520px;background:#0a0a0a;color:#fff;border-top:0;border-radius:8px;grid-template-columns:96px minmax(0,1fr) auto 190px}
+.row.lab .rm,.row.lab .per small{color:#c9ccd1}
+.row.lab .n em{font-size:440px}
+.row.lab .n i{padding-bottom:50px}
+.row.lab .per{white-space:nowrap;font-size:36px}
+.row.lab .then p b{color:#ff8a8f}
+
+/* 右：今日の答え */
+.ans{background:#0a0a0a;color:#fff;border-radius:8px;padding:28px 28px;display:flex;flex-direction:column;gap:18px}
+.ans h3{font-size:24px;line-height:1.35}
+.ans .tl{font-size:54px;font-weight:700;letter-spacing:.02em;line-height:1;white-space:nowrap}
+.ans p{font-size:16px;color:#d6d8dc}
+.ans p b{color:#fff}
+.ans .sum{display:grid;grid-template-columns:1fr auto;gap:6px 16px;font-size:16px;background:#1c1c1c;border-radius:6px;padding:16px 18px}
+.ans .sum b{font-family:var(--num);font-size:22px;text-align:right}
+
+section{padding:0 48px;margin-top:104px}
+h2.sec{font-size:38px;line-height:1.2;margin-bottom:8px}
+.lead{font-size:17px;margin-bottom:26px;max-width:56em}
+
+/* 2. 危ない順：黒板 */
+.board{background:#16201b;color:#f4f5f7;padding:64px 48px 72px;margin-top:104px}
+.board .lead{color:#d6d8dc}
+.bds{display:grid;grid-template-columns:1fr 1fr;gap:40px 72px;margin-top:12px}
+.bd{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 24px;align-items:end;border-top:4px solid #3c4a42;padding-top:16px}
+.bd .nm{font-size:22px;font-weight:700;line-height:1.3}
+.bd .nm small{display:block;font-size:15px;font-weight:400;color:#b9c2bc}
+.bd .ch{grid-column:2;grid-row:1/span 2;display:flex;gap:28px}
+.bd .ch div{display:flex;flex-direction:column;align-items:center}
+.bd .ch span{font-size:84px;font-weight:700;line-height:1;min-width:1em;text-align:center}
+.bd .ch .l{color:#6f8077}
+.bd .ch .none{font-family:var(--num);font-size:40px;color:#6f8077;line-height:84px}
+.bd .ch small{font-size:14px;color:#b9c2bc;margin-top:6px;white-space:nowrap}
+.bd .st{font-size:17px;font-weight:700}
+.bd.r .nm,.bd.r .st{color:#ff8a8f}.bd.r .ch .u{color:#ff8a8f}
+.bd.k{border-top-color:#f4f5f7}
+
+/* 暗い画面 */
+.night{display:grid;grid-template-columns:1fr 390px;grid-template-areas:"nh ph" "sw ph";grid-template-rows:auto 1fr;gap:0 56px;align-items:start}
+.night .nh{grid-area:nh}.night .phone{grid-area:ph}.night .swap{grid-area:sw}
+.swap{display:flex;flex-direction:column;gap:18px;margin-top:28px;border-top:8px solid var(--ink);padding-top:20px}
+.swap p{display:grid;grid-template-columns:7em 1fr;gap:16px;align-items:center;font-size:17px}
+.swap p span{display:flex;align-items:center;gap:12px;font-family:var(--num);font-weight:700;font-size:28px}
+.swap i{display:inline-block;width:44px;height:44px;border-radius:4px;border:2px solid var(--ink)}
+.phone{background:#0b0c0e;color:#f4f5f7;border-radius:8px;overflow:hidden;width:390px}
+.pbar{padding:14px 16px 0;font-weight:700;font-size:16px;display:flex;align-items:center;gap:8px}
+.pbar b{font-size:22px}
+.pd{padding:2px 16px 10px;font-size:20px;font-weight:700}
+.pdays{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;padding:0 16px 12px}
+.pdays span{height:44px;display:flex;align-items:center;justify-content:center;background:#16181b;border-radius:6px;font-weight:700}
+.pdays .t{background:#5b93e6;color:#0b0c0e}
+.pn{background:#23262b;margin:0 16px;border-radius:8px;padding:18px}
+.pn .wh{font-size:13px;color:#a3a8b0}
+.pn h3{font-size:26px;line-height:1.2}
+.pbig{display:flex;align-items:flex-end;gap:10px;font-weight:700}
+.pbig i{font-style:normal;font-size:22px;padding-bottom:40px;white-space:nowrap}
+.pbig em{font-style:normal;display:block;overflow:hidden;padding-top:.06em;font-family:var(--num);font-size:330px;line-height:.78;letter-spacing:-.04em}
+.pbig u{text-decoration:none;font-size:28px;padding-bottom:6px}
+.pn .two{margin-top:14px}.pn .two .btn{flex:1}
+.ex{margin-top:16px;background:#000;padding:22px 16px 24px;border-top:4px solid #f4f5f7}
+.ex h3{font-size:22px;line-height:1.3}
+.ex code{display:block;font-family:var(--num);font-size:14px;color:#d6d8dc;margin:6px 0 14px}
+.ex .btn{width:100%}
+
+/* 3. 週の表 */
+.wk{display:grid;grid-template-columns:1.3fr 1fr;gap:48px;align-items:start}
+.grid{display:grid;grid-template-columns:44px repeat(5,1fr);gap:4px}
+.grid .h{font-weight:700;font-size:15px;padding:6px 10px;border-radius:6px}
+.grid .h.t{background:var(--today);color:#fff}
+.grid .p{font-family:var(--num);font-weight:700;font-size:22px;padding-top:6px}
+.c{height:96px;border-radius:6px;background:var(--surface);padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between}
+.c.e{background:transparent}
+.c .nm{font-size:12px;font-weight:700;line-height:1.3}
+.c em{font-style:normal;font-family:var(--num);font-weight:700;font-size:48px;line-height:.85}
+.c.lo em{font-size:28px}
+.c.k{background:#0a0a0a;color:#fff}.c.r{background:var(--zero);color:#fff}
+.c.none{background:var(--sunk)}
+.c.tall{grid-row:span 2;height:auto}
+.c.tc{outline:3px solid var(--today);outline-offset:-3px}
+.key{display:flex;flex-direction:column;gap:20px}
+.key div{display:grid;grid-template-columns:120px 1fr;gap:18px;align-items:center}
+.key .sw{height:84px;border-radius:6px;display:flex;align-items:flex-end;padding:6px 12px;font-family:var(--num);font-weight:700;font-size:56px;line-height:1}
+.key p{font-size:17px}
+.key p b{display:block;font-size:20px}
+
+/* 4. 決まり：15回の目盛り */
+.scale{border-top:8px solid var(--ink);padding-top:12px;display:flex;flex-direction:column;gap:22px}
+.sh,.sl{display:grid;grid-template-columns:300px minmax(0,1fr) 240px;gap:32px;align-items:center}
+.cells{display:grid;grid-template-columns:repeat(15,1fr);gap:4px}
+.sh .cells i{font-style:normal;font-family:var(--num);font-weight:700;font-size:14px;color:var(--muted)}
+.sl .cells i,.sl .cells b{height:56px;border:2px solid var(--ink);border-radius:3px}
+.sl .cells b{background:var(--ink)}
+.sl .from{font-size:24px;font-weight:700;line-height:1.25}
+.sl .from small{display:block;font-size:15px;font-weight:400;color:var(--muted);margin-top:4px}
+.sl .to{font-size:20px;font-weight:700;white-space:nowrap}
+.sl .to strong{font-family:var(--num);font-size:88px;line-height:.8;margin:0 6px;vertical-align:-6px}
+.note{font-size:17px;margin-top:24px}
+
+/* 5. 学期の帯 */
+.term{margin-top:104px;background:#0a0a0a;color:#fff;padding:56px 48px}
+.term .hd{display:flex;justify-content:space-between;align-items:flex-end;gap:32px;flex-wrap:wrap}
+.term h2{font-size:38px;line-height:1.2}
+.term .hd p{font-size:17px;color:#d6d8dc}
+.term .big{overflow:hidden;padding-top:.06em;font-family:var(--num);font-weight:700;font-size:200px;line-height:.8}
+.term .big small{font-family:var(--jp);font-size:36px;margin-left:6px}
+.wks{display:grid;grid-template-columns:repeat(15,1fr);gap:6px;margin-top:40px}
+.wks div{background:#1c1c1c;border-radius:6px;min-height:200px;padding:10px;display:flex;flex-direction:column;justify-content:space-between}
+.wks div b{font-family:var(--num);font-size:20px}
+.wks div span{font-size:36px;font-weight:700;line-height:1;letter-spacing:.02em}
+.wks div small{font-size:13px;color:#a3a8b0}
+.wks .now{background:var(--today)}
+.wks .now small{color:#fff}
+.wks .fu{background:#141414}
+.wks .fu b{color:#5f636a}
+
+/* 6. 書き出し */
+footer{padding:64px 48px 72px;display:grid;grid-template-columns:1fr auto;gap:32px;align-items:center;background:var(--surface)}
+footer h2{font-size:34px;line-height:1.25}
+footer p{font-size:17px;margin-top:8px}
+footer .file{font-family:var(--num);font-weight:500;font-size:17px;background:var(--sunk);border-radius:6px;padding:12px 16px;margin-top:16px;display:inline-block}
+footer .acts{display:flex;gap:10px}
+
+@media (max-width:1000px){
+  .top{grid-template-columns:1fr auto;gap:8px 10px;padding:12px 16px}
+  .brand{flex-wrap:wrap;gap:0 10px}
+  .brand .date{flex-basis:100%;margin:2px 0 0;font-size:17px}.brand .date::before{content:none}
+  .days{grid-column:1/-1;grid-row:2;display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+  .days a{height:44px;padding:0;display:flex;align-items:center;justify-content:center;font-size:16px}.days a small{display:none}
+  .left{font-size:13px}.left b{font-size:22px}
+  .book{grid-template-columns:1fr;padding:2px 16px 0}
+  .rest{margin-top:8px}
+  .row{grid-template-columns:1fr auto;gap:4px 12px;padding:18px 18px}
+  .row .per{font-size:28px;grid-column:1/-1;display:flex;gap:10px;align-items:baseline}
+  .row .per small{margin:0}
+  .row h2{font-size:26px}
+  .row .n{grid-column:1/-1}
+  .row .n em{font-size:200px}
+  .row.lab{grid-template-columns:1fr;padding:14px 16px 16px;margin:0 -8px}
+  .row.lab .rule{display:none}.row.lab .rm{margin-top:0}
+  .row.lab .n em{font-size:420px}
+  .row.lab .n i{padding-bottom:60px;font-size:22px}
+  .row.lab .then{flex-direction:row;flex-wrap:wrap;gap:8px}.row.lab .then p{flex-basis:100%}
+  .row.lab .then .btn{flex:1;height:56px;width:auto}
+  .row.db{grid-template-columns:1fr auto;padding:16px 0 0}
+  .row.db .n{grid-column:2;grid-row:2}.row.db .n em{font-size:100px}
+  .row.db .then .btn{height:52px;flex:1}
+  .row.db,.row.lab{min-height:0}
+  .row .then{grid-column:1/-1}
+  .row .then .btn{width:100%;height:60px}
+  .row.e{padding:12px 18px;min-height:0}
+  .row.e .per{grid-column:1}
+  .ans{position:static}
+  .ans .tl{font-size:52px}
+  .row h2{white-space:normal}
+  section{padding:0 16px;margin-top:64px}
+  .night{grid-template-columns:1fr;grid-template-areas:"nh" "ph" "sw";gap:0}
+  .swap{margin-top:16px;gap:12px}.swap p{grid-template-columns:5.5em 1fr;font-size:15px}.swap p span{font-size:20px}.swap i{width:32px;height:32px}
+  .phone{width:auto;margin:0 -16px;border-radius:0}
+  .pbig em{font-size:240px}.pbig i{padding-bottom:30px}
+  .pdays{display:none}
+  .night{margin-top:48px}.night .lead{display:none}
+  .row.db > div:nth-child(2),.row.db .n,.row.db .then{grid-column:1/-1;grid-row:auto}
+  .row.db h2{font-size:26px}
+  .board{padding:40px 16px 48px;margin-top:64px}
+  .bds{grid-template-columns:1fr;gap:24px}
+  .bd .ch{gap:16px}.bd .ch span{font-size:56px}.bd .ch .none{font-size:28px;line-height:56px}
+  .bd .nm{font-size:18px}
+  .sh,.sl{grid-template-columns:1fr auto;gap:8px 12px}
+  .sh{display:none}
+  .sl .cells{grid-column:1/-1;grid-row:2}.sl .cells i,.sl .cells b{height:30px}
+  .sl .from{font-size:18px}.sl .to strong{font-size:56px}
+  h2.sec{font-size:28px}
+  .lead{font-size:15px}
+  .wk{grid-template-columns:1fr;gap:28px}
+  .grid{grid-template-columns:22px repeat(5,1fr);gap:3px}
+  .grid .h{font-size:12px;padding:4px;text-align:center}
+  .grid .p{font-size:15px}
+  .c{height:76px;padding:4px 5px}
+  .c .nm{font-size:11px;line-height:1.2;word-break:break-all}
+  .grid > *{min-width:0}
+  .c em{font-size:32px}.c.lo em{font-size:20px}
+  .key div{grid-template-columns:72px 1fr}
+  .key .sw{height:64px;font-size:40px}
+  .term{padding:40px 16px;margin-top:64px}
+  .term h2{font-size:28px}
+  .term .big{font-size:140px}
+  .wks{grid-template-columns:repeat(5,1fr);gap:4px}
+  .wks div{min-height:110px;padding:6px}
+  .wks div span{font-size:24px}
+  footer{grid-template-columns:1fr;padding:40px 16px 48px}
+  footer h2{font-size:26px}
+  footer .acts{flex-direction:column}
+  footer .btn{width:100%;height:60px}
+}
+@media (max-width:1000px){
+  section,.night{margin-top:34px}
+  h2.sec{font-size:24px}.lead{font-size:14px;margin-bottom:14px}
+  .ans{padding:18px 16px;gap:10px}.ans h3{font-size:18px}.ans .tl{font-size:40px}.ans p{font-size:14px}
+  .ans .sum{grid-template-columns:1fr auto 1fr auto;font-size:13px;padding:10px 12px;gap:4px 10px}.ans .sum b{font-size:18px}
+  .night h2.sec{font-size:22px}
+  .pbig em{font-size:220px}
+  .swap{grid-template-columns:repeat(4,1fr);display:grid;gap:8px}.swap p{grid-template-columns:1fr;gap:2px;font-size:13px}.swap p span{flex-wrap:wrap;font-size:12px;gap:4px}.swap p span i:first-child{display:none}.swap i{width:26px;height:26px}
+  .ex{padding:16px 16px 18px;margin-top:12px}
+  .board{padding:28px 16px 32px;margin-top:34px}
+  .bds{grid-template-columns:1fr 1fr;gap:16px 14px}
+  .bd{grid-template-columns:1fr;gap:2px;padding-top:8px;border-top-width:3px}
+  .bd .nm{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bd .nm small{display:none}
+  .bd .ch{grid-column:1;grid-row:auto;gap:12px}
+  .bd .ch span{font-size:40px}.bd .ch .none{font-size:22px;line-height:40px}
+  .bd .ch small{font-size:11px;margin-top:2px}
+  .bd .st{font-size:12px}
+  .key{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .key div{grid-template-columns:44px 1fr;gap:8px}
+  .key .sw{height:44px;font-size:28px;padding:4px 6px}
+  .key p{font-size:12px;line-height:1.4}.key p b{font-size:14px}
+  .wk{gap:16px}
+  .scale{gap:12px}
+  .sl .from{font-size:15px}.sl .from small{font-size:12px;margin-top:0}
+  .sl .to{font-size:14px}.sl .to strong{font-size:40px;vertical-align:-4px}
+  .sl .cells i,.sl .cells b{height:20px;border-width:1.5px}
+  .note{font-size:14px;margin-top:12px}
+  .term{padding:28px 16px;margin-top:34px}.term .big{font-size:90px}.term .hd{gap:8px}.term .hd p{font-size:14px}
+  .wks{grid-template-columns:repeat(8,1fr);gap:3px;margin-top:16px}.wks div{min-height:64px;padding:4px}.wks div b{font-size:14px}.wks div span{font-size:20px}.wks div small{font-size:11px}
+  footer{padding:24px 16px 28px;gap:14px}footer h2{font-size:22px}footer p{font-size:14px}footer .file{font-size:13px;margin-top:10px;padding:8px 10px}
+  footer .acts{flex-direction:row}footer .btn{flex:1;height:52px}
+}
+@media (max-width:1000px){
+  .row.db .rm{font-size:14px}.row.db .then{gap:6px}.row.db .then p b{font-size:24px}
+  .term .hd p{font-size:13px}
+  .wks div{min-height:56px}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1 class="brand"><b>正</b>あと何回<span class="date">11月19日 木曜</span></h1>
+  <nav class="days">
+    <a href="#">月<small>11/16</small></a><a href="#">火<small>11/17</small></a><a href="#">水<small>11/18</small></a><a class="t" href="#">木<small>11/19 今日</small></a><a href="#">金<small>11/20</small></a>
+  </nav>
+  <div class="left">後期 第9週・休める残り<b>21</b>回</div>
+</header>
+
+<div class="book">
+  <div class="row lab">
+    <div class="per">4・5<small>14:40〜17:50</small></div>
+    <div><h2>情報処理実習</h2><p class="rm">情報棟PC1・1回3時間</p><p class="rule">45時間中9時間まで。使った6時間、残り3時間＝ちょうど1回分</p></div>
+    <div class="n"><i>あと</i><em>1</em><u>回</u></div>
+    <div class="then"><p>休むと <b>0</b> 回</p><a class="btn w" href="#">欠席 +1</a><a class="btn g" href="#">遅刻 +1</a></div>
+  </div>
+
+  <aside class="ans">
+    <h3>今日2コマとも休むと、後期の残りは21回から19回に。</h3>
+    <div class="tl" aria-label="休める残り21回">正正正正一</div>
+    <p>正の字1画が1回。今日休むと、<b>情報処理実習はもう休めなくなります。</b></p>
+    <div class="sum">
+      <span>もう休めない</span><b>1</b>
+      <span>あと1回</span><b>4</b>
+      <span>あと2〜3回</span><b>3</b>
+      <span>あと4回以上</span><b>2</b>
+    </div>
+  </aside>
+
+  <div class="rest">
+    <div class="row db">
+      <div class="per">2<small>10:40</small></div>
+      <div><h2>データベース論</h2><p class="rm">情報棟401・3分の2以上の出席・欠席0・遅刻1（3回で欠席1回）</p></div>
+      <div class="n"><i>あと</i><em>5</em><u>回</u></div>
+      <div class="then"><p>休むと <b>4</b> 回</p><div class="two"><a class="btn k" href="#">欠席 +1</a><a class="btn p" href="#">遅刻 +1</a></div></div>
+    </div>
+    <p class="free"><b>1限</b> 9:00 空き　<b>3限</b> 13:00 空き</p>
+  </div>
+</div>
+
+<section class="night">
+  <div class="nh">
+    <h2 class="sec">暗い画面（スマホの設定が暗いとき）</h2>
+    <p class="lead">夜の部屋や朝の布団で開いても、まぶしくないように。地を黒に、黒い面を濃い灰に替えるだけで、数字の段（0は赤・1は大きく・多いと小さく）はそのままです。</p>
+  </div>
+  <div class="phone" aria-label="暗い画面のスマホ">
+    <div class="pbar"><b>正</b>あと何回</div>
+    <div class="pd">11月19日 木曜・今日は2コマ</div>
+    <div class="pdays"><span>月</span><span>火</span><span>水</span><span class="t">木</span><span>金</span></div>
+    <div class="pn">
+      <div class="wh">4・5限 14:40〜17:50 ・ 情報棟PC1</div>
+      <h3>情報処理実習</h3>
+      <div class="pbig"><i>あと</i><em>1</em><u>回</u></div>
+      <div class="two"><a class="btn w" href="#">欠席 +1</a><a class="btn g" href="#">遅刻 +1</a></div>
+    </div>
+    <div class="ex">
+      <h3>データはこのスマホの中だけ</h3>
+      <code>ato-nankai-2026-kouki.json</code>
+      <a class="btn w" href="#">ファイルに書き出す</a>
+    </div>
+  </div>
+  <div class="swap">
+    <p>地<span><i style="background:#f2f4f7"></i>→<i style="background:#0b0c0e"></i>#0b0c0e</span></p>
+    <p>黒い面<span><i style="background:#0a0a0a"></i>→<i style="background:#23262b"></i>#23262b</span></p>
+    <p>今日の青<span><i style="background:#1d5fbf"></i>→<i style="background:#5b93e6"></i>#5b93e6</span></p>
+    <p>あと0の赤<span><i style="background:#c4242a"></i>→<i style="background:#c4242a"></i>そのまま</span></p>
+  </div>
+</section>
+
+<section class="board">
+  <h2 class="sec">危ない順の10授業</h2>
+  <p class="lead">黒板の正の字で、白が使った画、薄いのが残りの画。残りの画が消えたら、もう休めません。</p>
+  <div class="bds">
+    <div class="bd r"><p class="nm">中国語Ⅱ<small>火曜4限・8割以上</small></p><div class="ch"><div><span class="u">下</span><small>使った3</small></div><div><span class="l none">0</span><small>残り0</small></div></div><p class="st">次の欠席で受験資格なし</p></div>
+    <div class="bd k"><p class="nm">情報処理実習<small>木曜4・5限・残り3時間</small></p><div class="ch"><div><span class="u">丅</span><small>使った2</small></div><div><span class="l">一</span><small>残り1</small></div></div><p class="st">今日休むと0</p></div>
+    <div class="bd k"><p class="nm">統計学Ⅰ<small>月曜1限・遅刻4回（3回で1）</small></p><div class="ch"><div><span class="u">止</span><small>使った4</small></div><div><span class="l">一</span><small>残り1</small></div></div><p class="st">遅刻あと2回でも0</p></div>
+    <div class="bd k"><p class="nm">英語コミュニケーションⅡ<small>月曜3限・遅刻2回（2回で1）</small></p><div class="ch"><div><span class="u">丅</span><small>使った2</small></div><div><span class="l">一</span><small>残り1</small></div></div><p class="st">次の月曜で0かも</p></div>
+    <div class="bd k"><p class="nm">体育実技<small>金曜2限・15回中10回の出席</small></p><div class="ch"><div><span class="u">止</span><small>使った4</small></div><div><span class="l">一</span><small>残り1</small></div></div><p class="st">明日 10:40</p></div>
+    <div class="bd "><p class="nm">プログラミング演習<small>水曜1限・15回中4回まで</small></p><div class="ch"><div><span class="u">丅</span><small>使った2</small></div><div><span class="l">丅</span><small>残り2</small></div></div><p class="st">欠席2・遅刻1</p></div>
+    <div class="bd "><p class="nm">簿記論<small>金曜1限・3分の2以上</small></p><div class="ch"><div><span class="u">丅</span><small>使った2</small></div><div><span class="l">下</span><small>残り3</small></div></div><p class="st">明日 9:00</p></div>
+    <div class="bd "><p class="nm">社会調査ゼミ<small>金曜3限・8割以上</small></p><div class="ch"><div><span class="u none">0</span><small>使った0</small></div><div><span class="l">下</span><small>残り3</small></div></div><p class="st">まだ休んでいない</p></div>
+    <div class="bd "><p class="nm">マクロ経済学<small>火曜2限・15回中5回まで</small></p><div class="ch"><div><span class="u">一</span><small>使った1</small></div><div><span class="l">止</span><small>残り4</small></div></div><p class="st">欠席1</p></div>
+    <div class="bd "><p class="nm">データベース論<small>木曜2限・3分の2以上</small></p><div class="ch"><div><span class="u none">0</span><small>使った0</small></div><div><span class="l">正</span><small>残り5</small></div></div><p class="st">今日 10:40</p></div>
+  </div>
+</section>
+
+<section>
+  <h2 class="sec">今週の時間割</h2>
+  <p class="lead">いつもの曜日と時限の表。マスには授業名より先に、あと何回を書いています。</p>
+  <div class="wk">
+    <div class="grid">
+      <div></div><div class="h">月</div><div class="h">火</div><div class="h">水</div><div class="h t">木 今日</div><div class="h">金</div>
+      <div class="p">1</div><div class="c k"><span class="nm">統計学Ⅰ</span><em>1</em></div><div class="c e"></div><div class="c"><span class="nm">プログラミング演習</span><em>2</em></div><div class="c e"></div><div class="c"><span class="nm">簿記論</span><em>3</em></div>
+      <div class="p">2</div><div class="c e"></div><div class="c lo"><span class="nm">マクロ経済学</span><em>4</em></div><div class="c e"></div><div class="c lo tc"><span class="nm">データベース論</span><em>5</em></div><div class="c k"><span class="nm">体育実技</span><em>1</em></div>
+      <div class="p">3</div><div class="c k"><span class="nm">英語コミュニケーションⅡ</span><em>1</em></div><div class="c e"></div><div class="c none"><span class="nm">心理学概論</span><em style="font-size:28px">—</em></div><div class="c e"></div><div class="c"><span class="nm">社会調査ゼミ</span><em>3</em></div>
+      <div class="p">4</div><div class="c e"></div><div class="c r"><span class="nm">中国語Ⅱ</span><em>0</em></div><div class="c e"></div><div class="c k tall"><span class="nm">情報処理実習</span><em>1</em></div><div class="c e"></div>
+      <div class="p">5</div><div class="c e"></div><div class="c e"></div><div class="c e"></div><div class="c e"></div>
+    </div>
+    <div class="key">
+      <div><span class="sw" style="background:var(--zero);color:#fff">0</span><p><b>もう休めない</b>押すと「受験資格がなくなるかも」と確認が出ます</p></div>
+      <div><span class="sw" style="background:#0a0a0a;color:#fff">1</span><p><b>あと1回</b>月曜に2つ、金曜と今日に1つずつ</p></div>
+      <div><span class="sw" style="background:var(--surface)">3</span><p><b>あと2〜3回</b>まだ余裕はあるけど、正の字は半分</p></div>
+      <div><span class="sw" style="background:var(--surface);font-size:30px">5</span><p><b>あと4回以上</b>小さく書くだけ</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="sec">上限の決まりを、回数に直す</h2>
+  <p class="lead">学校や授業ごとにバラバラな決まりを、全部「あと何回」にそろえて数えています。</p>
+  <div class="scale">
+    <div class="sh"><span></span><div class="cells"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i><i>10</i><i>11</i><i>12</i><i>13</i><i>14</i><i>15</i></div><span></span></div>
+    <div class="sl"><p class="from">3分の2以上の出席<small>統計学Ⅰ・データベース論・簿記論</small></p><div class="cells"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><b></b><b></b><b></b><b></b><b></b></div><p class="to">15回中<strong>5</strong>回</p></div>
+    <div class="sl"><p class="from">8割以上の出席<small>英語Ⅱ・中国語Ⅱ・社会調査ゼミ</small></p><div class="cells"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><b></b><b></b><b></b></div><p class="to">15回中<strong>3</strong>回</p></div>
+    <div class="sl"><p class="from">15回中10回の出席<small>体育実技</small></p><div class="cells"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><b></b><b></b><b></b><b></b><b></b></div><p class="to">15回中<strong>5</strong>回</p></div>
+    <div class="sl"><p class="from">15回中4回まで<small>プログラミング演習</small></p><div class="cells"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><b></b><b></b><b></b><b></b></div><p class="to">15回中<strong>4</strong>回</p></div>
+    <div class="sl"><p class="from">45時間中9時間まで<small>情報処理実習（1回3時間）</small></p><div class="cells"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><b></b><b></b><b></b></div><p class="to">15回中<strong>3</strong>回</p></div>
+  </div>
+  <p class="note">情報処理実習のように時間で決まる授業は、1回の時間で割って回に直します。黒いマスが休める回。</p>
+</section>
+
+<div class="term">
+  <div class="hd">
+    <div><h2>後期15週と、休んだ回</h2><p>10授業で休めるのは合わせて41回。遅刻の換算も入れて使ったのは20回で、残り21回。</p></div>
+    <div class="big">21<small>回</small></div>
+  </div>
+  <div class="wks">
+    <div><b>1</b><span>一</span><small>9/28</small></div>
+    <div><b>2</b><span>下</span><small>10/5</small></div>
+    <div><b>3</b><span>丁</span><small>10/12</small></div>
+    <div><b>4</b><span>止</span><small>10/19</small></div>
+    <div><b>5</b><span>下</span><small>10/26</small></div>
+    <div><b>6</b><span>丁</span><small>11/2</small></div>
+    <div><b>7</b><span>一</span><small>11/9</small></div>
+    <div><b>8</b><span>止</span><small>11/16</small></div>
+    <div class="now"><b>9</b><span></span><small>今週</small></div>
+    <div class="fu"><b>10</b><span></span><small>11/30</small></div>
+    <div class="fu"><b>11</b><span></span><small>12/7</small></div>
+    <div class="fu"><b>12</b><span></span><small>12/14</small></div>
+    <div class="fu"><b>13</b><span></span><small>12/21</small></div>
+    <div class="fu"><b>14</b><span></span><small>1/11</small></div>
+    <div class="fu"><b>15</b><span></span><small>1/18</small></div>
+  </div>
+</div>
+
+<footer>
+  <div>
+    <h2>データは、このスマホの中だけ</h2>
+    <p>ログインはありません。機種変更の前に書き出して、新しいスマホで読み込みます。最後に書き出したのは10月31日。</p>
+    <span class="file">ato-nankai-2026-kouki.json ・ 11授業・欠席18・遅刻9</span>
+  </div>
+  <div class="acts"><a class="btn k" href="#">ファイルに書き出す</a><a class="btn p" href="#">読み込む</a></div>
+</footer>
+
+</body>
+</html>
