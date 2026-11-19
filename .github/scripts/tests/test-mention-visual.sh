@@ -97,12 +97,64 @@ run_after > /dev/null
 assert_contains "visual:update が付く" "$(labels_of 58)" "visual:update"
 assert_contains "2回目と書く" "$(comments_of 58)" "2/2回目"
 
-echo "== ほかのチェックも落ちている：撮り直さず人間に回す"
-setup_case '`visual:update` で撮り直してください。' '[{"name":"見た目のテスト","conclusion":"failure"},{"name":"テスト","conclusion":"failure"}]'
+reruns() { python3 -c "import json,os;print(len(json.load(open(os.environ['MOCK_STATE'])).get('reruns',[])))"; }
+template_issues() { python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print(sum(1 for m in s.get('issues_meta',{}).values() if m.get('title','').startswith('パイプライン側のテストが落ちている')))"; }
+both_real='[{"name":"見た目のテスト","conclusion":"failure"},{"name":"テスト","conclusion":"failure"}]'
+both_pipe='[{"name":"見た目のテスト","conclusion":"failure"},{"name":"スクリプトのテスト","conclusion":"failure"}]'
+rerun_done="s['comments'].append({'id':52,'issue':'58','body':'やり直し（コミット abc）\\\\n<!-- auto-pipeline-test-rerun -->','user':{'login':'p'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})"
+
+echo "== ほかのチェックも落ちている・まだやり直していない：人間に回さず、落ちたジョブを1回だけやり直す"
+setup_case '`visual:update` で撮り直してください。' "$both_real"
+run_after > /dev/null
+assert_eq "落ちたジョブをやり直す" "1" "$(reruns)"
+assert_not_contains "人間に回さない" "$(labels_of 58)" "ai:stuck"
+assert_not_contains "visual:update はまだ付けない" "$(labels_of 58)" "visual:update"
+assert_contains "コミットつきの印" "$(comments_of 58)" "コミット abc"
+
+echo "== やり直しても見た目以外（PRの変更が原因）が落ちる：見た目以外だけを直すよう修正AIに頼む（直す回数に数える）"
+setup_case '`visual:update` で撮り直してください。' "$both_real"
+state_py "$rerun_done"
+run_after > /dev/null
+assert_eq "もうやり直さない" "0" "$(reruns)"
+assert_not_contains "人間に回さない" "$(labels_of 58)" "ai:stuck"
+assert_contains "見た目以外だけを直す依頼" "$(comments_of 58)" "見た目以外の失敗（テスト）だけを"
+assert_contains "画像の差は気にしない" "$(comments_of 58)" "画像の差は気にしなくていいです"
+assert_eq "直す依頼が1つ増える" "2" "$(comments_of 58 | grep -c '<!-- auto-fix -->')"
+
+echo "== 見た目以外だけを直すよう頼んだのに、また変更なし：人間に回す"
+setup_case '`visual:update` で撮り直してください。' "$both_real"
+state_py "$rerun_done
+s['comments'][0]['body'] += '\\n<!-- auto-fix-nonvisual -->'"
 run_after > /dev/null
 assert_contains "ai:stuck" "$(labels_of 58)" "ai:stuck"
-assert_not_contains "visual:update は付けない" "$(labels_of 58)" "visual:update"
-assert_contains "落ちたチェックを書く" "$(comments_of 58)" "テスト）も落ちている"
+assert_eq "直す依頼は増えない" "1" "$(comments_of 58 | grep -c '<!-- auto-fix -->')"
+
+echo "== 変更なしで終わり、パイプライン側だけ落ちている（やり直し済み）：人間に回り、テンプレートに Issue ができる"
+setup_case '`visual:update` で撮り直してください。.github/ は触れません。' "$both_pipe"
+state_py "$rerun_done"
+PIPELINE_TEMPLATE_REPO=o/tpl run_after > /dev/null
+assert_contains "ai:stuck" "$(labels_of 58)" "ai:stuck"
+assert_contains "PRと関係ない所のテストと書く" "$(comments_of 58)" "PRと関係ない所（パイプライン側）のテスト"
+assert_eq "テンプレートに Issue ができる" "1" "$(template_issues)"
+assert_not_contains "修正AIには頼まない" "$(comments_of 58)" "auto-fix-nonvisual"
+
+echo "== 同じ題名の開いた Issue があれば、作らずコメントで足す"
+setup_case '`visual:update` で撮り直してください。' "$both_pipe"
+state_py "$rerun_done
+s['issues_meta']={'200':{'title':'パイプライン側のテストが落ちている（たまに落ちる・壊れている）','state':'open'}}
+s['labels']['200']=[]"
+PIPELINE_TEMPLATE_REPO=o/tpl run_after > /dev/null
+assert_contains "ai:stuck" "$(labels_of 58)" "ai:stuck"
+assert_eq "Issue は増えない" "1" "$(template_issues)"
+assert_contains "既存の Issue にコメントで足す" "$(comments_of 200)" "o/r#58"
+
+echo "== パイプライン側が落ちていても、PRが .github/ を触っている：PRの変更が原因かもしれないので、修正AIに頼む"
+setup_case '`visual:update` で撮り直してください。' "$both_pipe"
+state_py "$rerun_done
+s['files']=['.github/scripts/x.sh']"
+run_after > /dev/null
+assert_not_contains "人間に回さない" "$(labels_of 58)" "ai:stuck"
+assert_contains "見た目以外だけを直す依頼" "$(comments_of 58)" "見た目以外の失敗"
 
 echo "== AIも、レビューも、PRの説明も撮り直しを頼んでいない：撮り直さない"
 setup_case 'うまくいきませんでした。' "$visual_only"

@@ -10,8 +10,6 @@
 source "$(dirname "$0")/pipeline-lib.sh"
 set -e
 CI_CANCEL_MARK="<!-- auto-ci-cancel-rerun -->"
-# パイプライン自体の確認の手順の名前（ci.yml の手順の name と同じ。食い違うと tests/test-workflows.sh が落ちる）
-PIPELINE_CHECK_STEPS='["スクリプトのテスト","shellcheck","ワークフローの確認（actionlint）"]'
 
 has_pipeline_token || { echo "PIPELINE_TOKEN が無いので何もしません"; exit 0; }
 
@@ -178,16 +176,19 @@ ${VISUAL_MARK}"
       # パイプライン自体の確認（shellcheck・スクリプトのテスト）だけが落ちていて、PRが .github/ を触っていない：
       # 落ちた原因はこのPRの変更ではなく、AIは .github/ を直せない（直させても「直す物が無い」で止まる）。
       # 一時的な揺れ（実行環境の入れ替わりなど）のことがあるので、1回だけ落ちたジョブをやり直す。それでも落ちたら人間に回す
-      only_pipeline=$(printf '%s' "$failed_steps" | jq --argjson names "$PIPELINE_CHECK_STEPS" 'length > 0 and all(.[]; . as $n | $names | index($n) != null)')
+      only_pipeline=$(pipeline_steps_only "$failed_steps")
+      pipeline_with_visual=$(pipeline_steps_only "$failed_steps" with_visual)
       pipeline_names=$(printf '%s' "$failed_steps" | jq -r 'join("、")' 2> /dev/null || true)
-      if [ "$only_pipeline" = "true" ] &&
-        files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null) &&
-        ! printf '%s\n' "$files" | grep -q '^\.github/'; then
-        reruns=$(all_comments "$pr" | jq --arg m "$PIPELINE_TEST_MARK" '[.[] | select(.body | contains($m))] | length')
-        if [ "$reruns" -lt 1 ] && GH_TOKEN="${READ_TOKEN:-$GH_TOKEN}" gh api -X POST "repos/$REPO/actions/runs/$RUN_ID/rerun-failed-jobs" > /dev/null 2>&1; then
-          comment "$pr" "パイプライン自体の確認（${pipeline_names}）だけが落ちました。このPRの変更（.github/ の外）が原因ではないので、AIには直させず、落ちたジョブを1回だけやり直します。
-
-${PIPELINE_TEST_MARK}"
+      # 見た目のテストも一緒に落ちているとき（agent-desk PR #580）：パイプライン側のテストを1回だけやり直す。
+      # 通れば、見た目のテストだけが落ちる状態になり、上の撮り直しに進む。やり直してもまだ落ちるなら、下の「見た目以外の失敗」としてAIに頼む
+      if [ "$only_pipeline" != "true" ] && [ "$pipeline_with_visual" = "true" ] && ! pr_touches_github "$pr"; then
+        if rerun_failed_ci_once "$pr" "$HEAD_SHA" "見た目のテストのほかに、パイプライン自体の確認（${pipeline_names}）が落ちました。パイプライン側はこのPRの変更（.github/ の外）が原因ではないので、先に落ちたジョブを1回だけやり直します（通れば、見た目のテストだけの失敗として扱います）" "$RUN_ID"; then
+          echo "PR #$pr：見た目＋パイプライン側のテストが落ちたので、CIをやり直しました"
+          exit 0
+        fi
+      fi
+      if [ "$only_pipeline" = "true" ] && ! pr_touches_github "$pr"; then
+        if rerun_failed_ci_once "$pr" "$HEAD_SHA" "パイプライン自体の確認（${pipeline_names}）だけが落ちました。このPRの変更（.github/ の外）が原因ではないので、AIには直させず、落ちたジョブを1回だけやり直します" "$RUN_ID"; then
           echo "PR #$pr：パイプライン自体のテストだけが落ちたので、CIをやり直しました"
           exit 0
         fi
@@ -205,7 +206,13 @@ ${PIPELINE_TEST_MARK}"
     ci_names=$(printf '%s' "${failed_steps:-[]}" | jq -r 'join("、")' 2> /dev/null || true)
     ci_reason="CIが失敗したままです"
     [ -z "$ci_names" ] || ci_reason="${ci_reason}（失敗したチェック：${ci_names}）"
-    request_fix_or_stop "$pr" "$HEAD_SHA" "CIが失敗しました。失敗したチェックのログを確認して、原因を直してください。" "$ci_reason"
+    fix_msg="CIが失敗しました。失敗したチェックのログを確認して、原因を直してください。"
+    # 見た目のテストも落ちているとき：見た目以外の失敗だけを直させる（画像の差は、あとでパイプラインが撮り直す）
+    if printf '%s' "${failed_steps:-[]}" | jq -e 'index("見た目のテスト") != null and length > 1' > /dev/null 2>&1 &&
+      printf '%s' "${pr_body:-}" | grep -q 'visual:update'; then
+      fix_msg="CIが失敗しました。見た目のテストのほかにも落ちているチェックがあります。見た目以外の失敗だけを直してください。画像の差は気にしなくていいです（あとで撮り直します。基準の画像は自分で撮り直さないでください）。"
+    fi
+    request_fix_or_stop "$pr" "$HEAD_SHA" "$fix_msg" "$ci_reason"
     echo "PR #$pr：CIが落ちたので直すよう依頼しました"
     ;;
 esac

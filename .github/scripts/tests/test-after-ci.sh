@@ -7,7 +7,7 @@ run_case() { # PR本文 落ちたステップ名
   python3 - "$1" "$2" <<'PY'
 import json, os, sys
 pr = {'number': 58, 'body': sys.argv[1], 'state': 'open', 'head': {'sha': 'abc', 'ref': 'claude/issue-54-x'}, 'updated_at': '2026-01-01T00:00:00Z'}
-steps = [{'name': '型チェック', 'conclusion': 'success'}, {'name': sys.argv[2], 'conclusion': 'failure'}, {'name': '見た目のテストの結果（差分の画像）を残す', 'conclusion': 'success'}]
+steps = [{'name': '型チェック', 'conclusion': 'success'}] + [{'name': n, 'conclusion': 'failure'} for n in sys.argv[2].split(',')] + [{'name': '見た目のテストの結果（差分の画像）を残す', 'conclusion': 'success'}]
 s = {'next_id': 0, 'comments': [], 'labels': {'58': []}, 'issue_updated': {}, 'pulls': [pr], 'jobs': [{'steps': steps}], 'checks': [], 'runs': [], 'branches': [], 'authors': {},
      'files': os.environ.get('PR_FILES', 'src/app/page.tsx').split(), 'rerun_fail': bool(os.environ.get('RERUN_FAIL'))}
 json.dump(s, open(os.environ['MOCK_STATE'], 'w'))
@@ -66,6 +66,44 @@ assert_contains "ai:stuck" "$(labels_of 58)" "ai:stuck"
 assert_contains "手順の名前が理由に出る" "$(comments_of 58)" "ワークフローの確認（actionlint）"
 assert_eq "もうやり直さない" "0" "$(reruns)"
 assert_not_contains "AIには直させない" "$(comments_of 58)" "auto-fix"
+
+echo "== 見た目＋パイプライン側が落ちた → AIに頼まず、1回だけやり直す（撮り直しはまだ頼まない）"
+run_case "Closes #1 visual:update" "見た目のテスト,スクリプトのテスト"
+assert_eq "落ちたジョブをやり直す" "1" "$(reruns)"
+assert_not_contains "AIには直させない" "$(comments_of 58)" "auto-fix"
+assert_not_contains "まだ撮り直さない" "$(labels_of 58)" "visual:update"
+assert_contains "コミットつきの印" "$(comments_of 58)" "コミット abc"
+
+echo "== やり直し済み（同じコミット）でまだ見た目＋パイプライン側が落ちる → 見た目以外だけを修正AIに頼む"
+run_case "Closes #1 visual:update" "見た目のテスト,スクリプトのテスト"
+state_py "s['reruns']=[]; s['comments']=[{'id':9,'issue':'58','body':'x（コミット abc）<!-- auto-pipeline-test-rerun -->','user':{'login':'p'},'created_at':'$(ago 5)','updated_at':'$(ago 5)'}]"
+RUN_ID=1 CONCLUSION=failure HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-ci.sh > /dev/null
+assert_eq "もうやり直さない" "0" "$(reruns)"
+assert_contains "直す依頼が付く" "$(comments_of 58)" "auto-fix"
+assert_contains "見た目以外だけを直す依頼" "$(comments_of 58)" "見た目以外の失敗だけを直してください"
+assert_not_contains "人間には回さない" "$(labels_of 58)" "ai:stuck"
+
+echo "== 前のコミットでやり直した印は、新しいコミットのやり直しを止めない"
+run_case "Closes #1 visual:update" "見た目のテスト,スクリプトのテスト"
+state_py "s['reruns']=[]; s['comments']=[{'id':9,'issue':'58','body':'x（コミット old）<!-- auto-pipeline-test-rerun -->','user':{'login':'p'},'created_at':'$(ago 5)','updated_at':'$(ago 5)'}]"
+RUN_ID=1 CONCLUSION=failure HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-ci.sh > /dev/null
+assert_eq "やり直す" "1" "$(reruns)"
+
+echo "== やり直しで通った後に見た目だけ落ちる → 撮り直しへ進む"
+run_case "Closes #1 visual:update" "見た目のテスト"
+state_py "s['comments']=[{'id':9,'issue':'58','body':'x（コミット abc）<!-- auto-pipeline-test-rerun -->','user':{'login':'p'},'created_at':'$(ago 5)','updated_at':'$(ago 5)'}]"
+RUN_ID=1 CONCLUSION=failure HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-ci.sh > /dev/null
+assert_contains "visual:update が付く" "$(labels_of 58)" "visual:update"
+
+echo "== 見た目＋パイプライン側が落ちて、PRが .github/ を触っている → やり直さず、AIに直させる"
+PR_FILES=".github/scripts/watchdog.sh" run_case "Closes #1 visual:update" "見た目のテスト,スクリプトのテスト"
+assert_eq "やり直さない" "0" "$(reruns)"
+assert_contains "直す依頼のコメントが付く" "$(comments_of 58)" "auto-fix"
+
+echo "== 見た目＋型チェックが落ちた（パイプライン側ではない） → やり直さず、AIに直させる"
+run_case "Closes #1 visual:update" "見た目のテスト,型チェック"
+assert_eq "やり直さない" "0" "$(reruns)"
+assert_contains "直す依頼のコメントが付く" "$(comments_of 58)" "auto-fix"
 
 echo "== PRが .github/ を触っている（テンプレート自身など） → 今までどおりAIに直させる"
 PR_FILES=".github/scripts/watchdog.sh" run_case "Closes #1" "スクリプトのテスト"
