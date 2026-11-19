@@ -58,6 +58,14 @@ make_app() {
   git -C "$T/seed-$1" init -q -b main && git -C "$T/seed-$1" add -A && git -C "$T/seed-$1" -c user.name=t -c user.email=t@t commit -qm seed
   git clone -q --bare "$T/seed-$1" "$T/remotes/o/$1.git"
 }
+# 場面のあいだに判定が落ちたら、配布の出力と呼ばれた gh の記録（calls.log）を出す（たまに落ちる原因が見えるように）
+# 使い方：before=$FAILED; out=$(sync); ...判定...; dump_if_failed "$before" "場面" "$out"
+dump_if_failed() {
+  [ "$FAILED" -gt "$1" ] || return 0
+  echo "  （$2：配布の出力）"; printf '%s\n' "$3" | sed 's/^/    | /'
+  echo "  （calls.log）"; sed 's/^/    | /' "$T/calls.log" 2> /dev/null
+  return 0
+}
 sync() { env PATH="$T/bin:$PATH" FT="$T" GH_TOKEN=x SYNC_GIT_URL="$T/remotes/%s.git" "$@" bash "$SCRIPTS_DIR/sync-to-apps.sh" "${REPOS[@]}" 2>&1; }
 # 配ったブランチの中のファイル
 # bare のリポジトリは --git-dir で明示して読む（git の設定 safe.bareRepository=explicit の環境でも読めるように）
@@ -120,11 +128,14 @@ s["pulls"]["o/app"] = [{"number": 7, "state": "open", "head": {"ref": "pipeline-
 json.dump(s, open(sys.argv[1], "w"))
 PY
 : > "$T/calls.log"
-sync > /dev/null
+before=$FAILED
+out=$(sync); rc=$?
+assert_eq "終了コード 0" "0" "$rc"
 assert_contains "古い配布のPRを閉じる" "$(pulls app)" "7:pipeline-sync/0ld0ld0:closed"
 assert_contains "古いブランチを消す" "$(cat "$T/calls.log")" "DELETE repos/o/app/git/refs/heads/pipeline-sync/0ld0ld0"
 assert_contains "ほかのPRは閉じない" "$(pulls app)" "8:claude/issue-3:open"
 assert_contains "新しいPRを作る" "$(pulls app)" "pipeline-sync/$sha:open"
+dump_if_failed "$before" "前の配布のPRの場面" "$out"
 
 echo "== もう同じ中身：何もしない"
 mkdir -p "$T/seed-same"
