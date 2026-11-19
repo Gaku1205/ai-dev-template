@@ -115,8 +115,8 @@ case "$CONCLUSION" in
       if gh api -X PUT "repos/$REPO/pulls/$pr/update-branch" -f expected_head_sha="$HEAD_SHA" > /dev/null 2>&1; then
         echo "PR #$pr：main の変更（${behind} コミット）を取り込みました。CIが終わったらレビューに進みます"
       else
-        # コンフリクトは、AIに解消させる（直す回数に数える。直らなければ人間に回る）
-        request_fix_or_stop "$pr" "$HEAD_SHA" "main の変更を取り込もうとしたら、コンフリクトで取り込めませんでした。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し、どちらかを捨てるときはPRにコメントで理由を書いてください。解消したら確認コマンド（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）を全部通して push してください。" "main とのコンフリクトが解けませんでした"
+        # コンフリクトは、AIに解消させる（直す回数ではなく、コンフリクトの回数に数える。基準の画像だけならAIを呼ばずに解く）
+        request_conflict_fix_or_stop "$pr" "$HEAD_SHA" "main の変更を取り込もうとしたら、コンフリクトで取り込めませんでした。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し、どちらかを捨てるときはPRにコメントで理由を書いてください。解消したら確認コマンド（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）を全部通して push してください。" "main とのコンフリクトが解けませんでした"
       fi
       exit 0
     fi
@@ -154,6 +154,11 @@ case "$CONCLUSION" in
         # 同時に動くと、先に入った push のせいで、修正AIが「PRが更新されたので動かない」で終わる・撮り直しの push が弾かれる（agent-desk PR #478）
         if fix_requested_for "$pr" "$HEAD_SHA"; then
           echo "PR #$pr：見た目のテストだけが落ちましたが、このコミットにはもう直すよう頼んであるので、基準の画像の撮り直しは始めません（直した push のあとの CI で、もう一度決めます）"
+          exit 0
+        fi
+        # 撮り直しがもう動いている（基準の画像だけのコンフリクトを解いた直後に付けた、など）：重ねて付けない（付け直すと、動いている撮り直しが取り消される）
+        if has_label "$pr" "visual:update"; then
+          echo "PR #$pr：見た目のテストだけが落ちましたが、基準の画像の撮り直しがもう動いているので、重ねて頼みません"
           exit 0
         fi
         # レビューの指摘がもう出ている（CIと同時に動いて、先に終わった）：このあと修正AIが動くので、撮り直しは始めず、ここで直すよう頼む
