@@ -112,7 +112,38 @@ fi
 # レビューのワークフロー自体（claude-review.yml）を変えるPRでは、レビューAIは動けない（AIのアクションは、ワークフローのファイルが
 # main と同じ内容でないと、何もせず成功で終わる）。やり直しても同じなので、やり直さず、すぐ人間のマージ待ち（ai:hold）にする
 # （今までは、30分おきに2回やり直してから「結果のコメントが見つかりません」で人間に回していた）
+pr_changes_review_wf=no
 if [ -z "$review" ] && gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null | grep -qx '.github/workflows/claude-review.yml'; then
+  pr_changes_review_wf=yes
+fi
+# PRは claude-review.yml を変えていないのに、先頭の版が main と違う＝枝が古いだけ（main 側でワークフローが変わったあと、古い枝のまま残っている）。
+# レビューAIは同じ理由で毎回飛ばされる（ログに「Skipping action due to workflow validation」）ので、やり直しに数えず、main を取り込んで新しい先頭でレビューを動かす
+if [ -z "$review" ] && [ "$pr_changes_review_wf" = no ]; then
+  wf_path=".github/workflows/claude-review.yml"
+  head_wf_sha=$(gh api "repos/$REPO/contents/$wf_path?ref=$HEAD_SHA" -q .sha 2> /dev/null || true)
+  main_wf_sha=$(gh api "repos/$REPO/contents/$wf_path?ref=main" -q .sha 2> /dev/null || true)
+  if [ -n "$head_wf_sha" ] && [ -n "$main_wf_sha" ] && [ "$head_wf_sha" != "$main_wf_sha" ]; then
+    # 修正AIが作業中（直す依頼が出ている）か、撮り直し（visual:update）が動いている間は、枝を動かさない（push がぶつかる・無駄になる）。
+    # 直した push か撮り直しのあとに、CIとレビューがもう一度動く
+    if fix_requested_for "$pr" "$HEAD_SHA"; then
+      echo "PR #$pr：枝が古いですが、このコミットにはもう直すよう頼んであるので、main は取り込みません"
+      exit 0
+    fi
+    if has_label "$pr" "visual:update"; then
+      echo "PR #$pr：枝が古いですが、基準の画像の撮り直し（visual:update）が動いているので、main は取り込みません"
+      exit 0
+    fi
+    if gh api -X PUT "repos/$REPO/pulls/$pr/update-branch" -f expected_head_sha="$HEAD_SHA" > /dev/null 2>&1; then
+      comment "$pr" "ℹ️ レビューAIが動けませんでした。このPRの枝が古く、レビューのワークフロー（\`$wf_path\`）が main と違うためです。main を取り込んだので、新しい先頭でCIとレビューがもう一度動きます（やり直しの回数には数えません）。" || true
+      echo "PR #$pr：枝が古くてレビューが飛ばされたので、main を取り込みました（やり直しには数えません）"
+    else
+      # コンフリクトは、AIに解消させる（直す回数に数える。直らなければ人間に回る）
+      request_fix_or_stop "$pr" "$HEAD_SHA" "枝が古く、レビューのワークフローが main と違うためレビューAIが動けないので、main を取り込もうとしましたが、コンフリクトで取り込めませんでした。\`git fetch origin main\` のあと \`git merge origin/main\` でコンフリクトを解消してください。両方の変更の意図を残し、どちらかを捨てるときはPRにコメントで理由を書いてください。解消したら確認コマンド（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）を全部通して push してください。" "main とのコンフリクトが解けませんでした"
+    fi
+    exit 0
+  fi
+fi
+if [ "$pr_changes_review_wf" = yes ]; then
   has_label "$pr" "ai:hold" || add_label "$pr" "ai:hold" || true
   remove_label "$pr" "ai:retry"
   review_status "$HEAD_SHA" success "レビューAIが動けないPRなので、人間が確かめてください"
