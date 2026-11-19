@@ -11,7 +11,12 @@ args=sys.argv[1:]
 assert args[0]=='api'
 # 呼ばれた回数を api_calls に足す（API の回数を確かめるテスト用。読むだけの呼び出しも数える）
 st['api_calls']=st.get('api_calls',0)+1
-json.dump(st,open(ST,'w'))
+def _write_state(o):
+    # 一時ファイルに書いてから置き換える（読む側が、書きかけ・空のファイルを見ない）
+    _t=ST+'.'+str(os.getpid())+'.tmp'
+    with open(_t,'w') as _w: json.dump(o,_w)
+    os.replace(_t,ST)
+_write_state(st)
 # 呼び出しを calls.log に1行ずつ残す（テストが失敗したとき、どう動いたかを見るため。MOCK_STATE と同じフォルダ）
 try:
     with open(os.path.join(os.path.dirname(ST),'calls.log'),'a') as _f: _f.write(' '.join(args)+'\n')
@@ -73,7 +78,7 @@ def out(obj):
         if r.returncode: sys.stderr.write(r.stderr); sys.exit(1)
     else:
         print(json.dumps(obj))
-def save(): json.dump(ROOT,open(ST,'w'))
+def save(): _write_state(ROOT)
 # 一覧（配列）を、本物と同じくページに分けて返す。1ページは per_page 件（既定 30）。
 #   --paginate が無ければ、1ページ目だけ（101件目からは見えない）
 #   --paginate と -q：ページごとに jq を当てる（本物の gh と同じ。全体の件数・並べ替えを -q だけでは出せない）

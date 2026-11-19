@@ -48,7 +48,9 @@ state_py() {
 import json, os, sys
 s = json.load(open(os.environ['MOCK_STATE']))
 exec(sys.argv[1])
-json.dump(s, open(os.environ['MOCK_STATE'], 'w'))
+p = os.environ['MOCK_STATE']
+json.dump(s, open(p + '.tmp', 'w'))
+os.replace(p + '.tmp', p)
 PY
 }
 
