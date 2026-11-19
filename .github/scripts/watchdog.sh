@@ -118,13 +118,11 @@ heartbeat_needed() {
 # 番号ごとの retry_due_at の写し（due_work_pending が読んだ物を set_retry_timer が使い回す。コメントの API を増やさない）
 declare -A RETRY_DUE_CACHE=()
 
-# 遠い先の目覚まし（並列の上限が変わる時刻）をかけるリポジトリか：テンプレート自身（全部のリポジトリで1つ）。
-# テンプレートが分からないときは、どのリポジトリもかけない（枠を食わない方を選ぶ）。TIMER_CLOCK_REPO=1 で決め打ちできる（テスト用）
+# 遠い先の目覚まし（並列の上限が変わる時刻）をかけるリポジトリか：テンプレート自身（GitHub の is_template が true。全部のリポジトリで1つ）。
+# 分からないときは、かけない（枠を食わない方を選ぶ）。TIMER_CLOCK_REPO=1 で決め打ちできる（テスト用）
 timer_clock_repo() {
   [ -n "${TIMER_CLOCK_REPO:-}" ] && { [ "$TIMER_CLOCK_REPO" = 1 ]; return; }
-  local t
-  t=$(template_repo 2> /dev/null) || return 1
-  [ -n "$t" ] && [ "${t,,}" = "${REPO,,}" ]
+  [ "$(gh api "repos/$REPO" -q .is_template 2> /dev/null)" = true ]
 }
 
 set_retry_timer() {

@@ -1,3 +1,0 @@
-src/lib/a.ts
-docs/spec.md
-src/components/

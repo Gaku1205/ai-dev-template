@@ -135,6 +135,12 @@ init_state "$q"
 TIMER_CLOCK_REPO=0 PARALLEL_NIGHT_HOURS="$nh-$(( (10#$nh + 5) % 24 ))" run_script watchdog.sh > /dev/null
 assert_not_contains "テンプレートでないリポジトリは、遠い先（3時間後）の切り替えではかけない（Actions の枠を食わない）" "$(within "$(dispatches | awk '{print $2}')" "$want")" "ok"
 assert_eq "#3 は順番待ちのまま" "ai:queue" "$(labels_of 3)"
+init_state '{"labels":{"1":["ai:implement"],"3":["ai:queue"]},"is_template":true}'
+PARALLEL_NIGHT_HOURS="$nh-$(( (10#$nh + 5) % 24 ))" run_script watchdog.sh > /dev/null
+assert_eq "is_template が true のリポジトリは、決め打ち無しでも遠い切り替えにかける" "ok" "$(within "$(dispatches | awk '{print $2}')" "$want")"
+init_state '{"labels":{"1":["ai:implement"],"3":["ai:queue"]},"is_template":false}'
+PARALLEL_NIGHT_HOURS="$nh-$(( (10#$nh + 5) % 24 ))" run_script watchdog.sh > /dev/null
+assert_not_contains "is_template が false なら、決め打ち無しでもかけない" "$(within "$(dispatches | awk '{print $2}')" "$want")" "ok"
 init_state "$q"
 TIMER_CLOCK_REPO=1 PARALLEL_NIGHT_HOURS="$(( (10#$nh + 19) % 24 ))-$nh" run_script watchdog.sh > /dev/null
 assert_eq "夜の終わりの1分後" "ok" "$(within "$(dispatches | awk '{print $2}')" "$want")"
