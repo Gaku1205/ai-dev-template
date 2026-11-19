@@ -168,6 +168,10 @@ def png(path):
         return False
 
 
+# 見た目を決める段階（その答えと注文は、審査役の owner「オーナーが決めた事が絵に出ている」で見る）
+VISUAL_STAGES = ("looks", "mocks")
+
+
 # ---- 返事を当てはめる ----
 
 def apply(state, reply):
@@ -179,7 +183,8 @@ def apply(state, reply):
     for a in reply.get("answers") or []:
         if isinstance(a, dict) and text(a.get("q"), 120) and text(a.get("a"), 200):
             q = text(a.get("q"), 120)
-            state["answers"] = [x for x in state.get("answers", []) if x.get("q") != q] + [{"q": q, "a": text(a.get("a"), 200)}]
+            # 聞いた段階も残す（審査役の owner は、見た目の段階（looks・mocks）の答えと注文だけで見る。中身の決まりは静止画に出せないため）
+            state["answers"] = [x for x in state.get("answers", []) if x.get("q") != q] + [{"q": q, "a": text(a.get("a"), 200), "stage": stage}]
     if note:
         state.setdefault("notes", []).append({"stage": stage, "note": note})
 
@@ -365,7 +370,9 @@ def brief(state):
         if l:
             lines.append(f"- 見た目の方向：{l['title']}。{l['idea']}（色 {' '.join(l.get('colors', []))}・文字 {l.get('fonts', '')}）")
     for a in state.get("answers", []):
-        lines.append(f"- {a['q']} → {a['a']}")
+        # 見た目の段階の答えは見た目の決め。それ以外（案・最終確認）は、画面の静止画に出なくてよい中身の決まり
+        tag = "" if a.get("stage") in VISUAL_STAGES else "（中身の決まり）"
+        lines.append(f"- {a['q']} → {a['a']}{tag}")
     for n in state.get("notes", []):
         lines.append(f"- オーナーの注文（{n['stage']}）：{n['note']}")
     detail = "\n".join(lines)

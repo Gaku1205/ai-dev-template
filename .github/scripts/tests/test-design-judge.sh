@@ -219,6 +219,12 @@ assert_contains "答え" "$b" "地図は？ → 本物の古い地形図を重�
 assert_contains "注文" "$b" "注文（looks）：朱はやめて"
 assert_contains "選んだ方向" "$b" "オーナーが選んだ見た目の方向：地図"
 assert_contains "設計メモは、見た後に読む" "$b" "絵を見て「見えた物」を書き終えてから読む"
+echo '{"memo":"m","answers":[{"q":"お金は？","a":"完全に無料","stage":"ideas"},{"q":"明るさは？","a":"両方","stage":"looks"}],"notes":[]}' > state2.json
+b2=$(judge brief --state state2.json --stage mocks)
+owner_part=$(printf '%s\n' "$b2" | sed -n '/^## オーナーが決めた事/,/^## 中身の決まり/p')
+assert_contains "見た目の段階の答えは、オーナーが決めた事" "$owner_part" "明るさは？ → 両方"
+assert_not_contains "案の段階の答えは、オーナーが決めた事に入れない" "$owner_part" "完全に無料"
+assert_contains "案の段階の答えは、中身の決まりに" "$(printf '%s\n' "$b2" | sed -n '/^## 中身の決まり/,$p')" "お金は？ → 完全に無料"
 
 echo "== design-review.sh：審査に出す物をそろえる（撮影と lint は疑似）"
 mkdir -p bin talk/refs
@@ -262,5 +268,18 @@ assert_eq "今ある見た目への追加は、lint の FAIL では止めない�
 sed -i 's/^場合: 追加/場合: 作り直し/' mocks/concept.md
 rm -f out.txt; BRIEF_FILE=mocks/issue.txt review prepare mocks > /dev/null
 assert_eq "作り直しは、lint の FAIL で止める" "false" "$(jq .ok .judge/gate.json)"
+
+echo "== 審査役の手順書（.github/factory/judge.md）に、design-judge.py の問いが全部ある（無い問いは答えられず、いつも「いいえ」になる）"
+judge_md="$SCRIPTS_DIR/../factory/judge.md"
+if [ -f "$judge_md" ]; then
+  missing=$(python3 - "$SCRIPTS_DIR/design-judge.py" "$judge_md" <<'PY'
+import re, sys
+checks = set(re.findall(r'^    "([a-z]+)": \(', open(sys.argv[1], encoding="utf-8").read(), re.M))
+ids = set(re.findall(r'^\| `([a-z]+)` \|', open(sys.argv[2], encoding="utf-8").read(), re.M))
+print(" ".join(sorted(checks - ids)))
+PY
+)
+  assert_eq "手順書に無い問いが無い" "" "$missing"
+fi
 
 finish

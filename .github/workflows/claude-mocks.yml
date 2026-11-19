@@ -210,6 +210,21 @@ jobs:
         run: |
           mkdir -p mocks
           if [ -n "$EXECUTION_FILE" ] && [ -f "$EXECUTION_FILE" ]; then cp "$EXECUTION_FILE" mocks/claude-execution-output.json; fi
+      # 審査の記録（審査役の答え・指摘の紙・関門・渡した紙）を残す。あとから「なぜ落ちたか」を調べるため
+      - uses: actions/upload-artifact@v6
+        if: ${{ !cancelled() }}
+        with:
+          name: mocks-judge-record
+          path: |
+            .judge/verdict.json
+            .judge/fix.md
+            .judge/gate.json
+            .judge/brief.md
+            .judge/lint.json
+            .judge-results/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14
       - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with:
