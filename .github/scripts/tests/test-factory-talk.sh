@@ -101,8 +101,21 @@ assert_eq "まだ来ていない段階には戻れない" "clarify" "$(talk appl
 echo '{"action":"pick","choice":"2"}' > "$T/r.json"
 assert_eq "出していない方向は選べない" "clarify" "$(talk apply "$T/s3.json" "$T/r.json" | jq -r .next)"
 echo '{"action":"pick","choice":"3"}' > "$T/r.json"
-talk apply "$T/s3.json" "$T/r.json" | jq '.state' > "$T/s4.json"
-assert_eq "方向を選ぶとざっくり画面へ" "mocks" "$(jq -r .stage "$T/s4.json")"
+assert_eq "ふだんは、方向を選ぶと最終確認へ（ざっくり画面を飛ばす）" "confirm" "$(talk apply "$T/s3.json" "$T/r.json" | jq -r .next)"
+assert_eq "新しい相談は、ふだんざっくり画面を出さない" "false" "$(talk init "x" "" | jq -r .want_mocks)"
+assert_eq "FACTORY_TALK_MOCKS=1 なら出す" "true" "$(FACTORY_TALK_MOCKS=1 talk init "x" "" | jq -r .want_mocks)"
+jq '.want_mocks = true' "$T/s3.json" > "$T/s3m.json"
+talk apply "$T/s3m.json" "$T/r.json" | jq '.state' > "$T/s4.json"
+assert_eq "FACTORY_TALK_MOCKS=1 なら、方向を選ぶとざっくり画面へ" "mocks" "$(jq -r .stage "$T/s4.json")"
+# ざっくり画面を通らない最終確認：絵は選んだ方向の最初の1画面、本番に渡すのは方向の HTML・スマホの画像・設計メモ
+jq '.stage = "confirm" | .look = 3 | .assets.looks = "issue-9/r2-looks" | .confirm = {"name":"tide","stack":"nextjs","description":"d","pages":["トップ"]} | .looks = [{"n":3,"title":"t","idea":"i","phone":true}] | .answers = [{"q":"明るさ","a":"両方","stage":"looks"},{"q":"お金","a":"無料","stage":"ideas"}]' "$T/s3.json" > "$T/c0.json"
+r=$(talk render "$T/c0.json" "https://x")
+assert_contains "最終確認の絵は方向の最初の1画面" "$r" "https://x/issue-9/r2-looks/look-3-1440.png"
+assert_contains "スマホの絵も" "$r" "look-3-390.png"
+assert_contains "決まった事は1問ずつの行" "$r" "  - お金 → **無料**"
+b=$(talk brief "$T/c0.json")
+assert_contains "本番に方向の HTML を渡す" "$(jq -r '.files | join(" ")' <<< "$b")" "issue-9/r2-looks/look-3.html"
+assert_contains "中身の決まりの印" "$(jq -r .detail <<< "$b")" "お金 → 無料（中身の決まり）"
 
 echo "== ざっくり画面 → 最終確認 → 作る"
 echo '{"mocks":[{"title":"曲線","note":"n"},{"title":"表","note":"m"}]}' > "$T/out/mocks.json"

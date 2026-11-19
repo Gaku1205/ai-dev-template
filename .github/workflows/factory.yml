@@ -218,8 +218,9 @@ jobs:
           mkdir -p factory-refs/issue
           git fetch -q --depth 1 origin factory-talk || { echo "::warning::factory-talk ブランチを取れませんでした"; exit 0; }
           jq -r '.[]' <<< "$FILES" | while IFS= read -r f; do
-            [[ "$f" =~ ^issue-[0-9]+/r[0-9]+-(looks|mocks)/(look-[1-3]-1440\.png|mock-[ab](-1440|-390)?\.(png|html)|concept\.md|credits\.json)$ ]] || continue
-            dest=$(basename "$f" | sed -E 's/^mock-[ab]/chosen-mock/; s/^look-[1-3]-1440\.png$/chosen-look.png/; s/^concept\.md$/chosen-concept.md/; s/^credits\.json$/chosen-credits.json/')
+            [[ "$f" =~ ^issue-[0-9]+/r[0-9]+-(looks|mocks)/(look-[1-3](-1440|-390)?\.(png|html)|mock-[ab](-1440|-390)?\.(png|html)|concept\.md|credits\.json)$ ]] || continue
+            # 見た目の方向の最初の1画面（ざっくり画面を通らないとき、これが本番の土台）は chosen-look.html・chosen-look.png・chosen-look-390.png に
+            dest=$(basename "$f" | sed -E 's/^mock-[ab]/chosen-mock/; s/^look-[1-3]-1440\.png$/chosen-look.png/; s/^look-[1-3]-390\.png$/chosen-look-390.png/; s/^look-[1-3]\.html$/chosen-look.html/; s/^concept\.md$/chosen-concept.md/; s/^credits\.json$/chosen-credits.json/')
             # 設計メモと絵の出どころは、無いこともある（古い相談）。無ければ飛ばす
             if git show "FETCH_HEAD:$f" > "factory-refs/issue/$dest" 2> /dev/null; then
               echo "- $dest：オーナーが工場の相談で選んだ物（$f）" >> factory-refs/issue/INDEX.md
@@ -258,7 +259,7 @@ jobs:
 
             ${{ fromJSON(needs.plan.outputs.variants || '[0]')[1] != null && format('この工場は、方向の違う画面案を同時に{0}つ作り、審査で一番いい物を使います。あなたは案{1}（番号 {2}）の担当です。`.github/factory/design-department.md` の「案ごとに違う方向を担当する」に従い、番号に応じた考えを主役にしてください。ほかの案は見ません。', needs.plan.outputs.variant_count, fromJSON('[1, 2, 3]')[matrix.variant], matrix.variant) || '' }}
 
-            ${{ needs.plan.outputs.files != '' && needs.plan.outputs.files != '[]' && 'オーナーと相談して、見た目の方向（factory-refs/issue/chosen-look.png）とざっくり画面（factory-refs/issue/chosen-mock.html・chosen-mock-1440.png・chosen-mock-390.png）がもう決まっています。方向を決め直さず、このざっくり画面の構図・色・文字を土台にして、本物の画面に仕上げてください（実例集めは、足りない部品の参考にする分だけでよい）。詳しいメモの「オーナーの注文」も守る。' || '' }}
+            ${{ needs.plan.outputs.files != '' && needs.plan.outputs.files != '[]' && 'オーナーと相談して、見た目がもう決まっています（factory-refs/issue/INDEX.md に一覧）。ざっくり画面（chosen-mock.html・chosen-mock-1440.png・chosen-mock-390.png）があれば、その構図・色・文字を土台にする。無ければ（ふだん）、選んだ方向の本物の最初の1画面（chosen-look.html・chosen-look.png・chosen-look-390.png）の構図・色・文字を土台にし、下の欄とほかの画面は、設計メモ（chosen-concept.md）の通し表を書き足して、同じ考えで自分で作る。方向を決め直さず、本物の画面に仕上げてください（実例集めは、足りない部品の参考にする分だけでよい）。詳しいメモの「オーナーの注文」も守る。「（中身の決まり）」と付いた答えは、画面の動き・データの持ち方で守る（画面の中に説明の欄を足して見せない）。' || '' }}
             `.github/factory/design-department.md`（進め方）を全部読んで、そのとおりに進めてください：
             （ゲームは最初に、ありきたりにしないための遊び方のアイデア）→ 実例を集めて撮る → 参考の板（`factory-refs/board.md`）と方向 → `src/` に作る → 撮って実例と見比べて直す（最低3回）→ 仕上げ（確認コマンド・`docs/design.md`）。
             書いてよい場所：`src/`、`public/`、`docs/design.md`、`factory-refs/`、`.shots/`、`factory-context.md`、`factory-todo.md`、`factory-pages.txt`（ゲームは `index.html` も。会員と課金のサービスは `factory-price.txt` も）
