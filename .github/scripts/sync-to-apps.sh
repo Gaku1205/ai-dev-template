@@ -26,7 +26,11 @@ copy_pipeline() { # 配り先のルート
     done < "$dir/.github/sync-keep"
   fi
   mkdir -p "$dir/.github"
-  rsync -a --delete "${excludes[@]}" "$src_root/.github/" "$dir/.github/"
+  # rsync の終了コード 24（読む途中でファイルが消えた）は失敗にしない。ほかの作業が .github の中の一時ファイルを作って消すと、
+  # 起こりうる。set -e でここで全体が止まると、古いPRを閉じる所に届かない（たまに落ちるテストの疑われる原因）
+  local rc=0
+  rsync -a --delete "${excludes[@]}" "$src_root/.github/" "$dir/.github/" || rc=$?
+  if [ "$rc" -ne 0 ] && [ "$rc" -ne 24 ]; then return "$rc"; fi
   mkdir -p "$dir/docs"
   cp "$src_root/docs/pipeline.md" "$src_root/docs/pipeline-setup.md" "$dir/docs/"
   # 共通のスキル（.claude/skills/）も配る。配り先だけのスキルは消さない（同じ名前の物だけ上書き）
