@@ -163,11 +163,18 @@ set_retry_timer() {
   # 順番待ちがあるとき、並列の上限が変わる次の時刻（夜の始まり／終わり・上書きの期限）の1分後にも起こす。
   # 上限を全部のリポジトリで数えるとき（PARALLEL_SCOPE=global）は、ほかのリポジトリの順番待ちも数える（夜が明けて空きができたら、
   # このリポジトリの見張り役が、ほかのリポジトリの順番待ちも始める）
-  local queued_all boundary=""
-  queued_all=$(( ${queued:-0} + $(global_other_queued 2> /dev/null || echo 0) ))
-  if [ "$queued_all" -gt 0 ]; then
+  # 自分に順番待ちが無く、ほかのリポジトリの順番待ちしか無いときは、テンプレートだけがかける（距離に関係なく。全部で枠1つ）。
+  # 開発していないリポジトリが、ほかのリポジトリのために目覚ましをかけて枠を食わないようにする
+  local boundary="" other_only=0 other
+  if [ "${queued:-0}" -gt 0 ]; then
     t=$(parallel_next_change "$now_s")
     [ -n "$t" ] && boundary=$(( t + 60 ))
+  else
+    other=$(global_other_queued 2> /dev/null || echo 0)
+    if [ "${other:-0}" -gt 0 ] && timer_clock_repo; then
+      t=$(parallel_next_change "$now_s")
+      [ -n "$t" ] && { boundary=$(( t + 60 )); other_only=1; }
+    fi
   fi
   # 目覚ましは、待つ間ずっと Actions の枠（同時に動けるジョブの数。無料のアカウントは全部で20）を1つ使う。
   # 並列の上限が変わる時刻（夜の始まり・夜明け）は全部のリポジトリで同じなので、全部のリポジトリが遠い先の目覚ましをかけると、
@@ -177,7 +184,7 @@ set_retry_timer() {
   local far="${RETRY_TIMER_FAR_MIN:-45}"
   [[ "$far" =~ ^[0-9]+$ ]] && [ "$far" -ge 1 ] || far=45
   if [ -n "$boundary" ]; then
-    if [ $(( boundary - now_s )) -le $(( far * 60 )) ] || timer_clock_repo; then
+    if [ "$other_only" = 1 ] || [ $(( boundary - now_s )) -le $(( far * 60 )) ] || timer_clock_repo; then
       if [ -z "$earliest" ] || [ "$boundary" -lt "$earliest" ]; then earliest="$boundary"; fi
     fi
   fi

@@ -151,6 +151,18 @@ assert_eq "上書きの期限の1分後（近い＝45分以内なら、テンプ
 init_state '{"labels":{"1":["ai:review-done"]}}'
 PARALLEL_OVERRIDE="$ov" run_script watchdog.sh > /dev/null
 assert_eq "順番待ちが無ければ変わり目ではかけない" "" "$(dispatches)"
+echo "== 自分は静かで、ほかのリポジトリにだけ順番待ちがある：テンプレートでなければかけない／テンプレートならかける（近くても遠くても）"
+unset PARALLEL_SCOPE  # 全部のリポジトリで数える（lib.sh の既定は repo）
+oq='{"repos":{"o/r2":{"labels":{"5":["ai:queue"],"6":["ai:implement"]},"issues_meta":{"5":{"body":"<!-- ai-touches: src/b.ts -->"},"6":{"body":"<!-- ai-touches: src/b.ts -->"}}}}}'
+init_state "$oq"
+TIMER_CLOCK_REPO=0 PARALLEL_OVERRIDE="$ov" run_script watchdog.sh > /dev/null
+assert_eq "近い切り替えでも、テンプレートでなければかけない" "" "$(dispatches)"
+init_state "$oq"
+TIMER_CLOCK_REPO=1 PARALLEL_OVERRIDE="$ov" run_script watchdog.sh > /dev/null
+assert_eq "テンプレートは近い切り替えにかける" "ok" "$(within "$(dispatches | awk '{print $2}')" $(( tz_now + 660 )))"
+init_state "$oq"
+TIMER_CLOCK_REPO=1 PARALLEL_NIGHT_HOURS="$nh-$(( (10#$nh + 5) % 24 ))" run_script watchdog.sh > /dev/null
+assert_eq "テンプレートは遠い切り替えにもかける" "ok" "$(within "$(dispatches | awk '{print $2}')" "$want")"
 unset PARALLEL_DAY PARALLEL_NIGHT WATCHDOG_HEARTBEAT_MIN
 
 echo "== 間引いた回（workflow_run の10分の枠が済み）でも、目覚ましはかかる"
