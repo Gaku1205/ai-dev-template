@@ -112,6 +112,7 @@ jq '.stage = "confirm" | .look = 3 | .assets.looks = "issue-9/r2-looks" | .confi
 r=$(talk render "$T/c0.json" "https://x")
 assert_contains "最終確認の絵は方向の最初の1画面" "$r" "https://x/issue-9/r2-looks/look-3-1440.png"
 assert_contains "スマホの絵も" "$r" "look-3-390.png"
+assert_contains "選んだ見た目を名前で書く" "$r" "- **見た目**：方向3「t」"
 assert_contains "決まった事は1問ずつの行" "$r" "  - お金 → **無料**"
 b=$(talk brief "$T/c0.json")
 assert_contains "本番に方向の HTML を渡す" "$(jq -r '.files | join(" ")' <<< "$b")" "issue-9/r2-looks/look-3.html"
