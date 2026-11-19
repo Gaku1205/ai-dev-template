@@ -207,6 +207,9 @@ m=re.match(r'contents/(.+)$',base)
 if m and method=='GET':
     from urllib.parse import unquote
     ref=re.search(r'ref=([^&]+)',path); ref=ref.group(1) if ref else 'main'
+    # contents_sha：{ref:{パス:sha}}。あれば、本物と同じく sha を含む JSON を返す（ファイルの中身の代わり）
+    _sha=st.get('contents_sha',{}).get(ref,{}).get(unquote(m.group(1)))
+    if _sha is not None: out({'sha':_sha}); sys.exit(0)
     body=st.get('contents',{}).get(ref,{}).get(unquote(m.group(1)))
     if body is None: sys.stderr.write('HTTP 404: Not Found\n'); sys.exit(1)
     sys.stdout.write(body); sys.exit(0)
