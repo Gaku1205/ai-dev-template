@@ -472,6 +472,21 @@ AIの実行記録から、許可されず拒否された操作（`permission_den
 
 進行中の作業と同じ場所を触るだけ（結果を使うわけではない）なら、`ai:blocked` ではなく順番待ち（`ai:queue`）を使う。
 
+## Vercel の使用量の見張り（`vercel-usage.sh`）
+
+Vercel の Hobby は、30日の使用量が上限に届くとアカウントごと止まる（11/20 に、Fluid Active CPU が 6h25m / 4h で止まった）。止まる前に気づくため、`.github/scripts/vercel-usage.sh` が1日1回、使用量を見る（呼ぶ段は watchdog か夜の点検に、人間が足す）。
+
+- 読む物：`npx --yes vercel@latest billing usage --since 30d --group-by project`（まず `--format json`、だめなら指定なし）。鍵は環境変数 `VERCEL_TOKEN` だけで渡し（`--token` は使わない）、出力に混ざっても伏せる。チームは `VERCEL_TEAM_ID`（`--scope` で渡す）
+- 上限：スクリプトの中の表（Fluid Active CPU 4時間・Fast Origin Transfer 10GB・Function Invocations 100万回・CDN Requests 100万回・Fluid Provisioned Memory 360GB-Hrs）。`VERCEL_PLAN=pro` なら何もしない
+- 知らせ方（項目ごと）：
+  - 50% を超えた：スマホに1回（`notify.sh` の種類 `usage`。既定の通知に入っている）
+  - 75% を超えた：いちばん使っているプロジェクトのリポジトリに Issue（`priority:high`、題「Vercel の使用量が上限の75%：<項目>」、本文に量・割合・プロジェクトごとの内訳）。同じ題の開いた Issue があれば作らない。リポジトリは `VERCEL_REPO_MAP`（`プロジェクト名=owner/repo` をカンマ区切り）で決め、対応が無ければ `GITHUB_REPOSITORY`
+  - 90% を超えた：その Issue にコメントを足し、もう一度スマホに知らせる
+  - 1日で上限の15%以上増えた：50%未満でも、スマホに知らせる（急に増えたのは、何かが壊れている合図）
+- 同じ段で毎日鳴らさない：前の記録より段が上がったときだけ鳴らす。記録は、閉じた Issue（`VERCEL_LOG_ISSUE`、既定 212）に、1日1回コメントで残す（1行目が `<!-- vercel-usage {…} -->`）。同じ日に何度動かしても、通知もコメントも増えない
+- 取れなかったとき（鍵が無い・CLI のエラー・出力の形が変わった）は、`::warning::` を1行出して 0 で終わる（見張りを止めない）
+- 出力の読み方（CLI の出力は実物で確かめてから直す前提）：JSON の配列（または `data`・`usage`・`rows`・`items` の中の配列）の1行を「プロジェクト・項目名・量」と読み、量は表の単位とみなす（行に `unit` があれば bytes→GB、seconds・ms→時間に直す）
+
 ## スクリプトのテスト
 
 `.github/scripts/tests/` に、進行役のスクリプトのテストがある。本物の GitHub には触らず、疑似の `gh`（`tests/fake-gh`）が状態をファイルに持つ。
