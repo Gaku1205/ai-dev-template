@@ -48,6 +48,8 @@ prepare() {
           f="$dir/look-$k-1440.png"
           if [ -f "$f" ] && [ ! -L "$f" ] && [ -f "$dir/look-$k.html" ] && [ ! -L "$dir/look-$k.html" ]; then
             cp "$f" .judge/made/ && items="$items look-$k" && targets+=("$dir/look-$k.html")
+            # スマホの最初の1画面も見せる（ふだんはこの段で画面を選ぶので、スマホも審査する）
+            if [ -f "$dir/look-$k-390.png" ] && [ ! -L "$dir/look-$k-390.png" ]; then cp "$dir/look-$k-390.png" .judge/made/; fi
           fi
         done
         gate_args+=(--part looks)

@@ -52,12 +52,14 @@ jobs:
           ISSUE: ${{ github.event.issue.number }}
           TITLE: ${{ github.event.issue.title }}
           BODY: ${{ github.event.issue.body }}
+          # ざっくり画面の段を出すか（1 のときだけ。ふだんは見た目の方向で本物の最初の1画面を見せ、そのまま最終確認へ）
+          TALK_MOCKS: ${{ vars.FACTORY_TALK_MOCKS }}
         run: |
           gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/labels" -f "labels[]=factory" -f "labels[]=factory:talk" > /dev/null || echo "::warning::印を付けられませんでした"
           memo="${TITLE#新サービス：}"; memo="${memo#新サービス:}"; memo="$(printf '%s' "$memo" | sed 's/^[[:space:]]*//')"
           detail="$(printf '%s' "$BODY" | tr -d '\r' | head -c 3000 | iconv -c -f utf-8 -t utf-8)"
           mkdir -p talk
-          python3 .github/scripts/factory-talk.py init "$memo" "$detail" > talk/state.json
+          FACTORY_TALK_MOCKS="$TALK_MOCKS" python3 .github/scripts/factory-talk.py init "$memo" "$detail" > talk/state.json
           echo '{"next":"ideas","message":""}' > talk/route.json
       - name: 返事を受け取る
         if: github.event_name == 'issue_comment'
@@ -195,7 +197,7 @@ jobs:
           prompt: |
             あなたは審査役です（作ったAIとは別のAI）。`.github/factory/judge.md` を全部読み、そのとおりに、画像だけを見て審査してください。
             - 種類：${{ steps.review1.outputs.mode }}（この種類の問いに全部答える）
-            - 審査する物（`items` の `name`）：${{ steps.review1.outputs.items }}。画像は `.judge/made/` にある（名前の頭が物の名前）。look-1〜3 は見本の板で、いちばん上の「最初の1画面」を審査する（下の色見本・実例の欄は審査しない）
+            - 審査する物（`items` の `name`）：${{ steps.review1.outputs.items }}。画像は `.judge/made/` にある（名前の頭が物の名前）。look-1〜3 は方向ごとの本物の最初の1画面（-1440 が PC、-390 がスマホ）
             - 比べる実在のサイトは `.judge/refs/`、何のサービスか・オーナーが決めた事は `.judge/brief.md`
             - 書くのは `.judge/verdict.json` だけ。コード・HTML は開かない
           claude_args: '--model opus --max-turns 40 --allowedTools "Read,Glob,Write"'
@@ -237,6 +239,7 @@ jobs:
             talk/*.json
             talk/*.html
             talk/look-*-1440.png
+            talk/look-*-390.png
             talk/mock-*-1440.png
             talk/mock-*-390.png
             talk/mock-*-1440-s2.png
