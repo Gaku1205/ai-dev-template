@@ -254,8 +254,8 @@ PY2
 )
 assert_eq "sync.yml の待ちと配る本体" "$(printf 'wait-cancel\nsync-needs-wait\nsync-no-cancel\ntemplate-only')" "$result"
 
-echo "== after-ci.sh の PIPELINE_CHECK_STEPS は、ci.yml の手順の名前と合っている"
-steps_json=$(grep -m1 "^PIPELINE_CHECK_STEPS=" "$SCRIPTS_DIR/after-ci.sh" | sed -E "s/^PIPELINE_CHECK_STEPS='(.*)'\$/\\1/")
+echo "== pipeline-lib.sh の PIPELINE_CHECK_STEPS は、ci.yml の手順の名前と合っている"
+steps_json=$(grep -m1 "^PIPELINE_CHECK_STEPS=" "$SCRIPTS_DIR/pipeline-lib.sh" | sed -E "s/^PIPELINE_CHECK_STEPS='(.*)'\$/\\1/")
 result=$(python3 - "$WORKFLOWS/ci.yml" "$steps_json" <<'PY2'
 import sys, json, yaml
 d = yaml.safe_load(open(sys.argv[1]))

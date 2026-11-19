@@ -130,7 +130,29 @@ for pr in $prs; do
           updated=$(visual_update_count "$pr" "$comments")
           others=$(printf '%s' "$failed" | jq -r '[.[] | select(. != "見た目のテスト")] | join("、")')
           if [ -n "$others" ]; then
-            stop_for_human "$pr" "AIに直すよう頼みましたが、変更が入りませんでした。基準の画像の撮り直しを頼まれていますが、見た目のテスト以外のチェック（${others}）も落ちているので、撮り直しでは直りません（AIのコメントを確認してください）${denied_note}"
+            others_json=$(printf '%s' "$failed" | jq -c '[.[] | select(. != "見た目のテスト")]')
+            if [ "$updated" -ge 2 ]; then
+              stop_for_human "$pr" "基準の画像を${updated}回撮り直しても、まだ「基準の画像の撮り直し」を頼まれています（撮り直しは、main を取り込んだ後で2回まで）。見た目以外のチェック（${others}）も落ちています${denied_note}"
+            # 1. まだやり直していなければ、落ちたジョブを1回だけやり直す（たまに落ちるテストかもしれない）
+            elif rerun_failed_ci_once "$pr" "$head" "基準の画像の撮り直しを頼まれていますが、見た目のテスト以外のチェック（${others}）も落ちているので、先に落ちたジョブを1回だけやり直します"; then
+              echo "PR #$pr：見た目以外（${others}）も落ちているので、CIをやり直しました"
+            # 3. 落ちているのがパイプライン側のテストだけで、PRが .github/ を触っていない：AIは直せない → 人間に回し、テンプレートに Issue を作る
+            elif [ "$(pipeline_steps_only "$others_json")" = "true" ] && ! pr_touches_github "$pr"; then
+              if report_pipeline_test_to_template "$pr" "$others"; then
+                issue_note="テンプレートに、直すIssueを作りました（または足しました）。"
+              else
+                issue_note="テンプレート（ai-dev-template）に、直すIssueを作ってください（自動では作れませんでした）。"
+              fi
+              stop_for_human "$pr" "PRと関係ない所（パイプライン側）のテスト（${others}）が落ちています。やり直しても同じで、AIは \`.github/\` を直せないので止めました。${issue_note}直ったら CI をやり直してから ai:stuck を外してください（見た目のテストは、そのあと自動で撮り直します）${denied_note}"
+            # 2. 見た目以外の本当の失敗：見た目以外だけを直させる（直す回数に数える）。同じ依頼をしたのにまた変更なしなら、人間に回す
+            elif printf '%s' "$last" | jq -r .body | grep -qF "$VISUAL_OTHERS_MARK"; then
+              stop_for_human "$pr" "見た目以外の失敗（${others}）だけを直すよう頼みましたが、変更が入りませんでした（AIのコメントを確認してください）${denied_note}"
+            else
+              request_fix_or_stop "$pr" "$head" "基準の画像の撮り直しは、あとでパイプラインが自動で行います。見た目のテストの画像の差は気にしなくていいです。見た目以外の失敗（${others}）だけを、失敗したチェックのログを読んで直してください。基準の画像は自分で撮り直さないでください。
+
+${VISUAL_OTHERS_MARK}" "見た目以外のチェック（${others}）が落ちたままです"
+              echo "PR #$pr：見た目以外（${others}）の失敗だけを直すよう依頼しました"
+            fi
           elif [ "$updated" -ge 2 ]; then
             stop_for_human "$pr" "基準の画像を${updated}回撮り直しても、まだ「基準の画像の撮り直し」を頼まれています（撮り直しは、main を取り込んだ後で2回まで）。見た目の差が意図した物か確かめてください${denied_note}"
           else

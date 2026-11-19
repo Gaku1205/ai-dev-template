@@ -51,6 +51,13 @@ BLOCKED_MARK_RE='<!-- blocked-by: ([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#([0-9]+) -->
 REVIEW_UNAVAILABLE_MARK="review-unavailable:"
 # shellcheck disable=SC2034  # after-ci.sh で使う
 PIPELINE_TEST_MARK="<!-- auto-pipeline-test-rerun -->"
+# パイプライン自体の確認の手順の名前（ci.yml の手順の name と同じ。食い違うと tests/test-workflows.sh が落ちる）
+PIPELINE_CHECK_STEPS='["スクリプトのテスト","shellcheck","ワークフローの確認（actionlint）"]'
+# 見た目以外の失敗だけを直すよう頼んだ依頼の印（after-mention.sh。同じ依頼で変更なしが続いたら人間に回す）
+# shellcheck disable=SC2034  # after-mention.sh で使う
+VISUAL_OTHERS_MARK="<!-- auto-fix-nonvisual -->"
+# パイプライン側のテストが落ちたとき、テンプレートに作る（足す）Issue の題名
+PIPELINE_TEST_ISSUE_TITLE="パイプライン側のテストが落ちている（たまに落ちる・壊れている）"
 # 自動でやり直す回数の上限と、失敗してからやり直すまでの待ち時間（分）。
 # 使用量の上限で止まったときは、リセットされるまで何度かやり直しながら待つ
 RETRY_MARK="<!-- auto-retry -->"
@@ -2075,6 +2082,76 @@ ci_failed_steps() {
   else
     echo "$steps"
   fi
+}
+
+# 落ちた手順の名前（JSON の配列）が、パイプライン側の確認（PIPELINE_CHECK_STEPS）だけか、それと見た目のテストだけ（かつパイプライン側を1つは含む）かを true / false で出す。
+#   使い方：pipeline_steps_only 落ちた手順の配列 [with_visual]（with_visual を付けると、見た目のテストが混ざっていてもよい）
+pipeline_steps_only() {
+  printf '%s' "$1" | jq --argjson names "$PIPELINE_CHECK_STEPS" --arg wv "${2:-}" '
+    length > 0
+    and any(.[]; . as $n | $names | index($n) != null)
+    and all(.[]; . as $n | ($names | index($n) != null) or ($wv != "" and $n == "見た目のテスト"))' 2> /dev/null || echo false
+}
+
+# PRが .github/ を触っているか（0 = 触っている）。ファイルの一覧を読めないときも、触っているものとして扱う（やり直し・人間に回す近道に進まない）
+pr_touches_github() {
+  local files
+  files=$(gh api "repos/$REPO/pulls/$1/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null) || return 0
+  printf '%s\n' "$files" | grep -q '^\.github/'
+}
+
+# このコミットで、パイプライン側のテストのやり直し（PIPELINE_TEST_MARK の印）をもう1回やったか（0 = やった）。
+# 印の付いたコメントに「コミット <sha>」があれば、そのコミットの分。コミットの記載が無い古い印は、どのコミットでも「やった」と数える
+#   使い方：pipeline_rerun_done PR番号 先頭コミット [コメントのJSON]
+pipeline_rerun_done() {
+  local comments="${3:-}"
+  [ -z "$comments" ] && comments=$(all_comments "$1")
+  printf '%s' "$comments" | jq -e --arg m "$PIPELINE_TEST_MARK" --arg s "$2" \
+    '[.[] | select(.body | contains($m)) | select(((.body | contains("コミット ")) | not) or (.body | contains($s)))] | length > 0' > /dev/null
+}
+
+# そのコミットの、いちばん新しい CI（PRの物）が失敗していれば、その実行の番号を出す。無ければ何も出さない
+ci_failed_run_id() {
+  GH_TOKEN="${READ_TOKEN:-$GH_TOKEN}" gh api "repos/$REPO/actions/runs?head_sha=$1&event=pull_request&per_page=20" \
+    -q '[.workflow_runs[] | select(.name == "CI")] | sort_by(.created_at) | last | select(. != null and .conclusion == "failure") | .id' 2> /dev/null || true
+}
+
+# 落ちたジョブを、同じ先頭コミットで1回だけやり直す（印を残す）。やり直せたら 0、すでにやった・やり直せなかったら 1
+#   使い方：rerun_failed_ci_once PR番号 先頭コミット 知らせの文 [実行の番号（無ければ探す）]
+rerun_failed_ci_once() {
+  local pr="$1" sha="$2" msg="$3" run="${4:-}"
+  pipeline_rerun_done "$pr" "$sha" && return 1
+  [ -n "$run" ] || run=$(ci_failed_run_id "$sha")
+  [ -n "$run" ] || return 1
+  GH_TOKEN="${READ_TOKEN:-$GH_TOKEN}" gh api -X POST "repos/$REPO/actions/runs/$run/rerun-failed-jobs" > /dev/null 2>&1 || return 1
+  comment "$pr" "${msg}（コミット ${sha}）
+
+${PIPELINE_TEST_MARK}"
+  return 0
+}
+
+# パイプライン側のテストが落ちていることを、テンプレートの Issue にまとめる（同じ題名の開いた Issue があれば、コメントで足すだけ）。
+# 作れた・足せたら 0、テンプレートが分からない・読み書きできないときは 1（呼んだ側が、人間に回す文に「Issue を作ってほしい」と書く）
+#   使い方：report_pipeline_test_to_template PR番号 落ちた手順の名前
+report_pipeline_test_to_template() {
+  local pr="$1" names="$2" tpl list target
+  tpl=$(template_repo)
+  [ -n "$tpl" ] || return 1
+  list=$(find_issues_by_title "$PIPELINE_TEST_ISSUE_TITLE" open "$tpl") || return 1
+  target=$(printf '%s\n' "$list" | head -n 1)
+  if [ -z "$target" ]; then
+    local body="### 背景
+アプリ \`${REPO}\` のPR #${pr} で、PRと関係ない所（パイプライン側）のテスト（${names}）が、やり直しても落ちました。PRは \`.github/\` を触っておらず、AIは \`.github/\` を直せないので、人間に回りました。同じことが別のアプリでも起きたら、下のコメントに \`<アプリ>#<番号>\` を足します。
+
+### やること（マネージャーが行う。\`.github/\` を触るのでAIには回さない）
+- 落ちたテストのログを見て、たまに落ちるのか（時間・実行環境の揺れ）、壊れているのかを確かめる
+- 直したら、アプリへ配布する"
+    target=$(gh api -X POST "repos/$tpl/issues" -f title="$PIPELINE_TEST_ISSUE_TITLE" -f body="$body" -q .number 2> /dev/null) || return 1
+    notify stuck "パイプライン側のテストが落ちています" "${tpl} に Issue #${target} を作りました（${REPO}#${pr}）" 4
+    return 0
+  fi
+  gh api "repos/$tpl/issues/$target/comments" -f body="\`${REPO}#${pr}\`：パイプライン側のテスト（${names}）が、やり直しても落ちました" > /dev/null 2>&1 || return 1
+  return 0
 }
 
 # そのコミットの、いちばん新しい CI（PRの物。created_at がいちばん新しい実行）の状態を1語で出す。
