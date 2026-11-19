@@ -12,7 +12,7 @@ run_case() { # 変更ファイル（スペース区切り） ラベル（カン�
   labels=$(python3 -c "import sys,json;print(json.dumps([l for l in sys.argv[1].split(',') if l]))" "$2")
   init_state '{"labels":{"58":'"$labels"'},"files":'"$files"',"pulls":[{"number":58,"state":"open","body":"Closes #54","head":{"sha":"abc","ref":"claude/issue-54-x"},"updated_at":"2026-01-01T00:00:00Z"}],"checks":[{"name":"check","status":"completed","conclusion":"success","app":{"slug":"github-actions"}}],"branches":[{"name":"claude/issue-54-x","date":"2026-01-01T00:00:00Z"}]}'
   state_py "s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\nNo issues found.','user':{'login':'github-actions[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})"
-  CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+  CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script_keep after-review.sh
 }
 merged() { python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print(','.join(map(str,s.get('merged',[]))))"; }
 
@@ -73,7 +73,7 @@ assert_eq "マージされない" "" "$(merged)"
 echo "== レビューの結果が無い：画像だけのPRは、指摘なしとして進める"
 review_missing_case() { # 変更ファイル（JSON の配列）
   init_state '{"labels":{"58":[]},"files":'"$1"',"pulls":[{"number":58,"state":"open","body":"Closes #54","head":{"sha":"abc","ref":"claude/issue-54-x"},"updated_at":"2026-01-01T00:00:00Z"}],"checks":[{"name":"check","status":"completed","conclusion":"success","app":{"slug":"github-actions"}}],"branches":[{"name":"claude/issue-54-x","date":"2026-01-01T00:00:00Z"}]}'
-  CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+  CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script_keep after-review.sh
 }
 review_missing_case '[{"filename":"assets/readme/home.png","changes":0},{"filename":"assets/readme/demo.gif","changes":0}]'
 assert_eq "画像だけ：マージされる" "58" "$(merged)"
@@ -94,9 +94,9 @@ merge_fail_case() { # mergeable_state
   run_case_state() {
     init_state '{"labels":{"58":[]},"files":["src/a.ts"],"merge_fail":"HTTP 405: Pull Request is not mergeable","pulls":[{"number":58,"state":"open","mergeable_state":"'"$1"'","body":"Closes #54","head":{"sha":"abc","ref":"claude/issue-54-x"},"updated_at":"2026-01-01T00:00:00Z"}],"checks":[{"name":"check","status":"completed","conclusion":"success","app":{"slug":"github-actions"}}],"branches":[{"name":"claude/issue-54-x","date":"2026-01-01T00:00:00Z"}]}'
     state_py "s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\nNo issues found.','user':{'login':'github-actions[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})"
-    CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh
+    CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script_keep after-review.sh
   }
-  run_case_state "$1" > /dev/null
+  run_case_state "$1"
 }
 merge_fail_case dirty
 assert_eq "衝突：マージされない" "" "$(merged)"
@@ -132,7 +132,7 @@ state_py "
 s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\n1 issues found.','user':{'login':'claude[bot]'},'created_at':'$(ago 10)','updated_at':'$(ago 10)'})
 s['comments'].append({'id':2,'issue':'58','body':'## Code review\n\nNo issues found.','user':{'login':'claude[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})
 s['review_comments']=[{'user':{'login':'claude[bot]'},'original_commit_id':'abc','created_at':'$(ago 11)','body':'説明が足りない'}]"
-CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script_keep after-review.sh
 assert_eq "マージされる" "58" "$(merged)"
 
 echo "== この回のレビューで行への指摘がある：直すよう頼む"
@@ -141,7 +141,7 @@ state_py "
 s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\nNo issues found.','user':{'login':'claude[bot]'},'created_at':'$(ago 10)','updated_at':'$(ago 10)'})
 s['comments'].append({'id':2,'issue':'58','body':'## Code review\n\nNo issues found.','user':{'login':'claude[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})
 s['review_comments']=[{'user':{'login':'claude[bot]'},'original_commit_id':'abc','created_at':'$(ago 2)','body':'ここがバグ'}]"
-CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script_keep after-review.sh
 assert_eq "マージされない" "" "$(merged)"
 assert_contains "直す依頼" "$(comments_of 58)" "auto-fix"
 
@@ -150,7 +150,7 @@ init_state "$base"
 state_py "
 s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\nNo issues found.','user':{'login':'claude[bot]'},'created_at':'$(ago 10)','updated_at':'$(ago 10)'})
 s['review_comments']=[{'user':{'login':'claude[bot]'},'original_commit_id':'abc','created_at':'$(ago 1)','body':'ここがバグ'}]"
-CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script_keep after-review.sh
 assert_eq "マージされない" "" "$(merged)"
 assert_contains "直す依頼" "$(comments_of 58)" "auto-fix"
 
@@ -159,7 +159,7 @@ init_state "$base"
 state_py "
 s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\n1 issue found.\n\n- \`.github/workflows/ci.yml\` の権限が広すぎます','user':{'login':'github-actions[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})
 s['review_comments']=[{'user':{'login':'claude[bot]'},'original_commit_id':'abc','created_at':'$(ago 1)','path':'.github/actions/setup/action.yml','body':'ここが危ない'}]"
-CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script_keep after-review.sh
 assert_contains "ai:stuck" "$(labels_of 58)" "ai:stuck"
 assert_not_contains "修正AIに頼まない" "$(comments_of 58)" "@claude"
 assert_contains "マネージャーが直す、と書く" "$(comments_of 58)" "マネージャーが直してください"
@@ -171,7 +171,7 @@ init_state "$base"
 state_py "
 s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\nNo issues found.','user':{'login':'claude[bot]'},'created_at':'$(ago 10)','updated_at':'$(ago 10)'})
 s['review_comments']=[{'user':{'login':'claude[bot]'},'original_commit_id':'abc','created_at':'$(ago 1)','path':'.github/workflows/pipeline.yml','body':'ここがバグ'}]"
-CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script_keep after-review.sh
 assert_contains "ai:stuck" "$(labels_of 58)" "ai:stuck"
 assert_not_contains "修正AIに頼まない" "$(comments_of 58)" "@claude"
 
@@ -180,7 +180,7 @@ init_state "$base"
 state_py "
 s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\n1 issue found.\n\n- \`.github/workflows/ci.yml\` の権限','user':{'login':'github-actions[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})
 s['review_comments']=[{'user':{'login':'claude[bot]'},'original_commit_id':'abc','created_at':'$(ago 1)','path':'src/a.ts','body':'ここがバグ'}]"
-CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script_keep after-review.sh
 assert_not_contains "止めない" "$(labels_of 58)" "ai:stuck"
 assert_contains "修正AIに頼む" "$(comments_of 58)" "@claude"
 assert_contains "ワークフローは直さない、と足す" "$(comments_of 58)" "ワークフローの所"
@@ -190,7 +190,7 @@ init_state "$base"
 state_py "
 s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\n1 issue found.\n\n- \`src/a.ts\` にバグ','user':{'login':'github-actions[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})
 s['review_comments']=[{'user':{'login':'claude[bot]'},'original_commit_id':'abc','created_at':'$(ago 1)','path':'src/a.ts','body':'ここがバグ'}]"
-CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script_keep after-review.sh
 assert_contains "修正AIに頼む" "$(comments_of 58)" "@claude"
 assert_not_contains "足した文は入らない" "$(comments_of 58)" "ワークフローの所"
 
@@ -198,13 +198,13 @@ echo "== パスが無い指摘：今までどおり修正AIに頼む"
 init_state "$base"
 state_py "
 s['comments'].append({'id':1,'issue':'58','body':'## Code review\n\n1 issue found.\n\n- 権限が広すぎます','user':{'login':'github-actions[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})"
-CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script_keep after-review.sh
 assert_contains "修正AIに頼む" "$(comments_of 58)" "@claude"
 assert_not_contains "止めない" "$(labels_of 58)" "ai:stuck"
 
 echo "== レビューAIが何も書かずに終わった：2回までは自動でやり直し、そのあとは人間に回す"
 init_state "$base"
-CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script_keep after-review.sh
 assert_contains "1回目：ai:retry" "$(labels_of 58)" "ai:retry"
 assert_not_contains "1回目：人間には回さない" "$(labels_of 58)" "ai:stuck"
 state_py "
@@ -212,7 +212,7 @@ import re
 for c in s['comments']:
     if 'auto-retry' in c['body']: c['body']=re.sub(r'count=[0-9]+ kind=','count=2 kind=',c['body'])
 s['labels']['58']=[]"
-CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script_keep after-review.sh
 assert_contains "やり直しが2回を超えたら人間に回す" "$(labels_of 58)" "ai:stuck"
 assert_eq "マージされない" "" "$(merged)"
 
@@ -220,13 +220,13 @@ echo "== レビューAIがエラーで終わったが、結果のコメントは
 init_state "$base"
 state_py "
 s['comments'].append({'id':1,'issue':'58','body':'## Code review\\n\\nNo issues found.','user':{'login':'github-actions[bot]'},'created_at':'$(ago 1)','updated_at':'$(ago 1)'})"
-CONCLUSION=failure HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+CONCLUSION=failure HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script_keep after-review.sh
 assert_eq "マージされる" "58" "$(merged)"
 assert_not_contains "やり直しにしない" "$(labels_of 58)" "ai:retry"
 
 echo "== レビューAIがエラーで終わり、結果のコメントも無い：やり直し"
 init_state "$base"
-CONCLUSION=failure HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-review.sh > /dev/null
+CONCLUSION=failure HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script_keep after-review.sh
 assert_contains "ai:retry" "$(labels_of 58)" "ai:retry"
 assert_eq "マージされない" "" "$(merged)"
 

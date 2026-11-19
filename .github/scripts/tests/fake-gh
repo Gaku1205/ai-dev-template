@@ -12,6 +12,11 @@ assert args[0]=='api'
 # 呼ばれた回数を api_calls に足す（API の回数を確かめるテスト用。読むだけの呼び出しも数える）
 st['api_calls']=st.get('api_calls',0)+1
 json.dump(st,open(ST,'w'))
+# 呼び出しを calls.log に1行ずつ残す（テストが失敗したとき、どう動いたかを見るため。MOCK_STATE と同じフォルダ）
+try:
+    with open(os.path.join(os.path.dirname(ST),'calls.log'),'a') as _f: _f.write(' '.join(args)+'\n')
+except OSError:
+    pass
 args=args[1:]
 method='GET'; q=None; fields={}; flist=[]; path=None; slurp=False; paginate=False; inbody=None
 i=0
