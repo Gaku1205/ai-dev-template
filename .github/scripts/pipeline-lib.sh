@@ -1704,14 +1704,19 @@ classify_failure() {
   IFS='|' read -r subtype denials first result <<< "$info"
   if printf '%s' "$result" | grep -qiE 'usage limit|rate limit|limit reached|overloaded|429'; then
     echo "使用量の上限"
+  elif [ "$subtype" = "error_max_turns" ]; then
+    # 手数で止まったのが本当の原因。途中で断られた操作は寄り道なので、添えるだけ
+    if [ "${denials:-0}" -gt 0 ]; then
+      echo "作業回数の上限（--max-turns。途中で断られた操作：${denials}件）"
+    else
+      echo "作業回数の上限（--max-turns）"
+    fi
   elif [ "${denials:-0}" -gt 0 ]; then
     if [ -n "$first" ]; then
       echo "許可不足（AIが許可されていない操作を試した：${denials}件。最初の1件：${first}）"
     else
       echo "許可不足（AIが許可されていない操作を試した：${denials}件）"
     fi
-  elif [ "$subtype" = "error_max_turns" ]; then
-    echo "作業回数の上限（--max-turns）"
   elif [ -n "$subtype" ]; then
     echo "その他（${subtype}）"
   else
@@ -1977,7 +1982,11 @@ handle_ai_failure() {
   denied=$(denied_tools "$file")
   # 使用量の上限で止まったのなら、途中に拒否された操作があっても、許可の不足として人間に回さない（上限は待てば直る。
   # 拒否は、AIが別のやり方で先へ進めていることが多い）。上限のリセットを待ってやり直す（retry_ai_failure）
-  if [ -n "$denied" ] && [ -z "$(limit_signal "$file")" ]; then
+  # 作業回数の上限で止まったときも同じ。拒否は途中の寄り道で（例：cat >> でファイルに書こうとして断られ、Edit で書き直す）、止まった本当の原因は手数。
+  # 許可不足として人間に回すと「許可を足せ」と的外れな理由になり、やり直せば進む作業まで止まる（agent-desk #658）。拒否は記録だけ残す
+  if [ -n "$denied" ] && [ -z "$(limit_signal "$file")" ] && hit_max_turns "$file"; then
+    report_permission_gap "$num" "$denied"
+  elif [ -n "$denied" ] && [ -z "$(limit_signal "$file")" ]; then
     reason="$(failure_reason "$label" "$file")。$(permission_reason_text "$denied")"
     # 先に人間に回す（ラベル・コメント・通知）。記録は後。記録が遅くてジョブが時間切れになっても、宙に浮かないように
     case "$kind" in
@@ -2006,6 +2015,13 @@ retry_ai_failure() {
       implement) stop_issue_for_human "$num" "${reason}。Issue を小さく分けるか、\`size:L\` を付けてから \`ai:stuck\` を外してください" ;;
       *) stop_for_human "$num" "${reason}。PRのコメントとログを確かめてください" ;;
     esac
+    return 0
+  fi
+  # 実装AIが作業回数の上限で止まった1回目：同じ上限でやり直しても同じ所で止まるので、大きい作業（size:L：手数100・強いモデル）にしてやり直す
+  if [ -z "$limit" ] && [ "$kind" = implement ] && hit_max_turns "$file" && ! has_label "$num" "size:L"; then
+    remove_label "$num" "size:S"
+    add_label "$num" "size:L"
+    mark_for_retry "$num" "$kind" "$(failure_reason "$label" "$file")。大きい作業として（size:L：手数を増やし、強いモデルで）やり直します" "$limit"
     return 0
   fi
   mark_for_retry "$num" "$kind" "$(failure_reason "$label" "$file")" "$limit"
