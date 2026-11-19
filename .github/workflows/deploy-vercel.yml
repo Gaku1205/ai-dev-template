@@ -42,8 +42,20 @@ jobs:
         run: |
           source .github/scripts/stack.sh
           if stack_deploy_kinds | grep -qx vercel; then echo "vercel=true" >> "$GITHUB_OUTPUT"; else echo "公開先に Vercel が無いので、何もしません"; fi
+      # 配布のPR（パイプラインの物だけ）のマージのあと、全アプリが一斉に3分寝て Actions の枠を埋めないように、
+      # 寝る前に「公開しなくてよいか」を確かめる（#241。手で動かしたとき・3時間ごとの確かめでは確かめない）
+      - name: 寝なくてよいか確かめる
+        id: skip
+        if: steps.kind.outputs.vercel == 'true' && github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if .github/scripts/deploy-vercel-skip.sh; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: 続けてのマージを待つ
-        if: steps.kind.outputs.vercel == 'true'
+        if: steps.kind.outputs.vercel == 'true' && steps.skip.outputs.skip != 'true'
         env:
           DELAY: ${{ vars.VERCEL_DEPLOY_DELAY_MIN }}
           EVENT: ${{ github.event_name }}
@@ -53,7 +65,7 @@ jobs:
           echo "${DELAY} 分待ってから公開します（その間に main が更新されたら、新しい方が公開します）"
           sleep $(( DELAY * 60 ))
       - name: 最新の main を公開する
-        if: steps.kind.outputs.vercel == 'true'
+        if: steps.kind.outputs.vercel == 'true' && steps.skip.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
