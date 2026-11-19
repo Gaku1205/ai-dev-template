@@ -87,10 +87,10 @@ Issue の `ai:stuck` を外したときは、付いているラベルで続き�
 
 **待っている間は15分ごとに見る**：見張り役は、次のどれかがあるとき、目覚ましを「いまから `WATCHDOG_HEARTBEAT_MIN` 分後（既定 15）」にもかける（今ある時刻と比べて早い方。目覚ましは1つのまま。すでに同じかそれより早い目覚ましがあればかけ直さず、1回の待ちは `RETRY_TIMER_MAX_MIN` までの上限も今までどおり）。
 - `ai:stuck`・`ai:skip` でない `ai:plan`・`ai:implement`・`ai:mocks`・`ai:blocked` の Issue（`ai:blocked` は待ち先が閉じる時刻が読めないので、これで拾う）
-- `ai:stuck` でなく、人間のマージ待ち（`ai:hold` のPRで `hold_prs` に出る物）でもない開いているPR（fork と下書きは除く）
-- `ai:` のラベルが無い開いている Issue（オーナー・パイプライン・AIが作った物。企画AIが分けて作った Issue は `github-actions[bot]` 作で受付が動かないので、これで拾う）
+- `ai:stuck` でなく、人間のマージ待ち（`ai:hold` のPRで `hold_prs` に出る物）でもない、パイプラインの開いているPR（`claude/` のブランチの物。fork・下書き・配布の `pipeline-sync/` のPRは除く）
+- `ai:` のラベルが無い開いている Issue のうち、作って2時間以内の物（オーナー・パイプライン・AIが作った物。企画AIが分けて作った Issue は `github-actions[bot]` 作で受付が動かないので、これで拾う。古いラベル無しの Issue では起こさない）
 
-順番待ち（`ai:queue`）があるときは、並列の上限が変わる次の時刻（`PARALLEL_NIGHT_HOURS` の夜の始まり・終わり、`PARALLEL_OVERRIDE` の期限。`pipeline-lib.sh` の `parallel_next_change` が、`parallel_limit_decide` と同じ設定から求める）の1分後にもかける。何も待っていなければかけない（静かなリポジトリで Actions を回し続けない）。`RETRY_TIMER=off` なら、どちらもかけない。間引いた回（10分の枠が済んだ回）でも、この目覚ましはかける（開いている一覧の写しから答えるので、API は目覚ましの確かめ1回とかける1回しか増えない）。`WATCHDOG_HEARTBEAT_MIN` は環境変数で、ワークフローには書かず、スクリプトの既定値（15）を使う。
+順番待ち（`ai:queue`）があるときは、並列の上限が変わる次の時刻（`PARALLEL_NIGHT_HOURS` の夜の始まり・終わり、`PARALLEL_OVERRIDE` の期限。`pipeline-lib.sh` の `parallel_next_change` が、`parallel_limit_decide` と同じ設定から求める）の1分後にもかける。ただしこの時刻が `RETRY_TIMER_FAR_MIN` 分（既定45）より先なら、かけるのはテンプレートのリポジトリだけ（目覚ましは待つ間ずっと Actions の同時に動けるジョブの枠を1つ使い、無料のアカウントは全部で20。全部のリポジトリが数時間先の同じ時刻にかけると、枠が埋まって CI や AI が順番待ちになる。11/19 朝に13リポジトリで起きた）。何も待っていなければかけない（静かなリポジトリで Actions を回し続けない）。`RETRY_TIMER=off` なら、どちらもかけない。間引いた回（10分の枠が済んだ回）でも、この目覚ましはかける（開いている一覧の写しから答えるので、API は目覚ましの確かめ1回とかける1回しか増えない）。`WATCHDOG_HEARTBEAT_MIN` は環境変数で、ワークフローには書かず、スクリプトの既定値（15）を使う。
 
 - 実装AIが「もう直っている（変更は要らない）」と確かめて終わった（ほかの Issue のPRで先に直った、など）：人間に回さず、AIが確かめた中身をコメントに残して Issue を閉じる（`open-pr.sh`、言い方は `ALREADY_FIXED_RE`）。まだ直っていなければ、開き直すと企画からもう一度進む
 - もう一度レビューに回すとき（PRの説明だけを直した・修正AIが「指摘は誤り」か「前の対応で直し済み」と返した・レビューのやり直し）に、PRが main とコンフリクトしている：GitHub はコンフリクトしたPRでは pull_request のワークフローを動かさないので、`ai:review` を付け直してもレビューAIは起きない。先に修正AIにコンフリクトの解消を頼む（`request_review`。直す回数ではなく、コンフリクトの回数に数える。基準の画像だけならAIを呼ばずに解く。解消して push されると、CIのあとでレビューに回る）

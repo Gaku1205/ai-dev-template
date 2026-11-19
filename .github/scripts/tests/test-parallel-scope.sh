@@ -155,8 +155,8 @@ assert_eq "Summary に ⚠️ は出ない" "" "$(cat "$SUMMARY")"
 
 echo "== 見張り役の目覚まし：ほかのリポジトリにだけ順番待ちがあっても、上限が変わる時刻に起こす"
 init_state '{"repos":{"o/r2":{"labels":{"5":["ai:queue"],"6":["ai:implement"]},"issues_meta":{"5":{"body":"<!-- ai-touches: src/b.ts -->"},"6":{"body":"<!-- ai-touches: src/b.ts -->"}}}}}'
-out=$(PARALLEL_NIGHT_HOURS="01-08" run_script watchdog.sh)
-assert_contains "目覚ましをかける" "$out" "目覚ましを"
+out=$(TIMER_CLOCK_REPO=1 PARALLEL_NIGHT_HOURS="01-08" run_script watchdog.sh)
+assert_contains "目覚ましをかける（テンプレートのリポジトリ）" "$out" "目覚ましを"
 init_state '{"repos":{"o/r2":{"labels":{"5":["ai:queue"],"6":["ai:implement"]},"issues_meta":{"5":{"body":"<!-- ai-touches: src/b.ts -->"},"6":{"body":"<!-- ai-touches: src/b.ts -->"}}}}}'
 out=$(PARALLEL_SCOPE=repo PARALLEL_NIGHT_HOURS="01-08" run_script watchdog.sh)
 assert_not_contains "repo なら、ほかのリポジトリの順番待ちでは起こさない" "$out" "目覚ましを"
