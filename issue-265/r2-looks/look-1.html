@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>休み残高 — 時間割</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;700&family=IBM+Plex+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ground: #f2f4f7;
+  --surface: #ffffff;
+  --raised: #e9ecf1;
+  --border: #e3e6ea;
+  --text: #0a0a0a;
+  --muted: #5f646b;
+  --accent: #141414;
+  --hue: #1d5fbf;
+  --today: #e8eef8;
+  --negative: #c4242a;
+  --neg-bg: #ffedea;
+  --radius-card: 8px;
+  --radius-control: 6px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--ground); color: var(--text); font-family: "Geist", "IBM Plex Sans JP", system-ui, sans-serif; font-size: 14px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100svh; }
+.side { padding: 28px 12px 20px; display: flex; flex-direction: column; gap: 4px; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 10px 22px; }
+.mark { width: 28px; height: 28px; border-radius: 6px; background: var(--accent); color: #fff; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 5px; }
+.mark i { background: #fff; border-radius: 1px; }
+.mark i.off { background: var(--hue); }
+.brand b { font-size: 16px; font-weight: 700; }
+.brand small { display: block; font-size: 12px; color: var(--muted); }
+.nav a { display: block; padding: 6px 10px; border-radius: 6px; color: var(--muted); text-decoration: none; font-size: 14px; line-height: 22px; }
+.nav a.on { background: #e3e6eb; color: var(--text); font-weight: 500; }
+.side .grp { margin-top: 28px; padding: 0 10px 4px; font-size: 12px; color: var(--muted); }
+.side .foot { margin-top: auto; padding: 10px; font-size: 12px; color: var(--muted); }
+main { padding: 32px 40px 32px 16px; }
+.head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 20px; }
+h1 { font-size: 24px; font-weight: 500; }
+.finding { margin-top: 4px; font-size: 15px; color: var(--text); }
+.finding strong { color: var(--negative); font-weight: 700; }
+.btn { display: inline-flex; align-items: center; height: 40px; padding: 0 18px; border-radius: var(--radius-control); background: var(--accent); color: #fff; font: inherit; font-weight: 500; border: 0; }
+.btn.ghost { background: #e3e6eb; color: var(--text); }
+.actions { display: flex; gap: 8px; }
+.grid { display: grid; grid-template-columns: 76px repeat(5, 1fr); gap: 6px; }
+.dh { padding: 0 12px 6px; font-size: 34px; line-height: 1.1; font-weight: 500; display: flex; align-items: baseline; gap: 8px; }
+.dh small { font-size: 12px; color: var(--muted); font-weight: 400; }
+.dh.today { color: var(--hue); }
+.dh.today small { color: var(--hue); }
+.per { padding: 12px 8px 0 0; text-align: right; }
+.per b { display: block; font-size: 20px; font-weight: 500; }
+.per span { font-size: 12px; color: var(--muted); }
+.cell { background: var(--surface); border-radius: var(--radius-card); padding: 10px 12px 10px; min-height: 124px; display: flex; flex-direction: column; }
+.cell.today { background: var(--today); }
+.cell.empty { background: transparent; border: 1px dashed #d3d7dd; }
+.cell .nm { font-size: 14px; font-weight: 500; line-height: 1.3; }
+.cell .rm { font-size: 12px; color: var(--muted); }
+.cell .left { margin-top: auto; display: flex; align-items: baseline; gap: 6px; }
+.cell .left b { font-size: 44px; line-height: 1; font-weight: 700; letter-spacing: -0.02em; }
+.cell .left span { font-size: 13px; color: var(--muted); }
+.cell.today .left b { color: var(--hue); }
+.cell.zero .left b, .cell.today.low .left b { color: var(--negative); }
+.cell.zero { background: var(--neg-bg); }
+.cell .rule { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.cell .tap { margin-top: 8px; height: 32px; border-radius: 6px; border: 0; background: var(--accent); color: #fff; font: inherit; font-size: 13px; font-weight: 500; }
+.legend { margin-top: 16px; display: flex; gap: 24px; font-size: 13px; color: var(--muted); }
+.legend b { color: var(--text); font-weight: 500; }
+.phone-only { display: none; }
+@media (max-width: 640px) {
+  .shell { display: block; }
+  .side { display: none; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; height: 52px; padding: 0 16px; }
+  .topbar .brand { padding: 0; }
+  .topbar .menu { height: 44px; padding: 0 4px; background: none; border: 0; font: inherit; font-size: 14px; color: var(--text); }
+  .phone-only { display: block; }
+  .topbar.phone-only { display: flex; }
+  .pc-only { display: none; }
+  main { padding: 4px 16px 24px; }
+  .head { display: block; margin-bottom: 14px; }
+  h1 { font-size: 22px; }
+  .finding { font-size: 14px; }
+  .todaylist { display: grid; gap: 6px; }
+  .trow { background: var(--today); border-radius: 8px; padding: 12px 14px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 12px; }
+  .trow.low { background: var(--neg-bg); }
+  .trow .t { font-size: 13px; color: var(--muted); }
+  .trow .nm { font-size: 16px; font-weight: 500; }
+  .trow .num { grid-row: 1 / span 3; grid-column: 2; text-align: right; }
+  .trow .num b { font-size: 40px; line-height: 1; font-weight: 700; color: var(--hue); }
+  .trow.low .num b { color: var(--negative); }
+  .trow .num span { display: block; font-size: 13px; color: var(--muted); }
+  .trow .tap { height: 36px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font: inherit; font-size: 14px; font-weight: 500; justify-self: start; padding: 0 14px; }
+  .wk { margin-top: 18px; }
+  .wk h2 { font-size: 15px; font-weight: 500; margin-bottom: 8px; }
+  .mini { display: grid; grid-template-columns: 30px repeat(5, 1fr); gap: 3px; }
+  .mini div { background: var(--surface); border-radius: 5px; height: 44px; padding: 3px 4px; display: flex; flex-direction: column; justify-content: space-between; }
+  .mini .h, .mini .p { background: none; height: auto; text-align: center; font-size: 14px; color: var(--muted); padding: 2px 0; justify-content: center; }
+  .mini .h.td { color: var(--hue); font-weight: 700; }
+  .mini .p { height: 44px; }
+  .mini span { font-size: 13px; letter-spacing: -0.02em; color: var(--muted); line-height: 1.1; white-space: nowrap; overflow: hidden; }
+  .mini b { font-size: 18px; line-height: 1; font-weight: 700; text-align: right; }
+  .mini .td-c { background: var(--today); }
+  .mini .td-c b { color: var(--hue); }
+  .mini .z { background: var(--neg-bg); }
+  .mini .z b, .mini .lo b { color: var(--negative); }
+  .mini .e { background: none; border: 1px dashed #d3d7dd; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand"><span class="mark"><i></i><i></i><i></i><i></i><i class="off"></i><i></i><i></i><i></i><i></i></span><div><b>休み残高</b><small>経済学部2年・後期</small></div></div>
+    <nav class="nav">
+      <a class="on" href="#">時間割</a>
+      <a href="#">授業ごとの記録</a>
+      <a href="#">授業を足す</a>
+    </nav>
+    <div class="grp">この端末のデータ</div>
+    <nav class="nav">
+      <a href="#">ファイルに書き出す</a>
+      <a href="#">ファイルから読み込む</a>
+    </nav>
+    <div class="foot">遅刻3回で欠席1回に換算</div>
+  </aside>
+
+  <div>
+    <div class="topbar phone-only"><div class="brand"><span class="mark"><i></i><i></i><i></i><i></i><i class="off"></i><i></i><i></i><i></i><i></i></span><div><b>休み残高</b></div></div><button class="menu">メニュー</button></div>
+    <main>
+      <div class="head">
+        <div>
+          <h1>11月19日（木）の時間割</h1>
+          <p class="finding"><strong>体育実技はもう休めません。</strong>今日1限の統計学Ⅱはあと1回です。</p>
+        </div>
+        <div class="actions pc-only"><button class="btn ghost">授業を足す</button><button class="btn">今日を全部休む</button></div>
+      </div>
+
+      <div class="grid pc-only">
+        <div></div>
+        <div class="dh">月</div><div class="dh">火</div><div class="dh">水</div><div class="dh today">木 <small>今日</small></div><div class="dh">金</div>
+
+        <div class="per"><b>1</b><span>9:00</span></div>
+        <div class="cell"><span class="nm">ミクロ経済学</span><span class="rm">3号館 204</span><div class="left"><b>3</b><span>回 休める</span></div><span class="rule">欠席4回まで・欠席1 遅刻2</span></div>
+        <div class="cell empty"></div>
+        <div class="cell empty"></div>
+        <div class="cell today low"><span class="nm">統計学Ⅱ</span><span class="rm">7号館 411</span><div class="left"><b>1</b><span>回 休める</span></div><span class="rule">欠席4回まで・欠席2 遅刻3</span><button class="tap">休んだ</button></div>
+        <div class="cell empty"></div>
+
+        <div class="per"><b>2</b><span>10:40</span></div>
+        <div class="cell empty"></div>
+        <div class="cell"><span class="nm">簿記入門</span><span class="rm">2号館 101</span><div class="left"><b>4</b><span>回 休める</span></div><span class="rule">欠席4回まで・まだ0</span></div>
+        <div class="cell"><span class="nm">社会学概論</span><span class="rm">大講義室B</span><div class="left"><b>2</b><span>回 休める</span></div><span class="rule">欠席5回まで・欠席3 遅刻1</span></div>
+        <div class="cell today"><span class="nm">マクロ経済学</span><span class="rm">3号館 301</span><div class="left"><b>3</b><span>回 休める</span></div><span class="rule">欠席4回まで・欠席1</span><button class="tap">休んだ</button></div>
+        <div class="cell empty"></div>
+
+        <div class="per"><b>3</b><span>13:00</span></div>
+        <div class="cell"><span class="nm">中国語Ⅱ</span><span class="rm">5号館 312</span><div class="left"><b>1</b><span>回 休める</span></div><span class="rule">出席率80%以上・欠席2</span></div>
+        <div class="cell empty"></div>
+        <div class="cell empty"></div>
+        <div class="cell today empty" style="background:var(--today);border:0"></div>
+        <div class="cell"><span class="nm">経済政策ゼミ</span><span class="rm">研究棟 5F</span><div class="left"><b>3</b><span>回 休める</span></div><span class="rule">欠席3回まで・まだ0</span></div>
+
+        <div class="per"><b>4</b><span>14:40</span></div>
+        <div class="cell empty"></div>
+        <div class="cell empty"></div>
+        <div class="cell zero"><span class="nm">体育実技</span><span class="rm">体育館A</span><div class="left"><b>0</b><span>回 もう休めない</span></div><span class="rule">出席率80%以上・欠席3</span></div>
+        <div class="cell today"><span class="nm">英語リーディング</span><span class="rm">1号館 205</span><div class="left"><b>3</b><span>回 休める</span></div><span class="rule">2/3以上出席・欠席2 遅刻2</span><button class="tap">休んだ</button></div>
+        <div class="cell empty"></div>
+      </div>
+      <div class="legend pc-only"><span>休める回数の合計 <b>20回</b></span><span>9授業・どれも第9回まで終わった</span><span>データはこの端末だけ</span></div>
+
+      <div class="phone-only">
+        <div class="todaylist">
+          <div class="trow low"><span class="t">1限 9:00・7号館 411</span><span class="nm">統計学Ⅱ</span><div class="num"><b>1</b><span>回 休める</span></div><button class="tap">休んだ</button></div>
+          <div class="trow"><span class="t">2限 10:40・3号館 301</span><span class="nm">マクロ経済学</span><div class="num"><b>3</b><span>回 休める</span></div><button class="tap">休んだ</button></div>
+          <div class="trow"><span class="t">4限 14:40・1号館 205</span><span class="nm">英語リーディング</span><div class="num"><b>3</b><span>回 休める</span></div><button class="tap">休んだ</button></div>
+        </div>
+        <div class="wk">
+          <h2>今週の残り</h2>
+          <div class="mini">
+            <div class="h p"></div><div class="h">月</div><div class="h">火</div><div class="h">水</div><div class="h td">木</div><div class="h">金</div>
+            <div class="p">1</div><div><span>ミクロ</span><b>3</b></div><div class="e"></div><div class="e"></div><div class="td-c lo"><span>統計</span><b>1</b></div><div class="e"></div>
+            <div class="p">2</div><div class="e"></div><div><span>簿記</span><b>4</b></div><div><span>社会学</span><b>2</b></div><div class="td-c"><span>マクロ</span><b>3</b></div><div class="e"></div>
+            <div class="p">3</div><div class="lo"><span>中国語</span><b>1</b></div><div class="e"></div><div class="e"></div><div class="e"></div><div><span>ゼミ</span><b>3</b></div>
+            <div class="p">4</div><div class="e"></div><div class="e"></div><div class="z"><span>体育</span><b>0</b></div><div class="td-c"><span>英語</span><b>3</b></div><div class="e"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

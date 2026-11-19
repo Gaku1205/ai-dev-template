@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>休み残高 — 今日の板書</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Klee+One:wght@400;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --board: #1f4a3b;
+  --panel: #275544;
+  --panel-2: #2d5d4b;
+  --chalk: #f3f1e7;
+  --chalk-dim: #bccbc2;
+  --chalk-yellow: #f2d65c;
+  --chalk-pink: #f4a3b6;
+  --frame: #6b4a2e;
+  --tray: #b9bdb6;
+  --tray-ink: #1d211f;
+  --radius-card: 22px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: var(--frame); }
+body { background: var(--board); color: var(--chalk); font-family: "Instrument Sans", "Zen Kaku Gothic New", system-ui, sans-serif; font-size: 15px; line-height: 1.5; font-variant-numeric: tabular-nums; min-height: 100svh; display: flex; flex-direction: column; }
+.top { display: flex; align-items: center; justify-content: space-between; padding: 20px 48px 0; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
+.mark { width: 26px; height: 26px; border-radius: 50%; background: var(--chalk); color: var(--board); display: grid; place-items: center; font-family: "Klee One", serif; font-weight: 600; font-size: 15px; }
+.top nav { display: flex; gap: 26px; font-size: 14px; color: var(--chalk-dim); }
+.top nav a { color: inherit; text-decoration: none; }
+.top nav a.on { color: var(--chalk); }
+.wrap { flex: 1; display: grid; grid-template-columns: 1fr minmax(0, 1100px) 1fr; }
+@media (min-width: 641px) and (max-width: 1260px) { .wrap { grid-template-columns: 40px minmax(0, 1fr) 84px; } .date { margin-right: 24px; } .top nav { gap: 16px; } h1 { font-size: 40px; } .lesson { grid-template-columns: 80px 1fr 80px 96px; } }
+@media (min-width: 641px) and (max-width: 900px) { .tile, .half { grid-column: span 6; } .today, .side { grid-column: 1 / -1; } }
+.col { grid-column: 2; padding-top: 24px; display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; align-content: start; }
+.date { grid-column: 3; justify-self: end; margin: 40px 48px 0 0; writing-mode: vertical-rl; font-family: "Klee One", serif; font-size: 26px; line-height: 1.5; color: var(--chalk); }
+.date span { color: var(--chalk-dim); font-size: 20px; margin-top: 18px; }
+h1 { grid-column: 1 / -1; font-family: "Klee One", serif; font-weight: 600; font-size: 56px; line-height: 1.3; }
+h1 em { font-style: normal; color: var(--chalk-yellow); }
+.sub { grid-column: 1 / -1; color: var(--chalk-dim); font-size: 16px; margin-top: -8px; margin-bottom: 8px; }
+.tile { grid-column: span 3; background: var(--panel); border-radius: var(--radius-card); padding: 16px 18px; height: 92px; display: flex; flex-direction: column; justify-content: space-between; }
+.tile span { font-size: 14px; color: var(--chalk-dim); }
+.tile b { font-size: 34px; font-weight: 400; line-height: 1; }
+.tile b small { font-size: 16px; color: var(--chalk-dim); margin-left: 4px; }
+.tile.pink b { color: var(--chalk-pink); }
+.today { grid-column: span 9; background: var(--panel); border-radius: var(--radius-card); padding: 18px 20px 10px; }
+.side { grid-column: span 3; background: var(--panel); border-radius: var(--radius-card); padding: 18px 20px; }
+.ph { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.ph h2 { font-size: 15px; font-weight: 600; }
+.ph a { font-size: 14px; color: var(--chalk-dim); }
+.lesson { display: grid; grid-template-columns: 92px 1fr 120px 104px; align-items: center; gap: 16px; min-height: 58px; padding: 2px 0; }
+.lesson { background: var(--panel-2); border-radius: 14px; padding: 2px 12px 2px 16px; margin-bottom: 6px; }
+.lesson .when b { display: block; font-size: 16px; font-weight: 500; }
+.lesson .when span { font-size: 13px; color: var(--chalk-dim); }
+.lesson .nm { font-size: 18px; font-weight: 500; }
+.lesson .nm small { display: block; font-size: 13px; color: var(--chalk-dim); font-weight: 400; }
+.lesson .left { font-family: "Klee One", serif; font-size: 44px; line-height: 1; text-align: right; }
+.lesson .left small { font-family: "Zen Kaku Gothic New", sans-serif; font-size: 14px; color: var(--chalk-dim); margin-left: 4px; }
+.lesson.y .left { color: var(--chalk-yellow); }
+.lesson button { height: 40px; border-radius: 999px; border: 0; background: var(--chalk); color: var(--board); font: inherit; font-weight: 600; font-size: 15px; }
+.side .big { font-family: "Klee One", serif; font-size: 64px; line-height: 1; color: var(--chalk-pink); margin: 6px 0 4px; }
+.side .big small { font-family: "Zen Kaku Gothic New", sans-serif; font-size: 16px; color: var(--chalk-dim); }
+.side p { font-size: 14px; color: var(--chalk-dim); }
+.side p b { color: var(--chalk); font-weight: 500; font-size: 17px; display: block; }
+.side .next { margin-top: 14px; font-size: 14px; color: var(--chalk-dim); }
+.side .next b { color: var(--chalk-yellow); font-weight: 500; }
+.tray { margin-top: 16px; background: var(--tray); color: var(--tray-ink); height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 48px; }
+.key { display: flex; gap: 26px; font-size: 14px; align-items: center; }
+.key i { display: inline-block; width: 30px; height: 9px; border-radius: 5px; margin-right: 8px; vertical-align: middle; }
+.tray button { height: 44px; padding: 0 22px; border-radius: 999px; border: 0; background: var(--board); color: var(--chalk); font: inherit; font-weight: 600; font-size: 15px; }
+.half { grid-column: span 6; background: var(--panel); border-radius: var(--radius-card); padding: 16px 20px 12px; }
+.log { display: grid; grid-template-columns: 110px 1fr auto; white-space: nowrap; gap: 12px; font-size: 14px; min-height: 28px; align-items: center; }
+.log span { color: var(--chalk-dim); }
+.log b { font-weight: 500; }
+.log em { font-style: normal; font-family: "Klee One", serif; font-size: 16px; }
+.log em.a { color: var(--chalk-pink); }
+.log em.l { color: var(--chalk-yellow); }
+.wk { display: grid; grid-template-columns: 28px repeat(5, 1fr); gap: 4px 10px; font-size: 13px; align-items: baseline; }
+.wk .h { color: var(--chalk-dim); }
+.wk .h.td { color: var(--chalk); font-weight: 600; }
+.wk .p { color: var(--chalk-dim); }
+.wk div { display: flex; justify-content: space-between; align-items: baseline; color: var(--chalk-dim); min-height: 22px; }
+.wk div b { font-family: "Klee One", serif; font-size: 20px; font-weight: 400; color: var(--chalk); line-height: 1; }
+.wk div b.y { color: var(--chalk-yellow); }
+.wk div b.z { color: var(--chalk-pink); }
+.wk .h, .wk .p { display: block; }
+.phone-only { display: none; }
+@media (max-width: 640px) {
+  body { font-size: 14px; }
+  .top { padding: 12px 16px 0; height: 52px; }
+  .top nav { display: none; }
+  .top .menu { display: block; height: 44px; background: none; border: 0; color: var(--chalk); font: inherit; font-size: 15px; }
+  .wrap { display: block; position: relative; }
+  .date { position: absolute; right: 16px; top: 14px; margin: 0; font-size: 17px; }
+  .date span { display: none; }
+  .half { display: none; }
+  .col { display: block; padding: 18px 16px 0; }
+  h1 { font-size: 27px; padding-right: 40px; }
+  .sub { margin: 6px 0 14px; font-size: 14px; padding-right: 40px; }
+  .tiles { display: none; }
+  .tile { display: none; }
+  .today { padding: 12px 14px 6px; border-radius: 18px; }
+  .lesson { grid-template-columns: 1fr auto; grid-template-rows: auto auto; gap: 2px 12px; padding: 10px 0; }
+  .lesson .when { grid-column: 1; grid-row: 1; display: flex; gap: 6px; align-items: baseline; }
+  .lesson .when b { display: inline; font-size: 14px; }
+  .lesson .nm { grid-column: 1; grid-row: 2; font-size: 17px; }
+  .lesson .left { grid-column: 2; grid-row: 1 / span 2; font-size: 40px; }
+  .lesson button { grid-column: 1 / -1; grid-row: 3; margin-top: 6px; height: 40px; }
+  .side { margin-top: 10px; border-radius: 18px; padding: 14px; display: grid; grid-template-columns: auto 1fr; gap: 0 14px; align-items: center; }
+  .side .ph, .side .next { display: none; }
+  .side .big { font-size: 48px; margin: 0; }
+  .tray { margin-top: 16px; height: 68px; padding: 0 16px; }
+  .key { display: none; }
+  .tray button { width: 100%; font-size: 16px; }
+}
+@media (min-width: 641px) { .top .menu { display: none; } }
+</style>
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="mark">休</span>休み残高</div>
+    <nav><a class="on" href="#">今日の板書</a><a href="#">時間割</a><a href="#">授業を足す</a><a href="#">書き出し・読み込み</a></nav>
+    <button class="menu">メニュー</button>
+  </header>
+  <div class="wrap">
+    <div class="col">
+      <h1>1限の統計学Ⅱは、あと<em>1回</em>しか休めない</h1>
+      <p class="sub">2限と4限は3回ずつ余裕あり。遅刻3回で欠席1回に換算しています。</p>
+
+      <div class="tile"><span>今日のコマ</span><b>3<small>コマ</small></b></div>
+      <div class="tile"><span>休める回数の合計</span><b>20<small>回・9授業</small></b></div>
+      <div class="tile pink"><span>もう休めない</span><b>1<small>授業</small></b></div>
+      <div class="tile"><span>遅刻の合計</span><b>8<small>回＝欠席2回分</small></b></div>
+
+      <section class="today">
+        <div class="ph"><h2>今日の3コマ</h2><a>時間割を見る</a></div>
+        <div class="lesson y"><div class="when"><b>1限</b><span>9:00–10:30</span></div><div class="nm">統計学Ⅱ<small>7号館 411・欠席4回まで・欠席2 遅刻3</small></div><div class="left">1<small>回</small></div><button>休んだ</button></div>
+        <div class="lesson"><div class="when"><b>2限</b><span>10:40–12:10</span></div><div class="nm">マクロ経済学<small>3号館 301・欠席4回まで・欠席1</small></div><div class="left">3<small>回</small></div><button>休んだ</button></div>
+        <div class="lesson"><div class="when"><b>4限</b><span>14:40–16:10</span></div><div class="nm">英語リーディング<small>1号館 205・2/3以上出席・欠席2 遅刻2</small></div><div class="left">3<small>回</small></div><button>休んだ</button></div>
+      </section>
+      <aside class="side">
+        <div class="ph"><h2>もう休めない</h2></div>
+        <div class="big">0<small> 回</small></div>
+        <p><b>体育実技</b>水曜4限・体育館A<br>出席率80%以上・欠席3</p>
+        <p class="next">次に危ない：<b>中国語Ⅱ あと1回</b></p>
+      </aside>
+      <section class="half">
+        <div class="ph"><h2>最近つけた記録</h2><a>全部見る</a></div>
+        <div class="log"><span>11/18（水）4限</span><b>体育実技</b><em class="a">欠席</em></div>
+        <div class="log"><span>11/17（月）1限</span><b>ミクロ経済学</b><em class="l">遅刻</em></div>
+        <div class="log"><span>11/12（木）1限</span><b>統計学Ⅱ・遅刻3回目で欠席1回分</b><em class="l">遅刻</em></div>
+        <div class="log"><span>11/11（水）2限</span><b>社会学概論</b><em class="a">欠席</em></div>
+      </section>
+      <section class="half">
+        <div class="ph"><h2>今週の残り</h2><a>時間割を開く</a></div>
+        <div class="wk">
+          <span class="h"></span><span class="h">月</span><span class="h">火</span><span class="h">水</span><span class="h td">木</span><span class="h">金</span>
+          <span class="p">1</span><div>ミクロ<b>3</b></div><div></div><div></div><div>統計<b class="y">1</b></div><div></div>
+          <span class="p">2</span><div></div><div>簿記<b>4</b></div><div>社会学<b>2</b></div><div>マクロ<b>3</b></div><div></div>
+          <span class="p">3</span><div>中国語<b class="y">1</b></div><div></div><div></div><div></div><div>ゼミ<b>3</b></div>
+          <span class="p">4</span><div></div><div></div><div>体育<b class="z">0</b></div><div>英語<b>3</b></div><div></div>
+        </div>
+      </section>
+    </div>
+    <div class="date">11月19日（木）<span>後期 第9回</span></div>
+  </div>
+  <footer class="tray">
+    <div class="key"><span><i style="background:var(--chalk)"></i>休める</span><span><i style="background:var(--chalk-yellow)"></i>あと1回</span><span><i style="background:var(--chalk-pink)"></i>もう休めない</span></div>
+    <button>今日を全部休む</button>
+  </footer>
+</body>
+</html>

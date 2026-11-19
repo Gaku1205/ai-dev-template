@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>休み残高 — 今日の出席カード</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Zen+Maru+Gothic:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ground: #eef0ec;
+  --surface: #ffffff;
+  --text: #1b1d1f;
+  --muted: #55595e;
+  --accent: #1d5fd6;
+  --pink: #f8dde3;  --pink-ink: #7a2238;
+  --green: #d9eedc; --green-ink: #1f5530;
+  --blue: #d8e9f7;  --blue-ink: #0a3a80;
+  --yellow: #f6edc4; --yellow-ink: #6b4a06;
+  --negative: #c41c29;
+  --radius-card: 20px;
+  --radius-control: 10px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--ground); color: var(--text); font-family: "Manrope", "Zen Maru Gothic", system-ui, sans-serif; font-size: 16px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.shell { display: grid; grid-template-columns: 240px 1fr; min-height: 100svh; }
+.side { padding: 32px 12px; display: flex; flex-direction: column; }
+.brand { display: flex; gap: 10px; align-items: center; padding: 0 10px 26px; }
+.mark { width: 30px; height: 36px; border-radius: 5px; background: var(--pink); position: relative; }
+.mark::after { content: ""; position: absolute; left: 7px; right: 7px; bottom: 7px; height: 8px; border-radius: 4px; background: var(--pink-ink); }
+.brand b { font-size: 17px; font-weight: 700; }
+.brand small { display: block; font-size: 13px; color: var(--muted); }
+.nav a { display: block; padding: 6px 10px; border-radius: 10px; font-size: 15px; color: var(--muted); text-decoration: none; }
+.nav a.on { background: #e2e5e0; color: var(--text); font-weight: 500; }
+.grp { margin-top: 30px; padding: 0 10px 4px; font-size: 13px; color: var(--muted); }
+main { padding: 32px 40px 32px 16px; display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-content: start; }
+.head { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: flex-end; }
+h1 { font-size: 28px; font-weight: 700; }
+.finding { font-size: 16px; margin-top: 2px; }
+.finding b { color: var(--negative); }
+.btn { height: 44px; padding: 0 20px; border-radius: var(--radius-control); border: 0; background: var(--accent); color: #fff; font: inherit; font-weight: 600; }
+.cards { display: grid; gap: 16px; }
+.card { border-radius: var(--radius-card); padding: 22px 24px; display: grid; grid-template-columns: 1fr 150px; gap: 6px 24px; }
+.card.pink { background: var(--pink); color: var(--pink-ink); }
+.card.green { background: var(--green); color: var(--green-ink); }
+.card.blue { background: var(--blue); color: var(--blue-ink); }
+.ctop { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.ctop .kind { font-size: 14px; font-weight: 500; }
+.ctop h2 { font-size: 22px; font-weight: 700; color: var(--text); }
+.ctop .meta { font-size: 14px; }
+.slots { display: grid; grid-template-columns: repeat(15, 1fr); gap: 5px; margin-top: 10px; }
+.slots span { height: 52px; border-radius: 6px; background: rgba(255,255,255,0.75); font-size: 13px; font-weight: 700; display: grid; place-items: center; color: currentColor; }
+.slots .a { background: currentColor; }
+.slots .a::after { content: "欠"; color: #fff; }
+.slots .l { background: #fff; border: 3px solid currentColor; }
+.slots .l::after { content: "遅"; }
+.slots .p::after { content: "出"; opacity: 0.55; }
+.slots .t { background: #fff; outline: 2px solid var(--text); color: var(--text); }
+.slots .t::after { content: "今日"; font-size: 11px; }
+.slots .f { background: rgba(255,255,255,0.4); }
+.rule { font-size: 14px; margin-top: 8px; }
+.rest { grid-column: 2; grid-row: 1 / span 3; display: flex; flex-direction: column; justify-content: center; align-items: flex-end; text-align: right; }
+.rest small { font-size: 14px; font-weight: 500; }
+.rest b { font-size: 96px; line-height: 0.95; font-weight: 700; color: var(--text); }
+.rest b.low { color: var(--negative); }
+.nb { display: flex; align-items: baseline; gap: 4px; }
+.rest em { font-style: normal; font-size: 24px; font-weight: 600; }
+.rest button { margin-top: 10px; height: 40px; padding: 0 16px; border-radius: 10px; border: 0; background: var(--text); color: #fff; font: inherit; font-size: 15px; font-weight: 600; }
+.panel { background: var(--surface); border-radius: var(--radius-card); padding: 20px 22px; align-self: start; }
+.panel h3 { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+.panel .sub { font-size: 14px; color: var(--muted); margin-bottom: 8px; }
+.row { display: grid; grid-template-columns: 14px 1fr auto; gap: 12px; align-items: center; min-height: 48px; }
+.row i { width: 14px; height: 18px; border-radius: 3px; }
+.row .n { font-size: 15px; }
+.row .n small { display: block; font-size: 13px; color: var(--muted); }
+.row b { font-size: 22px; font-weight: 700; }
+.row b.z { color: var(--negative); }
+.row b small { font-size: 15px; font-weight: 500; color: var(--muted); }
+.panel .total { margin-top: 10px; padding-top: 12px; display: flex; justify-content: space-between; font-size: 15px; background: none; }
+.panel .total b { font-size: 22px; }
+.phone-only { display: none; }
+@media (min-width: 641px) and (max-width: 1180px) {
+  .shell { grid-template-columns: 200px minmax(0, 1fr); }
+  main { grid-template-columns: minmax(0, 1fr); padding-right: 24px; }
+  .card { grid-template-columns: minmax(0, 1fr) 120px; }
+}
+@media (min-width: 641px) and (max-width: 900px) { .shell { display: block; } .side { display: none; } main { padding-left: 24px; } }
+@media (max-width: 640px) {
+  .shell { display: block; }
+  .side { display: none; }
+  .phone-only { display: flex; }
+  .pc-only { display: none; }
+  .topbar { height: 52px; padding: 0 16px; align-items: center; justify-content: space-between; }
+  .topbar .brand { padding: 0; }
+  .topbar button { height: 44px; background: none; border: 0; font: inherit; font-size: 15px; color: var(--text); }
+  main { display: block; padding: 2px 16px 24px; }
+  .head { display: block; margin-bottom: 12px; }
+  h1 { font-size: 24px; }
+  .finding { font-size: 15px; }
+  .cards { gap: 10px; }
+  .card { grid-template-columns: 1fr auto; padding: 14px 16px; border-radius: 18px; gap: 2px 12px; }
+  .ctop { gap: 2px 10px; }
+  .ctop .kind { display: none; }
+  .ctop h2 { font-size: 19px; width: 100%; }
+  .ctop .meta { font-size: 13px; }
+  .ctop { align-self: start; }
+  .rest { grid-row: 1; grid-column: 2; }
+  .rest b { font-size: 58px; }
+  .rest small { font-size: 13px; }
+  .nb { display: flex; align-items: baseline; gap: 4px; }
+.rest em { font-size: 13px; }
+  .rest button { display: none; }
+  .slots { grid-column: 1 / -1; gap: 3px; margin-top: 8px; }
+  .slots span { height: 22px; border-radius: 4px; font-size: 11px; }
+  .slots .l { border-width: 2px; }
+  .slots .t::after { content: "9"; font-size: 12px; }
+  .rule { grid-column: 1 / span 1; font-size: 13px; margin-top: 6px; }
+  .tapm { grid-column: 2; grid-row: 4; align-self: end; height: 40px; padding: 0 14px; border-radius: 10px; border: 0; background: var(--text); color: #fff; font: inherit; font-size: 14px; font-weight: 600; }
+}
+@media (min-width: 641px) { .tapm { display: none; } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand"><span class="mark"></span><div><b>休み残高</b><small>2026年度 後期・9授業</small></div></div>
+    <nav class="nav">
+      <a class="on" href="#">今日のカード</a>
+      <a href="#">時間割</a>
+      <a href="#">全部のカード</a>
+      <a href="#">授業を足す</a>
+    </nav>
+    <div class="grp">この端末のデータ</div>
+    <nav class="nav"><a href="#">ファイルに書き出す</a><a href="#">ファイルから読み込む</a></nav>
+  </aside>
+  <div>
+    <div class="topbar phone-only"><div class="brand"><span class="mark"></span><b>休み残高</b></div><button>メニュー</button></div>
+    <main>
+      <div class="head">
+        <div><h1>今日の出席カード・木曜</h1><p class="finding"><b>統計学Ⅱはあと1回。</b>遅刻3回がもう欠席1回に換わりました。</p></div>
+        <button class="btn pc-only">今日を全部休む</button>
+      </div>
+
+      <div class="cards">
+        <article class="card pink">
+          <div class="ctop"><span class="kind">出席カード</span><h2>統計学Ⅱ</h2><span class="meta">木曜1限 9:00・7号館 411</span></div>
+          <div class="slots"><span class="p"></span><span class="l"></span><span class="a"></span><span class="p"></span><span class="l"></span><span class="p"></span><span class="a"></span><span class="l"></span><span class="t"></span><span class="f"></span><span class="f"></span><span class="f"></span><span class="f"></span><span class="f"></span><span class="f"></span></div>
+          <p class="rule">欠席4回まで・欠席2＋遅刻3（＝1回）で3回使った</p>
+          <div class="rest"><small>休めるのは</small><span class="nb"><b class="low">1</b><em>回</em></span><button>今日休んだ</button></div>
+          <button class="tapm">休んだ</button>
+        </article>
+        <article class="card blue">
+          <div class="ctop"><span class="kind">出席カード</span><h2>マクロ経済学</h2><span class="meta">木曜2限 10:40・3号館 301</span></div>
+          <div class="slots"><span class="p"></span><span class="p"></span><span class="p"></span><span class="a"></span><span class="p"></span><span class="p"></span><span class="p"></span><span class="p"></span><span class="t"></span><span class="f"></span><span class="f"></span><span class="f"></span><span class="f"></span><span class="f"></span><span class="f"></span></div>
+          <p class="rule">欠席4回まで・欠席1で1回使った</p>
+          <div class="rest"><small>休めるのは</small><span class="nb"><b>3</b><em>回</em></span><button>今日休んだ</button></div>
+          <button class="tapm">休んだ</button>
+        </article>
+        <article class="card green">
+          <div class="ctop"><span class="kind">出席カード</span><h2>英語リーディング</h2><span class="meta">木曜4限 14:40・1号館 205</span></div>
+          <div class="slots"><span class="p"></span><span class="a"></span><span class="p"></span><span class="l"></span><span class="p"></span><span class="p"></span><span class="a"></span><span class="l"></span><span class="t"></span><span class="f"></span><span class="f"></span><span class="f"></span><span class="f"></span><span class="f"></span><span class="f"></span></div>
+          <p class="rule">2/3以上出席（5回まで）・欠席2＋遅刻2で2回使った</p>
+          <div class="rest"><small>休めるのは</small><span class="nb"><b>3</b><em>回</em></span><button>今日休んだ</button></div>
+          <button class="tapm">休んだ</button>
+        </article>
+      </div>
+
+      <aside class="panel pc-only">
+        <h3>残りが少ない順</h3>
+        <p class="sub">9授業・どれも第9回まで</p>
+        <div class="row"><i style="background:var(--yellow)"></i><span class="n">体育実技<small>水曜4限・出席率80%以上</small></span><b class="z">0<small> 回</small></b></div>
+        <div class="row"><i style="background:var(--pink)"></i><span class="n">統計学Ⅱ<small>木曜1限・欠席4回まで</small></span><b class="z">1<small> 回</small></b></div>
+        <div class="row"><i style="background:var(--green)"></i><span class="n">中国語Ⅱ<small>月曜3限・出席率80%以上</small></span><b class="z">1<small> 回</small></b></div>
+        <div class="row"><i style="background:var(--blue)"></i><span class="n">社会学概論<small>水曜2限・欠席5回まで</small></span><b>2<small> 回</small></b></div>
+        <div class="row"><i style="background:var(--yellow)"></i><span class="n">ミクロ経済学<small>月曜1限・欠席4回まで</small></span><b>3<small> 回</small></b></div>
+        <div class="row"><i style="background:var(--pink)"></i><span class="n">経済政策ゼミ<small>金曜3限・欠席3回まで</small></span><b>3<small> 回</small></b></div>
+        <div class="row"><i style="background:#dfe2dc"></i><span class="n">ほか3授業<small>簿記入門 4・マクロ 3・英語 3</small></span><b>10<small> 回</small></b></div>
+        <div class="total"><span>休める回数の合計</span><b>20回</b></div>
+      </aside>
+    </main>
+  </div>
+</div>
+</body>
+</html>
