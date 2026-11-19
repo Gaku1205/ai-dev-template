@@ -329,12 +329,19 @@ PY2
 )
 assert_eq "デザイン担当の画面" "checks:ok,fixer:ok,recheck:ok,final:ok,ship:ok,env:ok" "$result"
 
-echo "== デザインの審査：作ったAIとは別のAI（審査役）が画像だけを見る（読む・書くだけ）。合格はスクリプトが決め、届かなければ1回だけ直させて、もう一度審査する"
+echo "== デザインの審査：作ったAIとは別のAI（審査役）が画像だけを見る（読む・書くだけ）。合格はスクリプトが決め、届かなければ1回だけ直させて、もう一度審査する（相談は審査1回だけ）"
 result=$(python3 - "$WORKFLOWS" <<'PY2'
 import sys, yaml
 w = sys.argv[1]
 out = []
-for f, job in (("factory-talk.yml", "work"), ("factory.yml", "design"), ("claude-mocks.yml", "work")):
+# 相談（factory-talk.yml）は直さない：審査は1回だけで、点と指摘を見せる（オーナーが選ぶので。11/19 の #250 で直しが効かなかった）
+talk = yaml.safe_load(open(f"{w}/factory-talk.yml"))["jobs"]["work"]["steps"]
+tids = [st.get("id") for st in talk]
+tok = all(i in tids for i in ("review1", "judge1", "verdict1")) and not any(i in tids for i in ("fix", "review2", "judge2", "verdict2"))
+j = talk[tids.index("judge1")] if "judge1" in tids else {"with": {"claude_args": "", "prompt": ""}}
+tok &= '--allowedTools "Read,Glob,Write"' in j["with"]["claude_args"] and ".github/factory/judge.md" in j["with"]["prompt"]
+out.append("factory-talk.yml:" + ("ok" if tok else "ng"))
+for f, job in (("factory.yml", "design"), ("claude-mocks.yml", "work")):
     steps = yaml.safe_load(open(f"{w}/{f}"))["jobs"][job]["steps"]
     ids = [st.get("id") for st in steps]
     ok = True
