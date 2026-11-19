@@ -11,7 +11,7 @@ assert_contains "閉じているので清書に戻さないと、ログに残す
 
 echo "== 閉じた Issue で、パイプラインの鍵が無いときも ai:plan を付けず、通知もしない"
 init_state '{"labels":{"3":["ai:question"]},"issues_meta":{"3":{"state":"closed"}}}'
-ISSUE=3 GH_TOKEN= GITHUB_TOKEN_FOR_LABELS=x run_script_keep after-answer.sh > /dev/null
+ISSUE=3 GH_TOKEN='' GITHUB_TOKEN_FOR_LABELS=x run_script_keep after-answer.sh > /dev/null
 assert_eq "ai:plan は付かない" "" "$(labels_of 3)"
 assert_eq "通知も送らない" "0" "$(notify_count)"
 
