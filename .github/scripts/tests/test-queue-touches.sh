@@ -170,9 +170,10 @@ assert_eq "コンフリクトの解消を頼む処理が残っている" "1" "$(
 assert_eq "重なりの判定から呼んでいない" "0" "$(sed -n '/^paths_overlap()/,/^}/p' "$SCRIPTS_DIR/pipeline-lib.sh" | grep -c request_fix_or_stop)"
 
 echo "== 企画AIが印を書き忘れた：本文のファイル名から補う（補えなければ、そのまま）"
+G_TXT=$(mktemp)
 # shellcheck disable=SC2016
-touches_guess_from_body '`src/lib/a.ts` と `docs/spec.md`、`src/components/` を直す。`npm` は対象外、`https://x.example/a/b` も除く' > g.txt
-assert_eq "ファイル名だけ拾う" "$(printf 'src/lib/a.ts\ndocs/spec.md\nsrc/components/')" "$(cat g.txt)"
+touches_guess_from_body '`src/lib/a.ts` と `docs/spec.md`、`src/components/` を直す。`npm` は対象外、`https://x.example/a/b` も除く' > "$G_TXT"
+assert_eq "ファイル名だけ拾う" "$(printf 'src/lib/a.ts\ndocs/spec.md\nsrc/components/')" "$(cat "$G_TXT")"
 # shellcheck disable=SC2016
 assert_eq "ファイル名が無ければ空" "" "$(touches_guess_from_body '本文だけ。`npm test` を通す')"
 finish

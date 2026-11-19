@@ -137,6 +137,36 @@ assert_contains "ほかのPRは閉じない" "$(pulls app)" "8:claude/issue-3:op
 assert_contains "新しいPRを作る" "$(pulls app)" "pipeline-sync/$sha:open"
 dump_if_failed "$before" "前の配布のPRの場面" "$out"
 
+echo "== rsync が終了コード 24（読む途中でファイルが消えた）で終わっても、止まらずに最後まで配る。24 以外の失敗では止まる"
+# 偽の rsync：本物を動かしてから、環境変数 FAKE_RSYNC_RC の終了コードで終わる。場面のあとで消す
+real_rsync="$(command -v rsync)"
+cat > "$T/bin/rsync" <<SH
+#!/usr/bin/env bash
+"$real_rsync" "\$@"
+exit "\${FAKE_RSYNC_RC:-0}"
+SH
+chmod +x "$T/bin/rsync"
+rm -f "$T/state.json"
+mkdir -p "$T/seed-five" && echo a > "$T/seed-five/README.md" && make_app five
+python3 - "$T/state.json" <<'PY'
+import json, sys
+json.dump({"pulls": {"o/five": [{"number": 7, "state": "open", "head": {"ref": "pipeline-sync/0ld0ld0"}, "title": "", "body": "", "base": "main"}]}}, open(sys.argv[1], "w"))
+PY
+REPOS=(o/five)
+before=$FAILED
+out=$(sync FAKE_RSYNC_RC=24); rc=$?
+assert_eq "24 でも終了コード 0" "0" "$rc"
+assert_contains "24 でも古い配布のPRを閉じる" "$(pulls five)" "7:pipeline-sync/0ld0ld0:closed"
+assert_contains "24 でも新しいPRを作る" "$(pulls five)" "pipeline-sync/$sha:open"
+dump_if_failed "$before" "rsync が 24 の場面" "$out"
+mkdir -p "$T/seed-six" && echo b > "$T/seed-six/README.md" && make_app six
+REPOS=(o/six)
+out=$(sync FAKE_RSYNC_RC=23); rc=$?
+assert_eq "23 では失敗で終わる" "23" "$rc"
+assert_not_contains "23 では配ったと言わない" "$out" "配った"
+assert_eq "23 ではPRを作らない" "" "$(pulls six)"
+rm -f "$T/bin/rsync"
+
 echo "== もう同じ中身：何もしない"
 mkdir -p "$T/seed-same"
 bash "$SCRIPTS_DIR/sync-to-apps.sh" --local "$T/seed-same"
