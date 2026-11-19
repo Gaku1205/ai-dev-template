@@ -160,5 +160,8 @@ assert_contains "目覚ましをかける（テンプレートのリポジトリ
 init_state '{"repos":{"o/r2":{"labels":{"5":["ai:queue"],"6":["ai:implement"]},"issues_meta":{"5":{"body":"<!-- ai-touches: src/b.ts -->"},"6":{"body":"<!-- ai-touches: src/b.ts -->"}}}}}'
 out=$(PARALLEL_SCOPE=repo PARALLEL_NIGHT_HOURS="01-08" run_script watchdog.sh)
 assert_not_contains "repo なら、ほかのリポジトリの順番待ちでは起こさない" "$out" "目覚ましを"
+init_state '{"repos":{"o/r2":{"labels":{"5":["ai:queue"],"6":["ai:implement"]},"issues_meta":{"5":{"body":"<!-- ai-touches: src/b.ts -->"},"6":{"body":"<!-- ai-touches: src/b.ts -->"}}}}}'
+out=$(TIMER_CLOCK_REPO=0 PARALLEL_NIGHT_HOURS="01-08" run_script watchdog.sh)
+assert_not_contains "自分は静かで、ほかに順番待ちがある：テンプレートでなければかけない" "$out" "目覚ましを"
 
 finish

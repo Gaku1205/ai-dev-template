@@ -15,6 +15,7 @@
 # 終了コード：公開を頼んだ・何もしなくてよい → 0、頼めなかった → 1
 set -uo pipefail
 source "$(dirname "$0")/pipeline-paths.sh"
+source "$(dirname "$0")/vercel-state.sh"
 VERCEL_API="${VERCEL_API:-https://api.vercel.com}"
 REPO="${GITHUB_REPOSITORY:?}"
 
@@ -42,19 +43,13 @@ head=$(gh api "repos/$REPO/commits/main" -q .sha) || give_up "main の先頭を�
 # VERCEL_FORCE=1：調べずに、最新の main を必ず公開する（環境変数を変えたあとなど。同じコミットでも新しく作り直す）
 if [ "${VERCEL_FORCE:-}" != 1 ]; then
   # main の直近のコミットのうち、Vercel の公開に成功した物（新しい順に最大30件。飛ばした物は除く）
-  last_ok=""
-  for sha in $(gh api "repos/$REPO/commits?sha=main&per_page=30" -q '.[].sha'); do
-    # 「Canceled by Ignored Build Step」（vercel.json の ignoreCommand で飛ばした物）も success になるので、公開した物には数えない
-    state=$(gh api "repos/$REPO/commits/$sha/status" -q '[.statuses[] | select(.context | startswith("Vercel"))] | sort_by(.updated_at) | last
-      | if . == null then "" elif .state == "success" and ((.description // "") | test("Ignored Build Step"; "i")) then "ignored" else .state end' 2> /dev/null || true)
-    if [ "$state" = success ]; then last_ok="$sha"; break; fi
-  done
+  # （「Ignored Build Step」で飛ばした物は公開した物に数えない。vercel-state.sh）
+  last_ok=$(vercel_last_ok)
   if [ "$last_ok" = "$head" ]; then
     echo "::notice::最新の main（${head:0:7}）はもう公開されています"
     exit 0
   fi
-  head_state=$(gh api "repos/$REPO/commits/$head/status" -q '[.statuses[] | select(.context | startswith("Vercel"))] | sort_by(.updated_at) | last
-    | if . == null then "" elif .state == "success" and ((.description // "") | test("Ignored Build Step"; "i")) then "ignored" else .state end' 2> /dev/null || true)
+  head_state=$(vercel_state "$head")
   if [ "$head_state" = pending ]; then
     echo "::notice::最新の main（${head:0:7}）は、いま公開中です"
     exit 0
