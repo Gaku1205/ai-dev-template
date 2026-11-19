@@ -366,6 +366,56 @@ park_issue_after_human_request_merge() {
   echo "PR #${pr}：マージされたので、#${issue} は人間が閉じるまで ai:skip で待たせます"
 }
 
+# Issue の一部だけを直したPR（本文に Refs #N があり、Closes/Fixes/Resolves #N が無い）がマージされたら、
+# Issue #N に「残り」を書いて、ai:implement・ai:retry を外し、ai:queue で順番待ちに戻す（同じ Issue の続きを次の実装AIがやる）。
+# 残りは、PRの説明の受け入れ条件のうち、チェックの付いていない行（- [ ]）。取れなければ「PR の説明を見て続ける」。
+# 同じ Issue で3回目の Refs のマージ（PRごとの印 <!-- refs-merge-pr: #PR番号 --> が3個目）は、続けず stop_issue_for_human で人間に回す。
+# 『人間にお願いしたいこと』の節があるPR・マージされていないPR・閉じた Issue・印のあるPRでは何もしない（戻り値 1）。何度呼んでも同じ。
+# 戻り値：処理した 0、何もしなかった 1。使い方：requeue_issue_after_partial_merge PR番号
+REFS_MERGE_STOP_COUNT=3
+requeue_issue_after_partial_merge() {
+  local pr="$1" pr_json body issue mark state count rest url l
+  pr_json=$(gh api "repos/$REPO/pulls/$pr") || return 1
+  [ -n "$(printf '%s' "$pr_json" | jq -r '.merged_at // empty')" ] || return 1
+  body=$(printf '%s' "$pr_json" | jq -r '.body // ""')
+  printf '%s\n' "$body" | grep -qE "$HUMAN_REQUEST_HEADING_RE" && return 1
+  printf '%s' "$body" | grep -qiE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' && return 1
+  issue=$(printf '%s' "$body" | grep -oiE 'refs #[0-9]+' | head -1 | grep -oE '[0-9]+' || true)
+  [ -n "$issue" ] || return 1
+  state=$(gh api "repos/$REPO/issues/$issue" -q .state 2> /dev/null) || return 1
+  [ "$state" = open ] || return 1
+  mark="<!-- refs-merge-pr: #${pr} -->"
+  local comments
+  comments=$(all_comments "$issue") || return 1
+  printf '%s' "$comments" | jq -e --arg m "$mark" 'any(.[]; .body | contains($m))' > /dev/null && return 1
+  count=$(printf '%s' "$comments" | jq '[.[] | select(.body | test("<!-- refs-merge-pr: #[0-9]+ -->"))] | length')
+  count=$((count + 1))
+  url="${GITHUB_SERVER_URL:-https://github.com}/${REPO}/pull/${pr}"
+  if [ "$count" -ge "$REFS_MERGE_STOP_COUNT" ]; then
+    comment "$issue" "PR #${pr}（${url}）がマージされました。一部だけを直すPR（Refs）が ${count} 回続きました。
+
+${mark}" || return 1
+    stop_issue_for_human "$issue" "一部だけを直すPR（Refs）のマージが ${count} 回続きました。同じ所を回り続けないよう、続けずに止めました。PR #${pr} の説明と Issue の残りを見てください"
+    return 0
+  fi
+  rest=$(printf '%s\n' "$body" | sed -nE 's/^[[:space:]]*[-*] \[ \] (.+)$/- \1/p')
+  if [ -n "$rest" ]; then
+    rest="残り：
+${rest}"
+  else
+    rest="残り：PR #${pr} の説明を見て、残りを続ける"
+  fi
+  comment "$issue" "前の PR #${pr}（${url}）で一部が済みました。同じ Issue の続きとして、残りを次の実装AIが進めます。
+
+${rest}
+
+${mark}" || return 1
+  for l in ai:implement ai:retry; do remove_label "$issue" "$l"; done
+  add_label "$issue" "ai:queue" || true
+  echo "PR #${pr}：一部だけ直したPR（Refs）がマージされたので、#${issue} を残りつきで順番待ちに戻しました"
+  return 0
+}
+
 # Issue を作った人を、そのまま自動で動かしてよいか：オーナーと、このパイプラインのワークフロー（企画AIが分けて作る Issue は
 # github-actions[bot]、AI自身は claude[bot]）だけ。公開リポジトリでは誰でも Issue を作れるので、ほかの人・ほかのボットの Issue は
 # オーナーが ai:skip を外すまで動かさない（intake.sh・watchdog.sh）
