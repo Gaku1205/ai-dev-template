@@ -9,5 +9,7 @@ use_open_snapshot || true
 if [ "${GITHUB_EVENT_NAME:-}" = pull_request_target ] && [ -f "${GITHUB_EVENT_PATH:-}" ]; then
   merged_pr=$(jq -r 'select(.action == "closed" and .pull_request.merged == true) | .pull_request.number' "$GITHUB_EVENT_PATH" 2> /dev/null || true)
   [ -z "$merged_pr" ] || park_issue_after_human_request_merge "$merged_pr" || true
+  # 人間がマージした、一部だけ直したPR（Refs #N）：Issue を残りつきで順番待ちに戻す
+  [ -z "$merged_pr" ] || requeue_issue_after_partial_merge "$merged_pr" || true
 fi
 start_next_in_queue || { echo "::error::順番待ちを進められませんでした（トークンの権限を確認してください）"; exit 1; }

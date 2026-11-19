@@ -321,7 +321,10 @@ if base=='pulls' and method=='POST':
     out({'html_url':'https://github.com/o/r/pull/%d'%(100+len(st['created_pulls'])),'number':100+len(st['created_pulls'])}); sys.exit(0)
 # uncreated_pulls：この番号のPRは、PRを作る（POST pulls）まで一覧に出ない（open-pr.sh が「PRはもうあります」と読まないように）
 if base=='pulls':
-    paged([p for p in st.get('pulls',[]) if st.get('created_pulls') or p['number'] not in st.get('uncreated_pulls',[])]); sys.exit(0)
+    # state= が付いていれば絞る（PR に 'state':'closed' を書いた物だけが閉じたPR。書かなければ open。state=all や無指定は全部）
+    _ps=re.search(r'[?&]state=([a-z]+)',path); _ps=_ps.group(1) if _ps else 'all'
+    _sel=lambda p: _ps not in('open','closed') or (p.get('state','open')==_ps)
+    paged([p for p in st.get('pulls',[]) if _sel(p) and (st.get('created_pulls') or p['number'] not in st.get('uncreated_pulls',[]))]); sys.exit(0)
 # branches_list_fail：ブランチの一覧は読めない（502。「ブランチが無い」と取り違えないかのテスト用）
 if base=='branches' and st.get('branches_list_fail'): sys.stderr.write('HTTP 502\n'); sys.exit(1)
 if base=='branches':
