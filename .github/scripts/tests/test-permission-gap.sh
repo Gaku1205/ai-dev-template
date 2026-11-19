@@ -46,7 +46,7 @@ assert_contains "通知にも書かれる" "$(cat "$MOCK_DIR/curl.log")" "足り
 echo "== 許可の不足ではない失敗は、今までどおりやり直す"
 init_state '{"labels":{"8":["ai:implement"]}}'
 run_lib "handle_ai_failure 8 implement '実装AIが止まりました' '$MOCK_DIR/d0.json'" > /dev/null
-assert_eq "やり直しの印が付く" "ai:implement,ai:retry" "$(labels_of 8)"
+assert_contains "やり直しの印が付く" "$(labels_of 8)" "ai:retry"
 
 echo "== 同じ不足が1回目：記録だけ（Issueは作らない）。2回目：Issueを自動で作る"
 init_state '{"labels":{"7":["ai:implement"],"9":["ai:implement"]}}'

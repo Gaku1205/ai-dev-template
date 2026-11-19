@@ -11,6 +11,7 @@ write() { printf '%s' "$2" > "$MOCK_DIR/$1.json"; }
 write limit_denied '[{"type":"result","subtype":"success","result":"Claude AI usage limit reached|1761000000","permission_denials":[{"tool_name":"Bash","tool_input":{"command":"git rebase main"}}]}]'
 write denied '[{"type":"result","subtype":"error_during_execution","result":"","permission_denials":[{"tool_name":"Bash","tool_input":{"command":"git rebase main"}}]}]'
 write turns '[{"type":"result","subtype":"error_max_turns","result":""}]'
+write turns_denied '[{"type":"result","subtype":"error_max_turns","result":"","permission_denials":[{"tool_name":"Bash","tool_input":{"command":"cat >> src/a.test.ts <<EOF"}}]}]'
 write limit '[{"type":"result","subtype":"success","result":"Claude AI usage limit reached|1761000000"}]'
 set_count() { state_py "
 import re
@@ -32,7 +33,7 @@ assert_contains "足りない許可を書く" "$(comments_of 7)" "Bash(git rebas
 echo "== 作業回数の上限：1回はやり直す。やり直しても同じなら、人間に回す（10回は繰り返さない）"
 init_state '{"labels":{"7":["ai:implement"]}}'
 run_lib "handle_ai_failure 7 implement '実装AIが止まりました' '$MOCK_DIR/turns.json'" > /dev/null
-assert_eq "1回目はやり直し待ち" "ai:implement,ai:retry" "$(labels_of 7)"
+assert_eq "1回目は大きい作業にしてやり直し待ち" "ai:implement,ai:retry,size:L" "$(labels_of 7)"
 set_count 1
 state_py "s['labels']['7']=['ai:implement']"
 run_lib "handle_ai_failure 7 implement '実装AIが止まりました' '$MOCK_DIR/turns.json'" > /dev/null
@@ -40,6 +41,21 @@ assert_contains "2回目は人間に回す" "$(labels_of 7)" "ai:stuck"
 assert_not_contains "やり直し待ちにしない" "$(labels_of 7)" "ai:retry"
 assert_contains "理由を書く" "$(comments_of 7)" "また作業回数の上限に届きました"
 assert_contains "次にすることを書く" "$(comments_of 7)" "size:L"
+
+echo "== 作業回数の上限＋途中で断られた操作：許可不足として止めない。大きい作業（size:L）にしてやり直す（agent-desk #658）"
+init_state '{"labels":{"7":["ai:implement"]}}'
+run_lib "handle_ai_failure 7 implement '実装AIが止まりました' '$MOCK_DIR/turns_denied.json'" > /dev/null
+assert_not_contains "人間に回さない" "$(labels_of 7)" "ai:stuck"
+assert_contains "やり直し待ち" "$(labels_of 7)" "ai:retry"
+assert_contains "size:L にする" "$(labels_of 7)" "size:L"
+assert_contains "理由は手数" "$(comments_of 7)" "作業回数の上限（--max-turns。途中で断られた操作：1件）"
+assert_not_contains "許可不足と書かない" "$(comments_of 7)" "許可不足"
+init_state '{"labels":{"7":["ai:implement","size:S"]}}'
+run_lib "handle_ai_failure 7 implement '実装AIが止まりました' '$MOCK_DIR/turns.json'" > /dev/null
+assert_eq "size:S は外して size:L" "ai:implement,ai:retry,size:L" "$(labels_of 7)"
+init_state '{"labels":{"7":["ai:plan"]}}'
+run_lib "handle_ai_failure 7 plan '企画AIが止まりました' '$MOCK_DIR/turns.json'" > /dev/null
+assert_not_contains "企画AIはサイズを変えない" "$(labels_of 7)" "size:L"
 
 echo "== 企画AIの作業回数の上限が続く：ai:plan を外して人間に回す"
 init_state '{"labels":{"7":["ai:plan"]}}'
