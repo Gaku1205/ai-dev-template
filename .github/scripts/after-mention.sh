@@ -114,6 +114,10 @@ for pr in $prs; do
       # visual:update を付けても何も起きず、誰も動かなくなる。撮り直しにはせず、コンフリクトの解消を先にさせる：
       # 拒否された操作があれば、それを手がかりに1回だけ出し直す（permission）。無ければ、理由を書いて人間に回す（conflict）
       conflict_note=""
+      # コンフリクトが基準の画像だけなら、AIを呼ばずにパイプラインが解いて撮り直す（resolve_baseline_conflict が visual:update を付ける）
+      if [ "$kind" = visual ] && [ "$(pr_merge_state "$pr")" = dirty ] && resolve_baseline_conflict "$pr"; then
+        continue
+      fi
       if [ "$kind" = visual ] && [ "$(pr_merge_state "$pr")" = dirty ]; then
         conflict_note="main とのコンフリクトが残っています。画像など、中身を混ぜられないファイルは、git checkout --theirs -- パス で main の側を取って git add してください（見た目のテストの基準の画像は main の側を取り、PR に「visual:update で撮り直してください」と書く）。"
         if [ -n "$keys" ]; then kind=permission; else kind=conflict; fi
@@ -156,6 +160,10 @@ ${VISUAL_MARK}"
             if printf '%s' "$last_body" | grep -q 'auto-fix-model: opus'; then
               model_mark="
 <!-- auto-fix-model: opus -->"
+            fi
+            if printf '%s' "$last_body" | grep -qF "$CONFLICT_KIND_MARK"; then
+              model_mark="${model_mark}
+${CONFLICT_KIND_MARK}"
             fi
             comment "$pr" "${request}
 
@@ -218,7 +226,7 @@ ${PERM_RETRY_MARK}
       elif fix_requested_for "$pr" "$head"; then
         echo "PR #$pr：このコミットにはもう直すよう頼んであるので、コンフリクトの解消は重ねて頼みません"
       else
-        request_fix_or_stop "$pr" "$head" "$CONFLICT_FIX_MSG" "main とのコンフリクトが解けませんでした"
+        request_conflict_fix_or_stop "$pr" "$head" "$CONFLICT_FIX_MSG" "main とのコンフリクトが解けませんでした"
         echo "PR #$pr：push のあとも main とコンフリクトしているので、CIを待たずに解消を依頼しました"
       fi
     elif [ "$(review_state "$pr" "$head")" = none ]; then

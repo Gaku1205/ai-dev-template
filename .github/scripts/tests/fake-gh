@@ -13,7 +13,7 @@ assert args[0]=='api'
 st['api_calls']=st.get('api_calls',0)+1
 json.dump(st,open(ST,'w'))
 args=args[1:]
-method='GET'; q=None; fields={}; flist=[]; path=None; slurp=False; paginate=False
+method='GET'; q=None; fields={}; flist=[]; path=None; slurp=False; paginate=False; inbody=None
 i=0
 while i<len(args):
     a=args[i]
@@ -26,6 +26,7 @@ while i<len(args):
         i+=2
     elif a=='--input':
         _b=json.load(sys.stdin) if args[i+1]=='-' else json.load(open(args[i+1]))
+        inbody=_b
         for _k,_v in _b.items():
             if isinstance(_v,list): flist.extend(_v)
             else: fields[_k]=_v if isinstance(_v,str) else json.dumps(_v)
@@ -256,10 +257,25 @@ if m and method=='POST':
 m=re.match(r'git/commits/([^/]+)$',base)
 if m and method=='GET': out({'tree':{'sha':'tree-'+m.group(1)},'sha':m.group(1)}); sys.exit(0)
 if base=='git/commits' and method=='POST':
-    st.setdefault('new_commits',[]).append(fields.get('message','')); save(); out({'sha':'newcommit'}); sys.exit(0)
+    st.setdefault('new_commits',[]).append(fields.get('message',''))
+    if inbody is not None: st.setdefault('new_commit_bodies',[]).append(inbody)
+    save(); out({'sha':'newcommit'}); sys.exit(0)
+# 木を作る（基準の画像だけのコンフリクトを API で解くとき）：送った中身を new_trees に残す
+if base=='git/trees' and method=='POST':
+    st.setdefault('new_trees',[]).append(inbody); save(); out({'sha':'newtree'}); sys.exit(0)
+# 木を読む：st['trees'] = {sha: {'tree':[{'path':…,'mode':'100644','type':'blob','sha':…}],'truncated':False}}
+m=re.match(r'git/trees/([^/]+)$',base)
+if m and method=='GET': out(st.get('trees',{}).get(m.group(1),{'tree':[],'truncated':False})); sys.exit(0)
+# ブランチの先頭（git/ref/heads/main）：st['ref_shas'] = {'main':'…'}（無ければ 'mainsha'）
+m=re.match(r'git/ref/heads/(.+)$',base)
+if m and method=='GET': out({'object':{'sha':st.get('ref_shas',{}).get(m.group(1),'mainsha')}}); sys.exit(0)
 m=re.match(r'git/refs/heads/(.+)$',base)
+# ref_update_fail：ブランチを動かせない（その間に別の push が入った＝早送りにならない、を表す）
+if m and method=='PATCH' and st.get('ref_update_fail'): sys.stderr.write('HTTP 422: Update is not a fast forward\n'); sys.exit(1)
 if m and method=='PATCH':
-    st.setdefault('ref_updates',[]).append(m.group(1)); save(); print('{}'); sys.exit(0)
+    st.setdefault('ref_updates',[]).append(m.group(1))
+    if inbody is not None: st.setdefault('ref_update_bodies',[]).append(inbody)
+    save(); print('{}'); sys.exit(0)
 # 実行をまるごと動かし直す。rerun_fail があれば断る
 m=re.match(r'actions/runs/(\d+)/rerun$',base)
 if m and method=='POST':
@@ -293,7 +309,8 @@ if base=='actions/runs':
             _ok=all(c.get('conclusion') in ('success','neutral','skipped') for c in _ac)
             _runs.append({'id':9000,'name':'CI','event':'pull_request','created_at':'2026-01-01T00:00:00Z','status':'completed' if _done else 'in_progress','conclusion':('success' if _ok else 'failure') if _done else None})
     out({'workflow_runs':_runs}); sys.exit(0)
-if base.startswith('compare/'): out({'ahead_by':st.get('ahead_by',0)}); sys.exit(0)
+# 比べる（compare/A...B）：st['compare'] = {'main...abc': {'files':[…]}} があれば、それも返す（基準の画像だけのコンフリクトの見分け）
+if base.startswith('compare/'): out({'ahead_by':st.get('ahead_by',0),**st.get('compare',{}).get(base[len('compare/'):],{})}); sys.exit(0)
 m=re.match(r'commits/([^/]+)$',base)
 if m and m.group(1) in st.get('commit_fail',[]): sys.stderr.write('HTTP 502\n'); sys.exit(1)
 if m: st['commit_calls']=st.get('commit_calls',0)+1; save()
