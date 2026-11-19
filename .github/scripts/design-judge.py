@@ -302,10 +302,20 @@ def brief(a):
         l = next((x for x in st["looks"] if x.get("n") == st["look"]), None)
         if l:
             L.append(f"- オーナーが選んだ見た目の方向：{text(l.get('title'), 60)}。{text(l.get('idea'), 200)}")
-    decided = [f"{text(x.get('q'), 120)} → {text(x.get('a'), 200)}" for x in st.get("answers") or [] if isinstance(x, dict)]
-    decided += [f"注文（{text(n.get('stage'), 20)}）：{text(n.get('note'), 400)}" for n in st.get("notes") or [] if isinstance(n, dict)]
-    L += ["", "## オーナーが決めた事（絵に出ていなければ owner は「いいえ」）", ""]
+    # 見た目の段階（looks・mocks）の答えと注文だけが「絵に出るはずの決め」。案の段階の答え（データの持ち方・お金・遅刻の数え方など）は、
+    # 静止画に出せないので owner には使わない（11/19 の #250：全部を渡したら、画面の中に仕様書のような欄を足して答えを絵に出そうとした）。
+    # 古い state（stage が無い答え）は、今の段階より前の答えとして中身の決まりに入れる
+    visual = ("looks", "mocks")
+    answers = [x for x in st.get("answers") or [] if isinstance(x, dict)]
+    notes = [n for n in st.get("notes") or [] if isinstance(n, dict)]
+    decided = [f"{text(x.get('q'), 120)} → {text(x.get('a'), 200)}" for x in answers if x.get("stage") in visual]
+    decided += [f"注文（{text(n.get('stage'), 20)}）：{text(n.get('note'), 400)}" for n in notes]
+    content = [f"{text(x.get('q'), 120)} → {text(x.get('a'), 200)}" for x in answers if x.get("stage") not in visual]
+    L += ["", "## オーナーが決めた事（見た目の決めと注文。絵に出ていなければ owner は「いいえ」。押した後の動きなど静止画に出せない物は「はい」）", ""]
     L += [f"- {d}" for d in decided] or ["- （まだ無い。owner は「はい」にする）"]
+    if content:
+        L += ["", "## 中身の決まり（絵に出ていなくてよい。owner の判定に使わない。何のサービスかを知るためだけに読む）", ""]
+        L += [f"- {d}" for d in content]
     if opts["concept"] and os.path.isfile(opts["concept"]) and not os.path.islink(opts["concept"]):
         with open(opts["concept"], encoding="utf-8", errors="ignore") as f:
             c = f.read(6000)
