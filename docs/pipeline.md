@@ -487,6 +487,18 @@ Vercel の Hobby は、30日の使用量が上限に届くとアカウントご�
 - 取れなかったとき（鍵が無い・CLI のエラー・出力の形が変わった）は、`::warning::` を1行出して 0 で終わる（見張りを止めない）
 - 出力の読み方（CLI の出力は実物で確かめてから直す前提）：JSON の配列（または `data`・`usage`・`rows`・`items` の中の配列）の1行を「プロジェクト・項目名・量」と読み、量は表の単位とみなす（行に `unit` があれば bytes→GB、seconds・ms→時間に直す）
 
+## 公開先の決め方：サーバーの要らないアプリは GitHub Pages（`pick-deploy.sh`・`move-to-pages.sh`）
+
+Vercel の Hobby は CPU の上限で止まると、サーバーの要らないアプリまで公開できなくなり、非商用だけという決まりもある。そこで、**サーバーで動く物が無いアプリは GitHub Pages、サーバーが要る物だけ Vercel** にする。
+
+- **決める関数**：`.github/scripts/pick-deploy.sh` の `pick_deploy <言語> <説明> [課金 yes|no] [ログイン yes|no]` が `github-pages` か `vercel` を返す。迷ったら `vercel`（サーバーが要るのに Pages に出すと壊れるため）
+  - 言語が `nextjs` 以外（`saas`・`python`・`game`・`webgame`）は `vercel`（`game`・`python` は別の公開先が決まっている）
+  - 課金・ログインが `yes`、または説明にサーバーで動く物を思わせる言葉（API・ログイン・会員・課金・AI・メール・共有・データベース・Supabase・Stripe など。「サーバー不要」は数えない）があれば `vercel`
+  - 説明にサーバーの要らない印（データは端末・静的・ポートフォリオ・ゲーム・サーバー不要など）があるときだけ `github-pages`
+- **工場**（`factory.sh`）：`pick_deploy` が `github-pages` なら、`pipeline.json` の deploy を `[{"kind":"github-pages","build":"PAGES_BASE_PATH=/<リポジトリ名> npm run build"}]` にし、`next.config.ts` を `output: "export"`・`trailingSlash: true`・`images: { unoptimized: true }`・`basePath`（公開のビルドだけ `PAGES_BASE_PATH` から）にする。`vercel.json` は消し、Vercel のプロジェクト・鍵は作らず写さない。Pages は工場が有効にする。どちらにしたかと理由は、最初のコメントと、サービスの `docs/spec.md`（「公開先」の行）に1行書く。課金・ログインの有無は、環境変数 `APP_PAID`・`APP_LOGIN`（`yes`）で渡せる
+- **今あるアプリを移す**：`GH_TOKEN=… .github/scripts/move-to-pages.sh <owner/repo>`（マネージャーが手で使う）。サーバーで動くファイル（`app/api/`・`route.ts`・`middleware.ts`・`"use server"`・`supabase/migrations`）があれば、理由を出して止まる。無ければ、上と同じ `pipeline.json`・`next.config.ts` にする PR（ブランチ `move-to-pages`）を作り、Pages を有効にする（もう有効なら飛ばす）。素の `<a href="/…">`・`<img src="/…">`（`basePath` が付かない）を探し、PR の本文に一覧を書く。`next/link`・`next/image` は自動で付く
+- 移したあと、Pages が動くのを見てから Vercel のプロジェクトを止める
+
 ## スクリプトのテスト
 
 `.github/scripts/tests/` に、進行役のスクリプトのテストがある。本物の GitHub には触らず、疑似の `gh`（`tests/fake-gh`）が状態をファイルに持つ。

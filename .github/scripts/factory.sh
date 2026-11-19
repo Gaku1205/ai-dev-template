@@ -96,6 +96,13 @@ valid_plan() {
   case "$APP_DESC" in *$'\n'* | *'`'* | *'$('*) echo "説明に改行・記号（\` \$( ）は使わない"; return 1 ;; esac
 }
 why=$(valid_plan) || fail "AIが決めた名前・言語・説明の形が正しくありません：$why"
+# 公開先：サーバーの要らない Next.js は GitHub Pages、サーバーが要る物は Vercel（pick-deploy.sh。迷ったら Vercel）。
+# 課金・ログインの有無（APP_PAID・APP_LOGIN。yes のとき）と、説明・メモから決める
+# shellcheck source=pick-deploy.sh
+source "$HERE/pick-deploy.sh"
+DEPLOY=$(pick_deploy "$APP_STACK" "$APP_DESC
+${MEMO:-}
+${MEMO_DETAIL:-}" "${APP_PAID:-no}" "${APP_LOGIN:-no}")
 
 # ---- 1. リポジトリを作る ----
 # 前の実行が途中で止まって残した、作りかけのリポジトリか（同じ Issue でやり直したとき、-2 の別のリポジトリを増やさず、続きから作る）。
@@ -147,6 +154,7 @@ for n in $COPY_SECRETS; do
   [ -z "$val" ] && continue
   # Vercel の鍵は、Vercel で公開する物（Next.js・Web のゲーム）にだけ入れる（公開をまとめて頼む deploy-vercel.yml が使う）
   [ "$n" = VERCEL_TOKEN ] && [ "$APP_STACK" != nextjs ] && [ "$APP_STACK" != saas ] && [ "$APP_STACK" != webgame ] && continue
+  [ "$n" = VERCEL_TOKEN ] && [ "$DEPLOY" = github-pages ] && continue
   if printf '%s' "$val" | gh secret set "$n" --repo "$NEW" > /dev/null 2>&1; then copied+=("$n"); else note "⚠️ 秘密 $n を写せませんでした（FACTORY_TOKEN に Secrets（Read and write）が要ります）"; fi
 done
 for n in $COPY_VARS; do
@@ -158,7 +166,12 @@ done
 
 # ---- 3. Vercel ----
 vercel_note=""
-if [ "$APP_STACK" = nextjs ] || [ "$APP_STACK" = saas ] || [ "$APP_STACK" = webgame ]; then
+if [ "$DEPLOY" = github-pages ]; then
+  note "✅ $(pick_deploy_reason github-pages)"
+elif [ "$APP_STACK" = nextjs ]; then
+  note "✅ $(pick_deploy_reason vercel)"
+fi
+if [ "$DEPLOY" = vercel ] && { [ "$APP_STACK" = nextjs ] || [ "$APP_STACK" = saas ] || [ "$APP_STACK" = webgame ]; }; then
   framework=nextjs; [ "$APP_STACK" = webgame ] && framework=vite
   if vout=$(REPO_FULL="$NEW" PROJECT="$name" FRAMEWORK="$framework" "$HERE/factory-vercel.sh" 2>&1); then
     note "✅ Vercel のプロジェクトを作ってつないだ"
@@ -221,6 +234,28 @@ open("README.md", "w", encoding="utf-8").write(f"""# {name}
 PY2
   if [ "$APP_STACK" = python ]; then
     "$HERE/factory-python.sh" . || exit 1
+  fi
+  # サーバーの要らない Next.js：GitHub Pages で公開する形（pipeline.json の deploy・build と next.config.ts。Vercel の設定は消す）。
+  # 設計メモ（docs/spec.md の「技術」）にも、公開先と理由を1行書く
+  if [ "$DEPLOY" = github-pages ]; then
+    pages_pipeline_json "$name" pipeline.json > pipeline.json.new && mv pipeline.json.new pipeline.json
+    pages_next_config > next.config.ts
+    rm -f vercel.json
+    REASON="$(pick_deploy_reason github-pages)。画像・リンクは basePath が付くので、素の \`<a href=\"/…\">\`・\`<img src=\"/…\">\` は書かず、\`next/link\`・\`next/image\`（unoptimized）を使う" python3 - <<'PY4'
+import os
+s = open("docs/spec.md", encoding="utf-8").read()
+line = "- 技術：Next.js（App Router）＋TypeScript、テストはVitest\n"
+s = s.replace(line, line + "- 公開先：" + os.environ["REASON"] + "\n", 1)
+open("docs/spec.md", "w", encoding="utf-8").write(s)
+PY4
+  else
+    [ "$APP_STACK" = nextjs ] && REASON="$(pick_deploy_reason vercel)" python3 - <<'PY5'
+import os
+s = open("docs/spec.md", encoding="utf-8").read()
+line = "- 技術：Next.js（App Router）＋TypeScript、テストはVitest\n"
+s = s.replace(line, line + "- 公開先：" + os.environ["REASON"] + "\n", 1)
+open("docs/spec.md", "w", encoding="utf-8").write(s)
+PY5
   fi
   # 会員と月額課金：Next.js に、ログイン（Supabase）と有料プラン（Stripe）の土台を入れる（examples/saas）
   if [ "$APP_STACK" = saas ]; then
@@ -311,7 +346,7 @@ PY3
   fi
   # Vercel の鍵を入れたら、Vercel がマージのたびに自分で公開するのを止め、deploy-vercel.yml が落ち着いてから1回だけ公開する
   # （無料プランの「1日100回まで」に当たらないように）。鍵が無いときは今までどおり Vercel が自分で公開する
-  if { [ "$APP_STACK" = nextjs ] || [ "$APP_STACK" = saas ] || [ "$APP_STACK" = webgame ]; } && [ -n "${S_VERCEL_TOKEN:-}" ] && [ -f vercel.json ]; then
+  if [ "$DEPLOY" = vercel ] && { [ "$APP_STACK" = nextjs ] || [ "$APP_STACK" = saas ] || [ "$APP_STACK" = webgame ]; } && [ -n "${S_VERCEL_TOKEN:-}" ] && [ -f vercel.json ]; then
     # ignoreCommand（直前のコミットとの差だけを見る）は消す。まとめて公開すると、間のコミットの変更を見落として公開が飛ばされるため。
     # パイプラインの物しか変わっていない時に公開しないのは、deploy-vercel.sh が決める
     jq '.git.deploymentEnabled = false | del(.ignoreCommand)' vercel.json > vercel.json.new && mv vercel.json.new vercel.json
@@ -453,6 +488,9 @@ ${MEMO_DETAIL}"
     -f body="$body" -q .number 2>&1) \
     || fail "最初のIssueを作れませんでした"
   note "✅ 最初のIssue：https://github.com/$NEW/issues/$first（自動で企画に回る）"
+fi
+if [ "$DEPLOY" = github-pages ]; then
+  note "🌐 公開アドレス：https://${OWNER,,}.github.io/$name/（GitHub Pages。最初の公開が終わると見られる）"
 fi
 # 公開アドレス：Vercel が最初の公開でアドレスを決めるまで待って調べる（同じ名前がほかの人に使われていると、名前の後ろに文字が付く）
 if [ -n "$vercel_note" ]; then
