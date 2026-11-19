@@ -268,6 +268,16 @@ assert_eq "名前が ci.yml にある" "ok" "$result"
 
 echo "== やり直しの目覚まし：見張り役は目覚ましを動かせる（actions: write）。目覚ましは1つだけ"
 assert_contains "watchdog.yml：actions: write" "$(cat "$WORKFLOWS/watchdog.yml")" "actions: write"
+sc=$(python3 - "$WORKFLOWS/watchdog.yml" <<'PY'
+import sys, yaml
+steps = [st for job in yaml.safe_load(open(sys.argv[1]))["jobs"].values() for st in job.get("steps", [])]
+s = [st for st in steps if "selfcheck-call.sh" in str(st.get("run", ""))]
+if not s: print("none"); sys.exit()
+s = s[0]
+print("coe=%s tok=%s tpl=%s" % (s.get("continue-on-error"), s.get("env", {}).get("GH_TOKEN"), "is_template" in s["run"]))
+PY
+)
+assert_eq "watchdog.yml：自己点検はテンプレートだけ・止めない・鍵はパイプラインの App の鍵だけ" 'coe=True tok=${{ steps.app-token.outputs.token }} tpl=True' "$sc"
 assert_contains "retry-timer.yml：新しい物が古い物を止める" "$(cat "$WORKFLOWS/retry-timer.yml")" "cancel-in-progress: true"
 assert_contains "retry-timer.yml：見張り役が探す名前" "$(cat "$WORKFLOWS/retry-timer.yml")" "run-name: やり直しの目覚まし \${{ inputs.at }}"
 

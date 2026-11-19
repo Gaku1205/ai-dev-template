@@ -89,3 +89,17 @@ jobs:
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
           RETRY_TIMER: ${{ vars.RETRY_TIMER }}
         run: .github/scripts/watchdog.sh
+      # agent-desk の自己点検（#256）。テンプレート本体だけで呼ぶ（配ったアプリの見張り役まで呼ぶと、同じ点検が何重にもなる）。
+      # schedule の event には repository が無いことがあるので、テンプレートかどうかは API で確かめる。失敗しても見張りは止めない
+      - name: agent-desk の自己点検を呼ぶ
+        if: vars.AGENT_DESK_URL != '' && github.event_name != 'workflow_run'
+        continue-on-error: true
+        timeout-minutes: 1
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
+          REPO: ${{ github.repository }}
+        run: |
+          [ -n "$GH_TOKEN" ] || exit 0
+          [ "$(gh api "repos/$REPO" --jq .is_template 2>/dev/null)" = true ] || exit 0
+          bash .github/scripts/selfcheck-call.sh
