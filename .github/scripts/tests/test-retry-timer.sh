@@ -126,16 +126,19 @@ want=$(( want + 60 ))
 within() { [ -n "$1" ] && [ "$1" -ge $(( $2 - 120 )) ] && [ "$1" -le $(( $2 + 120 )) ] && echo ok || echo "${1:-なし}（期待 $2）"; }
 export PARALLEL_DAY=1 PARALLEL_NIGHT=1 WATCHDOG_HEARTBEAT_MIN=1000
 init_state "$q"
-PARALLEL_NIGHT_HOURS="$nh-$(( (10#$nh + 5) % 24 ))" run_script watchdog.sh > /dev/null
+TIMER_CLOCK_REPO=1 PARALLEL_NIGHT_HOURS="$nh-$(( (10#$nh + 5) % 24 ))" run_script watchdog.sh > /dev/null
 assert_eq "夜の始まりの1分後" "ok" "$(within "$(dispatches | awk '{print $2}')" "$want")"
+init_state "$q"
+TIMER_CLOCK_REPO=0 PARALLEL_NIGHT_HOURS="$nh-$(( (10#$nh + 5) % 24 ))" run_script watchdog.sh > /dev/null
+assert_not_contains "テンプレートでないリポジトリは、遠い先（3時間後）の切り替えではかけない（Actions の枠を食わない）" "$(within "$(dispatches | awk '{print $2}')" "$want")" "ok"
 assert_eq "#3 は順番待ちのまま" "ai:queue" "$(labels_of 3)"
 init_state "$q"
-PARALLEL_NIGHT_HOURS="$(( (10#$nh + 19) % 24 ))-$nh" run_script watchdog.sh > /dev/null
+TIMER_CLOCK_REPO=1 PARALLEL_NIGHT_HOURS="$(( (10#$nh + 19) % 24 ))-$nh" run_script watchdog.sh > /dev/null
 assert_eq "夜の終わりの1分後" "ok" "$(within "$(dispatches | awk '{print $2}')" "$want")"
 init_state "$q"
 ov="night until $(TZ=Asia/Tokyo date -d "@$(( tz_now + 600 ))" +%Y-%m-%dT%H:%M:%S+09:00)"
-PARALLEL_OVERRIDE="$ov" run_script watchdog.sh > /dev/null
-assert_eq "上書きの期限の1分後" "ok" "$(within "$(dispatches | awk '{print $2}')" $(( tz_now + 660 )))"
+TIMER_CLOCK_REPO=0 PARALLEL_OVERRIDE="$ov" run_script watchdog.sh > /dev/null
+assert_eq "上書きの期限の1分後（近い＝45分以内なら、テンプレートでなくてもかける）" "ok" "$(within "$(dispatches | awk '{print $2}')" $(( tz_now + 660 )))"
 init_state '{"labels":{"1":["ai:review-done"]}}'
 PARALLEL_OVERRIDE="$ov" run_script watchdog.sh > /dev/null
 assert_eq "順番待ちが無ければ変わり目ではかけない" "" "$(dispatches)"

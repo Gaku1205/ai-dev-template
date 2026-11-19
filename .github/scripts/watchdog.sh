@@ -114,6 +114,15 @@ heartbeat_needed() {
 # 番号ごとの retry_due_at の写し（due_work_pending が読んだ物を set_retry_timer が使い回す。コメントの API を増やさない）
 declare -A RETRY_DUE_CACHE=()
 
+# 遠い先の目覚まし（並列の上限が変わる時刻）をかけるリポジトリか：テンプレート自身（全部のリポジトリで1つ）。
+# テンプレートが分からないときは、どのリポジトリもかけない（枠を食わない方を選ぶ）。TIMER_CLOCK_REPO=1 で決め打ちできる（テスト用）
+timer_clock_repo() {
+  [ -n "${TIMER_CLOCK_REPO:-}" ] && { [ "$TIMER_CLOCK_REPO" = 1 ]; return; }
+  local t
+  t=$(template_repo 2> /dev/null) || return 1
+  [ -n "$t" ] && [ "${t,,}" = "${REPO,,}" ]
+}
+
 set_retry_timer() {
   local earliest="" n t now_s runs
   [ "${RETRY_TIMER:-on}" = "off" ] && return 0
@@ -150,13 +159,22 @@ set_retry_timer() {
   # 順番待ちがあるとき、並列の上限が変わる次の時刻（夜の始まり／終わり・上書きの期限）の1分後にも起こす。
   # 上限を全部のリポジトリで数えるとき（PARALLEL_SCOPE=global）は、ほかのリポジトリの順番待ちも数える（夜が明けて空きができたら、
   # このリポジトリの見張り役が、ほかのリポジトリの順番待ちも始める）
-  local queued_all
+  local queued_all boundary=""
   queued_all=$(( ${queued:-0} + $(global_other_queued 2> /dev/null || echo 0) ))
   if [ "$queued_all" -gt 0 ]; then
     t=$(parallel_next_change "$now_s")
-    if [ -n "$t" ]; then
-      t=$(( t + 60 ))
-      if [ -z "$earliest" ] || [ "$t" -lt "$earliest" ]; then earliest="$t"; fi
+    [ -n "$t" ] && boundary=$(( t + 60 ))
+  fi
+  # 目覚ましは、待つ間ずっと Actions の枠（同時に動けるジョブの数。無料のアカウントは全部で20）を1つ使う。
+  # 並列の上限が変わる時刻（夜の始まり・夜明け）は全部のリポジトリで同じなので、全部のリポジトリが遠い先の目覚ましをかけると、
+  # 枠が埋まって CI や AI が何時間も順番待ちになる（11/19 朝：13リポジトリが、4〜5時間先のこの目覚ましで枠を13使っていた）。
+  # そこでこの目覚ましは、RETRY_TIMER_FAR_MIN 分（既定45）より先なら、テンプレートのリポジトリだけがかける（全部で枠を1つ。
+  # 上限を全部のリポジトリで数えるとき、起きたテンプレートの見張り役が、ほかのリポジトリの順番待ちも始める）
+  local far="${RETRY_TIMER_FAR_MIN:-45}"
+  [[ "$far" =~ ^[0-9]+$ ]] && [ "$far" -ge 1 ] || far=45
+  if [ -n "$boundary" ]; then
+    if [ $(( boundary - now_s )) -le $(( far * 60 )) ] || timer_clock_repo; then
+      if [ -z "$earliest" ] || [ "$boundary" -lt "$earliest" ]; then earliest="$boundary"; fi
     fi
   fi
   [ -z "$earliest" ] && return 0
