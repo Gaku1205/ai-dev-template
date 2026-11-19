@@ -95,9 +95,12 @@ heartbeat_needed() {
       def active($l): ($l | map(select(. == "ai:plan" or . == "ai:implement" or . == "ai:mocks" or . == "ai:blocked")) | length) > 0;
       def unlabeled($l): ($l | map(select(startswith("ai:"))) | length) == 0;
       def trusted: ((.user.login // "") | ascii_downcase) as $u | ($u == $owner or $u == "claude[bot]" or $u == "github-actions[bot]");
+      # ラベルの無い Issue は、受付（intake）が拾い損ねた直後の物だけを見る（作って2時間まで）。古い物まで見ると、
+      # ほぼ全部のリポジトリで見回りの目覚ましが止まらず、Actions の枠を1つずつ使い続ける（11/19 朝、11リポジトリで起きた）
+      def recent: ((.created_at // .updated_at // "") | sub("\\.[0-9]+Z$"; "Z") | (try fromdateiso8601 catch 0)) > (now - 7200);
       def watch: ((.labels // []) | map(.name)) as $l
         | ($l | any(. == "ai:stuck" or . == "ai:skip") | not)
-          and (active($l) or (unlabeled($l) and trusted));
+          and (active($l) or (unlabeled($l) and trusted and recent));
       any(.[]; (.pull_request == null) and watch)' > /dev/null 2>&1; then
     return 0
   fi
@@ -107,6 +110,7 @@ heartbeat_needed() {
   printf '%s' "$pulls" | jq -e --arg repo "$REPO" --arg hold " $hold" '
     any(.[]; (.draft | not)
       and (((.head.repo.full_name // "") | ascii_downcase) == ($repo | ascii_downcase))
+      and ((.head.ref // "") | startswith("claude/"))
       and (((.labels // []) | map(.name) | index("ai:stuck")) | not)
       and ((.number | tostring) as $n | ($hold | contains(" " + $n + " ")) | not))' > /dev/null 2>&1
 }
@@ -149,6 +153,8 @@ set_retry_timer() {
     done < <(hold_prs 2> /dev/null)
   fi
   # 定期の起動は当てにならない（実際は1日3〜4回）。進行中の物が残っている間は、WATCHDOG_HEARTBEAT_MIN 分後にも起こす（早い方を使う）。
+  # 「進行中」は、AI の段階のラベル（企画・実装・画面案・blocked）と、パイプラインの PR（claude/ のブランチ）だけ。配布の PR やマネージャーの PR、
+  # 古いラベル無しの Issue では起こさない（目覚ましは待つ間 Actions の枠を1つ使うので、静かなリポジトリでは使わない）。
   # 写しがあれば API は増えない。何も待っていなければかけない（静かなリポジトリで Actions を回し続けない）
   local hb="${WATCHDOG_HEARTBEAT_MIN:-15}"
   [[ "$hb" =~ ^[0-9]+$ ]] && [ "$hb" -ge 1 ] || hb=15

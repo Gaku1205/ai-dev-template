@@ -101,6 +101,9 @@ repo=$(run_lib 'echo "$REPO"')
 init_state '{"labels":{"30":[]},"pulls":['"$(mkpr 30 false "$repo" "")"']}'
 run_script watchdog.sh > /dev/null
 assert_eq "進行中のPR" "ok" "$(near15 "$(dispatches | awk '{print $2}')")"
+init_state '{"labels":{"31":[]},"issue_updated":{"31":"'"$(ago 600)"'"},"pulls":['"$(mkpr 31 false "$repo" "" | sed 's#claude/issue-9-x#pipeline-sync/abc1234#')"']}'
+run_script watchdog.sh > /dev/null
+assert_eq "配布の PR（pipeline-sync/）では起こさない" "" "$(dispatches)"
 init_state '{"labels":{"30":["ai:stuck"]},"pulls":['"$(mkpr 30 false "$repo" '{"name":"ai:stuck"}')"']}'
 run_script watchdog.sh > /dev/null
 assert_eq "ai:stuck のPR" "" "$(dispatches)"
