@@ -72,7 +72,7 @@ $(talk mark "$state")"
       files=()
       case "$NEXT" in
         # 設計メモ（concept.md）と使った絵の出どころ（credits.json）も置く：次の段階と、作り始めたときのデザイン担当が引き継ぐ
-        looks) for f in "$out"/look-[1-3]-1440.png "$out"/concept.md "$out"/img/credits.json; do [ -f "$f" ] && [ ! -L "$f" ] && files+=("$f"); done ;;
+        looks) for f in "$out"/look-[1-3]-1440.png "$out"/look-[1-3]-390.png "$out"/look-[1-3].html "$out"/concept.md "$out"/img/credits.json; do [ -f "$f" ] && [ ! -L "$f" ] && files+=("$f"); done ;;
         mocks) for f in "$out"/mock-[ab].html "$out"/mock-[ab]-1440.png "$out"/mock-[ab]-390.png "$out"/mock-[ab]-1440-s2.png "$out"/concept.md "$out"/img/credits.json; do [ -f "$f" ] && [ ! -L "$f" ] && files+=("$f"); done ;;
       esac
       if [ "${#files[@]}" -gt 0 ] && ! push_assets "$dir" "${files[@]}"; then

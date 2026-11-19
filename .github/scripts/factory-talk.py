@@ -16,6 +16,7 @@ AIは talk/ にファイルを書くだけ。形を確かめる・コメント�
 """
 import base64
 import json
+import os
 import re
 import sys
 
@@ -110,7 +111,9 @@ def check(stage, d):
             looks.append({"n": n, "title": text(l.get("title"), 30) or f"方向{n}", "idea": text(l.get("idea"), 160),
                           "colors": [c for c in (l.get("colors") or []) if isinstance(c, str) and re.match(r"^#[0-9A-Fa-f]{6}$", c)][:8],
                           "fonts": text(l.get("fonts"), 80),
-                          "refs": [u for u in (l.get("refs") or []) if isinstance(u, str) and re.match(r"^https://[^\s<>\"]{4,200}$", u)][:5]})
+                          "refs": [u for u in (l.get("refs") or []) if isinstance(u, str) and re.match(r"^https://[^\s<>\"]{4,200}$", u)][:5],
+                          # スマホの最初の1画面（あれば並べて見せる）
+                          "phone": png(f"{d}/look-{n}-390.png")})
         if len(looks) < 2:
             die(f"画像のある方向が {len(looks)} 個しかない（2個以上要る）")
         out["looks"] = looks
@@ -248,7 +251,7 @@ def apply(state, reply):
         if n not in ns:
             return clarify(f"見た目の方向は {'・'.join(map(str, ns))} の番号で選んでください。")
         state["look"] = n
-        state["stage"] = "mocks"
+        state["stage"] = "mocks" if state.get("want_mocks") else "confirm"
     elif stage == "mocks":
         keys = [m["key"] for m in state.get("mocks", [])]
         if choice not in keys:
@@ -278,7 +281,9 @@ def merge(state, stage, out, path):
 def render(state, root):
     stage = state.get("stage")
     assets = state.get("assets") or {}
-    imgbase = f"{root}/{assets.get('mocks' if stage == 'confirm' else stage, '')}"
+    # 最終確認の絵は、ざっくり画面を選んだならその画面、選んでいなければ（ふだん）選んだ見た目の方向の最初の1画面
+    shown = ("mocks" if state.get("mock") else "looks") if stage == "confirm" else stage
+    imgbase = f"{root}/{assets.get(shown, '')}"
     r = state.get("round", 0)
     L = []
     if stage == "ideas":
@@ -293,7 +298,7 @@ def render(state, root):
         how = "番号で1つ選んでください（例：`2`・`2。名前はもっと短く`）。いくつかを1つのサービスにまとめるなら `1,3` のように。どれも違えば「全部ちがう。もっと〇〇」と書くと出し直します。"
     elif stage == "looks":
         idea = state["ideas"][state["idea"]]
-        L.append(f"## 🎨 「{idea['title']}」の見た目の方向を3つ作りました\n")
+        L.append(f"## 🎨 「{idea['title']}」の見た目の方向を3つ作りました（左が PC、右がスマホの最初の1画面）\n")
         for l in state.get("looks", []):
             L.append(f"### {l['n']}. {l['title']}")
             L.append(l["idea"] + "\n")
@@ -303,7 +308,8 @@ def render(state, root):
                 L.append(f"- **文字**：{l['fonts']}")
             if l.get("refs"):
                 L.append("- **参考**：" + "・".join(l["refs"]))
-            L.append(f"\n<img src=\"{imgbase}/look-{l['n']}-1440.png\" width=\"720\" alt=\"方向{l['n']}\">\n")
+            phone = f" <img src=\"{imgbase}/look-{l['n']}-390.png\" width=\"150\" alt=\"方向{l['n']} スマホ\">" if l.get("phone") else ""
+            L.append(f"\n<img src=\"{imgbase}/look-{l['n']}-1440.png\" width=\"560\" alt=\"方向{l['n']}\">{phone}\n")
         how = "番号で1つ選んでください（例：`1`・`1。でも色は2の方が好き`）。どれも違えば「全部ちがう。もっと〇〇」。"
     elif stage == "mocks":
         L.append("## 🖼 ざっくり画面を2案作りました（左が PC、右がスマホ）\n")
@@ -327,11 +333,18 @@ def render(state, root):
         if c.get("pages"):
             L.append(f"- **最初に作る画面**：{'・'.join(c['pages'])}")
         if state.get("answers"):
-            L.append("- **決まった事**：" + "／".join(f"{a['q']} → {a['a']}" for a in state["answers"]))
+            # 1つの長い文にすると読めないので、質問ごとに1行
+            L.append("- **決まった事**：")
+            L += [f"  - {a['q']} → **{a['a']}**" for a in state["answers"]]
         if state.get("mock"):
             k = state["mock"]
             L.append(f"\n<img src=\"{imgbase}/mock-{k}-1440.png\" width=\"560\" alt=\"選んだ画面\"> "
                      f"<img src=\"{imgbase}/mock-{k}-390.png\" width=\"150\" alt=\"選んだ画面 スマホ\">\n")
+        elif state.get("look"):
+            n = state["look"]
+            l = next((x for x in state.get("looks", []) if x.get("n") == n), {})
+            phone = f" <img src=\"{imgbase}/look-{n}-390.png\" width=\"150\" alt=\"選んだ画面 スマホ\">" if l.get("phone") else ""
+            L.append(f"\n<img src=\"{imgbase}/look-{n}-1440.png\" width=\"560\" alt=\"選んだ画面\">{phone}\n")
         how = "よければ「**作る**」と返事してください。リポジトリや Supabase を作り始めます。直したい所があれば、その内容を書いてください（確認を作り直します）。"
     else:
         die(f"見せる物の無い段階：{stage}")
@@ -384,7 +397,12 @@ def brief(state):
         # 設計メモ（持ち物・考え・通し表）と、ざっくり画面で使った絵の出どころ（あれば。無ければ工場の側で飛ばす）
         files += [f"{assets['mocks']}/concept.md", f"{assets['mocks']}/credits.json"]
     if state.get("look") and assets.get("looks"):
-        files.append(f"{assets['looks']}/look-{state['look']}-1440.png")
+        n = state["look"]
+        files.append(f"{assets['looks']}/look-{n}-1440.png")
+        if not state.get("mock"):
+            # ざっくり画面を通らなかった（ふだん）：選んだ方向の最初の1画面（HTML・PC・スマホ）と設計メモを、本番の土台として渡す
+            files += [f"{assets['looks']}/look-{n}.html", f"{assets['looks']}/look-{n}-390.png",
+                      f"{assets['looks']}/concept.md", f"{assets['looks']}/credits.json"]
     return {"name": c.get("name") or idea.get("name", ""), "stack": c.get("stack") or idea.get("stack", ""),
             "description": c.get("description", ""), "detail": detail[:6000], "files": files}
 
@@ -395,8 +413,10 @@ def main():
         die(__doc__)
     cmd = a[0]
     if cmd == "init":
+        # ざっくり画面の段は、ふだんは飛ばす（見た目の方向で、もう本物の最初の1画面を PC とスマホで見せる。11/19 の #250 で1往復44分かかった）。
+        # 変数 FACTORY_TALK_MOCKS=1 のときだけ、今までどおり方向の後にざっくり画面を出す
         print(json.dumps({"v": 1, "stage": "ideas", "round": 0, "memo": text(a[1], 300), "detail": (a[2] if len(a) > 2 else "")[:3000],
-                          "answers": [], "notes": []}, ensure_ascii=False))
+                          "answers": [], "notes": [], "want_mocks": os.environ.get("FACTORY_TALK_MOCKS", "") == "1"}, ensure_ascii=False))
     elif cmd == "state":
         comments = load(a[1])
         found = {}
