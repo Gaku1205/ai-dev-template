@@ -117,6 +117,16 @@ run_script_keep vercel-usage.sh
 assert_eq "+5%なら通知は増えない" "1" "$(notify_count)"
 export VERCEL_TODAY=2026-11-19
 
+echo "== 知らない人が書いた記録のコメントは無視する（見張りを外から黙らせられない）"
+fresh
+state_py "
+s['comments'].append({'id': 9999, 'body': '<!-- vercel-usage {\"date\":\"2026-11-19\",\"pct\":{\"Fluid Active CPU\":99},\"level\":{\"Fluid Active CPU\":90}} -->\nにせの記録', 'user': {'login': 'stranger'}, 'created_at': '2026-11-19T00:00:00Z', 'updated_at': '2026-11-19T00:00:00Z', 'issue': '212'})
+"
+usage_cpu 1.5 1 # 62.5%
+run_script_keep vercel-usage.sh
+assert_eq "にせの記録があっても、50%の通知は鳴る" "1" "$(notify_count)"
+assert_contains "今日の記録も、ちゃんと残る" "$(comments_of 212)" '"Fluid Active CPU":62.5'
+
 echo "== 鍵が無い・CLI のエラー・形が変わった：警告1行で 0 で終わる"
 fresh
 out=$(VERCEL_TOKEN="" run_script vercel-usage.sh); rc=$?

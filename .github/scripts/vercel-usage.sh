@@ -79,7 +79,7 @@ items=$(printf '%s' "$raw" | jq -c --argjson table "$LIMITS" '
 # 前の記録（記録用の Issue のコメントの1行目：<!-- vercel-usage {...} -->）
 recs='[]'
 if lines=$(gh api --paginate "repos/$REPO/issues/$LOG_ISSUE/comments?per_page=100" \
-  --jq '.[].body | split("\n")[0] | select(startswith("<!-- vercel-usage {"))' 2> /dev/null); then
+  --jq '.[] | select(.user.login == "github-actions[bot]" or .user.login == "claude[bot]") | .body | split("\n")[0] | select(startswith("<!-- vercel-usage {"))' 2> /dev/null); then
   parsed=$(printf '%s\n' "$lines" | sed -e '/^$/d' -e 's/^<!-- vercel-usage //' -e 's/ -->$//' | jq -cs 'map(select(type == "object"))' 2> /dev/null) && recs="$parsed"
 else
   echo "::warning::記録用の Issue #${LOG_ISSUE} のコメントが読めないので、前の日との比べはしません"
