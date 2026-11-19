@@ -268,6 +268,12 @@ has_open_pr_for_issue() {
   printf '%s' "$open_prs" | jq -e --arg p "claude/issue-$1-" 'any(.[]; .head.ref | startswith($p))' > /dev/null
 }
 
+# Issue に紐づく（ブランチ claude/issue-N-）マージ済みのPRの番号（新しい順）。linked_issue の逆引き
+merged_prs_for_issue() {
+  gh api "repos/$REPO/pulls?state=closed&sort=updated&direction=desc&per_page=100" 2> /dev/null |
+    jq -r --arg p "claude/issue-$1-" '[.[] | select((.head.ref | startswith($p)) and .merged_at != null)] | sort_by(.merged_at) | reverse | .[].number' 2> /dev/null || true
+}
+
 # ---- 1. ai:retry が付いた物をやり直す ----
 handled=" "   # この実行でやり直した番号（同じ実行で、すぐ次の確認に引っかからないように）
 for n in $(open_numbers_with_label "ai:retry" all); do
@@ -465,6 +471,13 @@ for n in $(open_numbers_with_label "ai:implement"); do
   has_open_pr_for_issue "$n" && continue
   m=$(issue_idle_min "$n") || { echo "#$n：更新時刻を読めないので、今回は見ません"; continue; }
   [ "$m" -lt "$IDLE_IMPLEMENT_MIN" ] && continue
+  # 一部だけ直したPR（Refs #N）がもうマージされている：AIが止まったのではないので、やり直さず、残りつきで順番待ちに戻す（取りこぼしの拾い直し）。
+  # 前に戻したPRは印があって何もしないので、続きの実装AIが止まったときは、下の判定に進む
+  requeued=""
+  for mpr in $(merged_prs_for_issue "$n"); do
+    if requeue_issue_after_partial_merge "$mpr"; then requeued=1; break; fi
+  done
+  [ -z "$requeued" ] || continue
   # 確実に止まった時間（HARD）未満では、実装の実行が動いている間・一覧を読めない間は触らない。
   # HARD 以上は、実行が動いていても（ジョブの上限を過ぎているので）止まったとみなす
   if [ "$m" -lt "$IDLE_IMPLEMENT_HARD_MIN" ]; then
