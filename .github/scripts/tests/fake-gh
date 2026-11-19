@@ -255,6 +255,12 @@ if m:
     ss=st.get('statuses_by_sha',{}).get(m.group(1), st.get('statuses',[]))
     out({'state':'pending' if not ss or any(x['state']=='pending' for x in ss) else ('failure' if any(x['state']!='success' for x in ss) else 'success'),'statuses':ss}); sys.exit(0)
 if re.match(r'actions/runs/\d+/jobs$',base): out({'jobs':st.get('jobs',[])}); sys.exit(0)
+# ジョブのログ（job_logs: {ジョブの番号: 文字列}）。無ければ断る（読めない、を表す）
+m=re.match(r'actions/jobs/(\d+)/logs$',base)
+if m:
+    _l=st.get('job_logs',{}).get(m.group(1))
+    if _l is None: sys.stderr.write('HTTP 403: Resource not accessible by integration\n'); sys.exit(1)
+    sys.stdout.write(_l); sys.exit(0)
 # 実行の取り消し（レビューAIを CI と同時に動かしたとき、CIが落ちたら取り消す）
 m=re.match(r'actions/runs/(\d+)/cancel$',base)
 if m and method=='POST':

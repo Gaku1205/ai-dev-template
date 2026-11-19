@@ -144,6 +144,25 @@ case "$CONCLUSION" in
     if [ -n "${RUN_ID:-}" ] && [ -n "${READ_TOKEN:-}" ]; then
       failed_steps=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=50" \
         -q '[.jobs[].steps[] | select(.conclusion == "failure") | .name]' 2> /dev/null || echo '[]')
+      # 外の障害（Ubuntu のミラーなど）でブラウザ・依存を入れられなかっただけなら、修正AIにも撮り直しにも進まず、落ちたジョブをやり直す。
+      # ログを読めないときは外の障害とは決めない。待ち時間は置かず（ワークフローの中で sleep しない）、すぐやり直す
+      net_job_ids=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=50" \
+        -q '.jobs[] | select(any(.steps[]; .conclusion == "failure")) | .id' 2> /dev/null || true)
+      net_log=""
+      for job_id in $net_job_ids; do
+        net_log="${net_log}$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/jobs/$job_id/logs" 2> /dev/null || true)"
+      done
+      if [ "$(network_failure_only "$failed_steps" "$net_log")" = "true" ]; then
+        if rerun_for_network_failure "$pr" "$HEAD_SHA" "$RUN_ID"; then
+          echo "PR #$pr：外の障害でブラウザ・依存を入れられなかったので、CIをやり直しました"
+          exit 0
+        fi
+        if [ "$(network_rerun_count "$pr" "$HEAD_SHA")" -ge "$NETWORK_RERUN_MAX" ]; then
+          stop_for_human "$pr" "外の障害（Ubuntu のミラーなど）でブラウザ・依存を入れられません。修正AIには頼みません。時間をおいて CI をやり直してください"
+          echo "PR #$pr：外の障害が続いたので、人間に回しました"
+          exit 0
+        fi
+      fi
       only_visual=$(printf '%s' "$failed_steps" | jq 'length > 0 and all(.[]; . == "見た目のテスト")')
       pr_body=$(gh api "repos/$REPO/pulls/$pr" -q '.body // ""')
       updated=$(visual_update_count "$pr")

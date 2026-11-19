@@ -53,6 +53,15 @@ REVIEW_UNAVAILABLE_MARK="review-unavailable:"
 PIPELINE_TEST_MARK="<!-- auto-pipeline-test-rerun -->"
 # パイプライン自体の確認の手順の名前（ci.yml の手順の name と同じ。食い違うと tests/test-workflows.sh が落ちる）
 PIPELINE_CHECK_STEPS='["スクリプトのテスト","shellcheck","ワークフローの確認（actionlint）"]'
+# 外の障害（Ubuntu のミラーなど）で落ちうる手順の名前（ブラウザ・依存を入れる所。ci.yml の手順の name と同じ。食い違うと tests/test-workflows.sh が落ちる）
+NETWORK_CHECK_STEPS='["見た目のテスト用のブラウザを入れる","実行環境をそろえる"]'
+# 外の障害のとき、ジョブのログに出る言葉（grep -E の形）
+NETWORK_FAILURE_RE='Failed to fetch|ETIMEDOUT|ECONNRESET|Could not resolve host|Temporary failure|Could not wait for server fd'
+# 外の障害で落ちたCIをやり直した印（コミットごとに数える。PIPELINE_TEST_MARK とは別。直す回数には数えない）
+# shellcheck disable=SC2034  # after-ci.sh で使う
+NETWORK_RERUN_MARK="<!-- auto-network-rerun -->"
+# 外の障害でのやり直しの上限（コミットごと）
+NETWORK_RERUN_MAX=2
 # 見た目以外の失敗だけを直すよう頼んだ依頼の印（after-mention.sh。同じ依頼で変更なしが続いたら人間に回す）
 # shellcheck disable=SC2034  # after-mention.sh で使う
 VISUAL_OTHERS_MARK="<!-- auto-fix-nonvisual -->"
@@ -2141,6 +2150,36 @@ pipeline_steps_only() {
     length > 0
     and any(.[]; . as $n | $names | index($n) != null)
     and all(.[]; . as $n | ($names | index($n) != null) or ($wv != "" and $n == "見た目のテスト"))' 2> /dev/null || echo false
+}
+
+# 落ちた手順（JSON の配列）が全部ブラウザ・依存を入れる所（NETWORK_CHECK_STEPS）で、ログにネットワークの失敗の言葉があるかを true / false で出す。
+# ログが空（読めなかった）ときは false（外の障害とは決めない）
+#   使い方：network_failure_only 落ちた手順の配列 ジョブのログ
+network_failure_only() {
+  local steps="$1" log="${2:-}"
+  [ -n "$log" ] || { echo false; return 0; }
+  printf '%s' "$log" | grep -Eq "$NETWORK_FAILURE_RE" || { echo false; return 0; }
+  printf '%s' "$steps" | jq --argjson names "$NETWORK_CHECK_STEPS" '
+    length > 0 and all(.[]; . as $n | $names | index($n) != null)' 2> /dev/null || echo false
+}
+
+# このコミットで、外の障害によるやり直しを何回やったか（NETWORK_RERUN_MARK の印。コミットの記載があるコメントだけ数える）
+#   使い方：network_rerun_count PR番号 先頭コミット
+network_rerun_count() {
+  all_comments "$1" | jq --arg m "$NETWORK_RERUN_MARK" --arg s "$2" \
+    '[.[] | select(.body | contains($m)) | select(.body | contains($s))] | length' 2> /dev/null || echo 0
+}
+
+# 外の障害のとき、落ちたジョブを（上限まで）やり直す。やり直せたら 0、上限に達した・やり直せなかったら 1
+#   使い方：rerun_for_network_failure PR番号 先頭コミット 実行の番号
+rerun_for_network_failure() {
+  local pr="$1" sha="$2" run="$3" n
+  n=$(network_rerun_count "$pr" "$sha")
+  [ "${n:-0}" -lt "$NETWORK_RERUN_MAX" ] || return 1
+  GH_TOKEN="${READ_TOKEN:-$GH_TOKEN}" gh api -X POST "repos/$REPO/actions/runs/$run/rerun-failed-jobs" > /dev/null 2>&1 || return 1
+  comment "$pr" "外の障害（Ubuntu のミラーなど）でブラウザ・依存を入れられませんでした。コードの問題ではないので、修正AIには頼まず、落ちたジョブをやり直します（$((n + 1))/${NETWORK_RERUN_MAX}回目。直す回数には数えません）（コミット ${sha}）
+
+${NETWORK_RERUN_MARK}"
 }
 
 # PRが .github/ を触っているか（0 = 触っている）。ファイルの一覧を読めないときも、触っているものとして扱う（やり直し・人間に回す近道に進まない）
