@@ -48,6 +48,14 @@ run_script watchdog.sh > /dev/null
 assert_eq "直近に閉じた物から外れる" "size:S" "$(labels_of 5)"
 assert_eq "7日より前に閉じた物は触らない" "ai:implement" "$(labels_of 6)"
 
+echo "== 閉じた Issue に残った ai:plan・ai:question も外れる（古い物は触らない）"
+init_state '{"labels":{"5":["ai:plan","size:S"],"6":["ai:question"],"7":["ai:question"]},"issues_meta":{"5":{"state":"closed","closed_at":"'"$recent"'"},"6":{"state":"closed","closed_at":"'"$recent"'"},"7":{"state":"closed","closed_at":"'"$old"'"}}}'
+run_script watchdog.sh > /dev/null
+assert_eq "直近に閉じた物の ai:plan が外れる" "size:S" "$(labels_of 5)"
+assert_contains "コメントが付く" "$(comments_of 5)" "ai:plan"
+assert_eq "直近に閉じた物の ai:question が外れる" "" "$(labels_of 6)"
+assert_eq "7日より前に閉じた物の ai:question は触らない" "ai:question" "$(labels_of 7)"
+
 echo "== 矛盾が無いとき"
 init_state '{"labels":{"7":["ai:implement"],"8":["ai:queue"],"9":["ai:stuck"]}}'
 run_script watchdog.sh > /dev/null

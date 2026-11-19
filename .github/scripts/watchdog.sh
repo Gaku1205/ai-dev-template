@@ -848,7 +848,7 @@ while IFS=$'\t' read -r n labels kind; do
   esac
 done <<< "$open_items"
 
-# 閉じた物（直近7日に閉じた物だけ）に、ai:stuck・ai:retry・ai:queue が残っている
+# 閉じた物（直近7日に閉じた物だけ）に、ai:stuck・ai:retry・ai:queue・ai:plan・ai:question などが残っている
 since=$(date -u -d "7 days ago" +%Y-%m-%dT%H:%M:%SZ)
 closed_items=$(gh api "repos/$REPO/issues?state=closed&since=${since}&per_page=100" --paginate \
   -q ".[] | select(.closed_at != null and .closed_at >= \"$since\") | [.number, ([.labels[].name] | join(\",\"))] | @tsv")
@@ -856,7 +856,7 @@ while IFS=$'\t' read -r n labels; do
   [ -z "$n" ] && continue
   [ "$fixed" -ge 20 ] && break
   stale=()
-  for l in ai:stuck ai:retry ai:queue ai:blocked ai:implement; do
+  for l in ai:stuck ai:retry ai:queue ai:blocked ai:implement ai:plan ai:question; do
     case ",$labels," in *,"$l",*) stale+=("$l") ;; esac
   done
   [ "${#stale[@]}" -eq 0 ] && continue
