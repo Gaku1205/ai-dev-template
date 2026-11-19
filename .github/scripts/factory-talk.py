@@ -327,6 +327,10 @@ def render(state, root):
         L.append("## ✅ これで作り始めます（最終確認）\n")
         L.append(f"- **名前**：`{c.get('name')}`（{c.get('stack')}）")
         L.append(f"- **何のサービス**：{c.get('description')}")
+        # 選んだ見た目を名前で書く（説明の文が別の方向の言葉を混ぜても、オーナーが見比べて気づける）
+        chosen = next((x for x in state.get("looks", []) if x.get("n") == state.get("look")), None)
+        if chosen:
+            L.append(f"- **見た目**：方向{chosen['n']}「{chosen.get('title', '')}」")
         if c.get("stack") == "saas":
             L.append(f"- **無料**：{'・'.join(c.get('free', []))}")
             L.append(f"- **有料（月 {c.get('price')} 円）**：{'・'.join(c.get('paid', []))}")
