@@ -44,6 +44,13 @@ AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions
 
 結果はコミットの状態（`deploy/<kind>`）に書き、スマホに通知する（`deploy-status.sh`。説明は GitHub の上限の140文字まで。通知の題は PR のタイトル：マージコミットなら3行目、まとめてマージ（squash）や直接のコミットなら1行目）。
 
+### サーバーの要らないアプリは GitHub Pages
+
+工場は、サーバーで動く物（API・ログイン・課金・データベースなど）が無いアプリを GitHub Pages に出し、サーバーが要るものだけ Vercel に出す。決め方は `.github/scripts/pick-deploy.sh`（迷ったら Vercel）。課金・ログインがあるときは、環境変数 `APP_PAID=yes`・`APP_LOGIN=yes` で工場に伝える。
+今あるアプリを移すときは、`GH_TOKEN=… .github/scripts/move-to-pages.sh <owner/repo>` を使う。サーバーで動くファイルがあれば止まる。詳しくは `docs/pipeline.md`「公開先の決め方」。
+
+2026-11-20、Vercel の Hobby のアカウントが、1つのアプリ（agent-desk）の CPU で上限を超えて止まり、サーバーの要らないアプリまで30日公開できなくなった。Hobby は非商用だけという決まりもあるので、Vercel にはサーバーが要る物だけを置く。Vercel の使用量は、テンプレート本体の `vercel-usage.yml` が毎日見て、上限の50%・75%・90%と急な増え方で知らせる（鍵は Environment「factory」の `VERCEL_TOKEN`）。
+
 ### AWS App Runner（1つの AWS アカウントで1回だけ）
 
 鍵（アクセスキー）は GitHub に置かない。GitHub の OIDC で、main からの実行だけが AWS の役割を一時的に借りる。

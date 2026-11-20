@@ -1,0 +1,55 @@
+# Vercel（Hobby）の30日の使用量を1日1回見て、上限に近づいたら、止まる前に知らせる（#269。11/20 に CPU の上限でアカウントが止まった再発の防止）。
+# テンプレート本体だけで動く（配ったアプリでは、最初のジョブが「テンプレートではない」と分かって終わる）。
+# Vercel の鍵は、工場と同じ Environment「factory」の VERCEL_TOKEN。無ければ vercel-usage.sh が警告を1行出して終わる。
+name: Vercel Usage
+
+on:
+  schedule:
+    - cron: "17 18 * * *"   # 毎日 03:17（日本時間）
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # schedule の event には repository が無いことがあるので、テンプレートかどうかは API で確かめる
+  where:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      template: ${{ steps.t.outputs.template }}
+    steps:
+      - id: t
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: echo "template=$(gh api "repos/$REPO" --jq .is_template 2>/dev/null || echo false)" >> "$GITHUB_OUTPUT"
+
+  usage:
+    needs: where
+    if: needs.where.outputs.template == 'true'
+    environment: factory
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Vercel の使用量を見る
+        env:
+          # 75% を超えたら、いちばん使っているプロジェクトのリポジトリ（VERCEL_REPO_MAP）に Issue を作るので、
+          # このリポジトリだけの github.token ではなく、工場と同じ Environment の FACTORY_TOKEN（無ければ github.token）
+          GH_TOKEN: ${{ secrets.FACTORY_TOKEN || github.token }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
+          VERCEL_PLAN: ${{ vars.VERCEL_PLAN }}
+          VERCEL_REPO_MAP: ${{ vars.VERCEL_REPO_MAP }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
+        run: bash .github/scripts/vercel-usage.sh
