@@ -448,7 +448,7 @@ AIの実行記録から、許可されず拒否された操作（`permission_den
 
 - 使ってみる役は、本番が main の最新に追いついているときだけ動く（main の先頭に公開のステータス（`Vercel`・`deploy/…`）が無く、それより前のコミットにある＝追いついていない。先頭の公開が公開中・失敗のときも待つ。パイプラインの物（`.github/`・`docs/pipeline.md`・`docs/pipeline-setup.md`・`.claude/`）しか変わっていないコミットは公開されないので、飛ばして見る）。公開はマージが落ち着いてからまとめて行うので、追いつく前に試すと、main ではもう直った不具合を Issue にしてしまうため（tochi-rirekisho #9・#11）
 - 使ってみる役は、パイプラインの配布だけの日は動かない。直近24時間の main のコミット（30件まで）で変わったファイルが、どれも `.github/`・`docs/pipeline.md`・`docs/pipeline-setup.md`・`.claude/` だけなら見送る（本番は変わっていないのに、毎日AIを動かさないため）。変わったファイルを読めなかったコミットは、アプリの変更として数える（試さない方へは倒さない）。30件以上あれば、中身を読まずに動かす
-- 動かすかは `found-gate.sh try|audit` が決める。公開先の URL は、GitHub Pages の公開があればその URL、無ければリポジトリの「Website」（工場が公開先を書く）。Actions の画面から手で動かすと（`force`）、日付・進行中の条件を見ずに動く
+- 動かすかは `found-gate.sh try|audit` が決める。公開先の URL は、GitHub Pages の公開があればその URL、無ければリポジトリの「Website」（工場が公開先を書く）。テンプレートのリポジトリ（ai-dev-template 自身）と、`docs/spec.md` が雛形のままのリポジトリでは、使ってみる役は動かない（Website に別のリポジトリの本番が入っていると、そのサービスを違う仕様書で試してしまうため。`force` でも動かない）。Actions の画面から手で動かすと（`force`）、日付・進行中の条件を見ずに動く
 - AIは結果を `.try/result.json`・`.audit/result.json`（`{"findings":[{"title","body"}]}`）に書くだけ。Issue は、別のジョブ（`report`）が main の版の `found-report.sh` で作る（AIのジョブにはパイプラインの鍵を渡さない）。同じ題名の `ai:found` の Issue が開いていれば作らない（空白の違いは無視）。開いている `ai:found` の Issue が6件（`FOUND_OPEN_MAX`）以上あるときは、新しく作らない（AIは同じ問題にも毎回ちがう題名を付けるので、直る前に積み上がるのを止める。人間の返事待ちの `ai:skip` は数えない）
 - AIを動かす前に、もう報告してある問題（開いている `ai:found` の Issue と、直近14日に閉じた物）の題名を `.try/known.md`・`.audit/known.md` に書いて渡す（`found-known.sh`）。AIは同じ問題にも毎回ちがう題名を付けるので、「言い方が違っても同じ物なら書かない」と頼む
 - 撮った画像は、その実行の artifact（`try-out`・14日）に残り、Issue の本文にログの場所を書く
