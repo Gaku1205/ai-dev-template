@@ -11,7 +11,8 @@ printf '%s\n' '#!/usr/bin/env bash' \
   "echo \"\$*\" >> '$MOCK_DIR/npx.log'" \
   "echo \"token=\$VERCEL_TOKEN\" >> '$MOCK_DIR/npx.env'" \
   "if [ -f '$MOCK_DIR/fail' ]; then echo \"error: invalid token \$VERCEL_TOKEN\"; exit 1; fi" \
-  "cat '$MOCK_DIR/usage.json'" > "$MOCK_DIR/bin/npx"
+  "if [ -f '$MOCK_DIR/fail_err' ]; then printf 'l1\n\nl2\nl3 %s\nl4\n' \"\$VERCEL_TOKEN\" >&2; exit 1; fi" \
+  "cat '$MOCK_DIR/usage.json'" >"$MOCK_DIR/bin/npx"
 chmod +x "$MOCK_DIR/bin/npx"
 
 # 使用量を作る：usage 項目 割合% プロジェクトA の取り分（残りは B）。CPU（上限4時間）だけを動かす
@@ -141,6 +142,14 @@ assert_eq "警告は1行" "1" "$(grep -c '::warning::' <<< "$LAST_OUT")"
 assert_not_contains "CLI のエラーに鍵が混ざっても、伏せる" "$(all_text)" "$TOKEN"
 assert_eq "通知なし" "0" "$(notify_count)"
 rm -f "$MOCK_DIR/fail"
+touch "$MOCK_DIR/fail_err"
+run_script_keep vercel-usage.sh; rc=$?
+assert_eq "stderr に出して失敗しても 0" "0" "$rc"
+assert_contains "stderr の文が警告に入る" "$LAST_OUT" "l4"
+assert_contains "最後の3行（空行は除く）が出る。鍵は *** に伏せられる" "$LAST_OUT" "l2 l3 *** l4"
+assert_not_contains "古い行は出ない" "$LAST_OUT" "l1"
+assert_not_contains "stderr の鍵も伏せる" "$(all_text)" "$TOKEN"
+rm -f "$MOCK_DIR/fail_err"
 echo '{"unexpected":"shape"}' > "$MOCK_DIR/usage.json"
 run_script_keep vercel-usage.sh; rc=$?
 assert_eq "形が変わっても 0" "0" "$rc"
