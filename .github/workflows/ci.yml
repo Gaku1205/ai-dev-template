@@ -48,7 +48,7 @@ jobs:
             enabled=$(jq -r '.scripts["test:visual"] != null' package.json)
           fi
           echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
-      # ブラウザは actions/cache に置き、apt（Ubuntu のミラー）は足りない物があるときだけ使う（外の障害で落ちにくくする。#255）
+      # ブラウザは actions/cache に置き、apt（Ubuntu のミラー）はライブラリかフォントが足りないときだけ使う（外の障害で落ちにくくする。#255）
       - name: 見た目のテスト用のブラウザのキャッシュ
         if: steps.visual.outputs.enabled == 'true'
         uses: actions/cache@v4
@@ -59,7 +59,13 @@ jobs:
         if: steps.visual.outputs.enabled == 'true'
         run: |
           npx playwright install chromium
-          node -e "require('@playwright/test').chromium.launch().then((b) => b.close())" > /dev/null 2>&1 || npx playwright install --with-deps chromium
+          # --with-deps は、ライブラリのほかに日本語などのフォントも入れる（基準の画像はそのフォントで撮ってある）。両方そろっている時だけ apt を飛ばす
+          if node -e "require('@playwright/test').chromium.launch().then((b) => b.close())" > /dev/null 2>&1 \
+            && dpkg -s fonts-ipafont-gothic fonts-wqy-zenhei fonts-noto-color-emoji > /dev/null 2>&1; then
+            echo "ライブラリとフォントはそろっているので、apt は使いません"
+          else
+            npx playwright install --with-deps chromium
+          fi
       - name: 見た目のテスト
         if: steps.visual.outputs.enabled == 'true'
         run: npm run test:visual
