@@ -4,6 +4,7 @@
 #   found-gate.sh audit  進行中の作業（企画・実装・審査・順番待ち・AIのPR）が無ければ動かす
 # 環境変数：GITHUB_REPOSITORY（REPO でもよい）、GH_TOKEN、FORCE（1 なら時間・進行中の条件を見ない。手で動かすとき）、
 #           NOW（テスト用。UNIX秒）、GITHUB_OUTPUT（run・url・reason を書く。無ければ標準出力）
+#           SPEC_MD（テスト用。仕様書の場所。既定 docs/spec.md）
 # docs/pipeline.md「使ってみる役・監査役」
 set -uo pipefail
 source "$(dirname "$0")/pipeline-paths.sh"
@@ -36,6 +37,14 @@ pipeline_only_commit() {
 
 case "$kind" in
   try)
+    # テンプレート自身（ai-dev-template）は、サービスではない。Website に別のリポジトリ（agent-desk など）の本番が入っていると、
+    # その本番をテンプレートの仕様書で試して、的外れな Issue を作る（2026-11-19 の ai-dev-template#275）。仕様書が雛形のままのリポジトリも同じ
+    if [ "$(gh api "repos/$REPO" --jq '.is_template' 2> /dev/null || true)" = true ]; then
+      emit false "" "テンプレートのリポジトリなので、使ってみる役は動かしません（試すサービスが無い）"; exit 0
+    fi
+    if grep -qF '（誰の、どんな困りごとを、どう減らすか）' "${SPEC_MD:-docs/spec.md}" 2> /dev/null; then
+      emit false "" "docs/spec.md が雛形のままなので、使ってみる役は動かしません（何を試すかの元が無い）"; exit 0
+    fi
     # 公開先の URL：GitHub Pages の公開があればその URL、無ければリポジトリの「Website」（工場が公開先を書く）
     url=$(gh api "repos/$REPO/deployments?environment=github-pages&per_page=1" --jq '.[0].statuses_url // empty' 2> /dev/null || true)
     if [ -n "$url" ]; then

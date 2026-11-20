@@ -3,7 +3,7 @@
 source "$(dirname "$0")/lib.sh"
 setup_mock
 OUT="$MOCK_DIR/out.txt"
-gate() { : > "$OUT"; GITHUB_OUTPUT="$OUT" NOW=$(date -u -d 2026-11-16T12:00:00Z +%s) bash "$SCRIPTS_DIR/found-gate.sh" "$@" > /dev/null; }
+gate() { : > "$OUT"; SPEC_MD="${SPEC_MD:-$MOCK_DIR/no-spec.md}" GITHUB_OUTPUT="$OUT" NOW=$(date -u -d 2026-11-16T12:00:00Z +%s) bash "$SCRIPTS_DIR/found-gate.sh" "$@" > /dev/null; }
 val() { grep "^$1=" "$OUT" | tail -1 | cut -d= -f2-; }
 
 echo "== 使ってみる役：Website があり、main が24時間以内に変わった → 動かす"
@@ -18,6 +18,20 @@ gate try
 assert_eq "run" "false" "$(val run)"
 echo "== 手で動かした（FORCE=1）なら、日付は見ない"
 FORCE=1 gate try
+assert_eq "run" "true" "$(val run)"
+
+echo "== テンプレートのリポジトリ（Website に別のサービスの本番が入っていても）→ 動かさない"
+init_state '{"is_template":true,"homepage":"https://agent-desk.vercel.app","main_commit_date":"2026-11-16T03:00:00Z"}'
+FORCE=1 gate try
+assert_eq "run" "false" "$(val run)"
+echo "== docs/spec.md が雛形のまま → 動かさない"
+printf '# 仕様書\n\n## 目的\n\n（誰の、どんな困りごとを、どう減らすか）\n' > "$MOCK_DIR/spec.md"
+init_state '{"homepage":"https://app.vercel.app","main_commit_date":"2026-11-16T03:00:00Z"}'
+SPEC_MD="$MOCK_DIR/spec.md" FORCE=1 gate try
+assert_eq "run" "false" "$(val run)"
+echo "== docs/spec.md が書かれていれば動かす"
+printf '# 仕様書\n\n## 目的\n\n飲み会の割り勘を1分で決める\n' > "$MOCK_DIR/spec.md"
+SPEC_MD="$MOCK_DIR/spec.md" FORCE=1 gate try
 assert_eq "run" "true" "$(val run)"
 
 echo "== Website が空（ゲームの exe など）→ 動かさない"
