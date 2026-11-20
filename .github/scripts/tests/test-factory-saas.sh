@@ -134,4 +134,20 @@ out=$(env PATH="$T/bin:$PATH" FT="$T" SUPABASE_DB_URL= MIGRATIONS_DIR="$M" bash 
 assert_eq "接続先が無ければ失敗" "1" "$code"
 assert_contains "理由" "$out" "SUPABASE_DB_URL が無い"
 
+echo "== 表の変更の公開：Supabase が一時停止していたら、そう書く（11/21、tide-almanac で「ログを見てください」としか出なかった）"
+P="$T/paused"; mkdir -p "$P/bin"
+printf '#!/usr/bin/env bash\necho "psql: error: connection to server failed: FATAL:  (ENOTFOUND) tenant/user postgres.abc not found" >&2\nexit 2\n' > "$P/bin/psql"
+chmod +x "$P/bin/psql"
+: > "$P/out.txt"
+out=$(env PATH="$P/bin:$PATH" GITHUB_OUTPUT="$P/out.txt" SUPABASE_DB_URL=postgresql://x MIGRATIONS_DIR="$M" bash "$SCRIPTS_DIR/deploy-supabase.sh" 2>&1); code=$?
+assert_eq "止まっていれば失敗" "失敗" "$([ "$code" -ne 0 ] && echo 失敗 || echo 成功)"
+assert_contains "ログに理由" "$out" "一時停止しています"
+assert_contains "ログに psql の元のエラーも残る" "$out" "tenant/user postgres.abc not found"
+assert_contains "公開の状態の説明に使う理由を出す" "$(cat "$P/out.txt")" "reason=Supabase のプロジェクトが一時停止しています"
+assert_not_contains "理由に psql の文そのものは入れない" "$(cat "$P/out.txt")" "postgres.abc"
+printf '#!/usr/bin/env bash\necho "ERROR:  syntax error at or near x" >&2\nexit 3\n' > "$P/bin/psql"
+: > "$P/out.txt"
+env PATH="$P/bin:$PATH" GITHUB_OUTPUT="$P/out.txt" SUPABASE_DB_URL=postgresql://x MIGRATIONS_DIR="$M" bash "$SCRIPTS_DIR/deploy-supabase.sh" > /dev/null 2>&1
+assert_not_contains "分からない失敗は理由を出さない（いつもの「ログを見てください」）" "$(cat "$P/out.txt")" "reason="
+
 finish

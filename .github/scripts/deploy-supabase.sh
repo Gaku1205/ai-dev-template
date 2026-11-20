@@ -5,8 +5,10 @@
 #   - 1ファイルを1つのまとまり（トランザクション）で流す。失敗したらそのファイルは無かったことになり、後ろのファイルも流さない
 #   - 流したファイルは書き換えない決まり（書き換えても流し直さない。直すときは次の番号のファイルを足す）
 # 環境変数：SUPABASE_DB_URL（Secret。工場が入れる。そのプロジェクトのデータベースにだけ入れる接続先）、MIGRATIONS_DIR（既定 supabase/migrations）、PSQL（テスト用）
-# 出力：GITHUB_OUTPUT に applied=流した数
+# 出力：GITHUB_OUTPUT に applied=流した数。失敗の理由が分かれば reason=決まった文（supabase-lib.sh。公開の状態の説明に使う）
 set -euo pipefail
+# shellcheck source=supabase-lib.sh
+source "$(dirname "$0")/supabase-lib.sh"
 PSQL="${PSQL:-psql}"
 dir="${MIGRATIONS_DIR:-supabase/migrations}"
 if [ -z "${SUPABASE_DB_URL:-}" ]; then
@@ -20,7 +22,23 @@ if [ "${#files[@]}" -eq 0 ]; then
   echo "applied=0" >> "${GITHUB_OUTPUT:-/dev/null}"
   exit 0
 fi
-q() { "$PSQL" "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -qAtX "$@"; }
+# psql のエラーは一時ファイルに貯め、終わるときにログへ出す（失敗したときは、理由の判定にも使う）
+err_file="$(mktemp)"
+on_exit() {
+  local code=$?
+  cat "$err_file" >&2
+  if [ "$code" -ne 0 ]; then
+    local reason
+    reason="$(supabase_error_reason "$(cat "$err_file")")"
+    if [ -n "$reason" ]; then
+      echo "::error::$reason"
+      echo "reason=$reason" >> "${GITHUB_OUTPUT:-/dev/null}"
+    fi
+  fi
+  rm -f "$err_file"
+}
+trap on_exit EXIT
+q() { "$PSQL" "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -qAtX "$@" 2>> "$err_file"; }
 q -c "create schema if not exists app_meta; create table if not exists app_meta.migrations (name text primary key, applied_at timestamptz not null default now());"
 done_list=$(q -c "select name from app_meta.migrations")
 applied=0

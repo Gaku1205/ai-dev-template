@@ -1,0 +1,30 @@
+# Supabase の無料プランは、1週間データベースの操作が少ないと一時停止する。公開先（pipeline.json の deploy）に supabase があるアプリで、
+# 1日1回、小さな書き込みをして起こしておく（11/21、tide-almanac が 11/12 頃から止まっていて、表の変更が4回とも流せなかった件の再発の防止）。
+# もう止まっていたら、このワークフローが失敗して、スマホに知らせる（supabase-keepalive.sh）。supabase が無いリポジトリでは何もしない。
+# アプリのコードは動かさない（npm を使わない。取り出すのは .github/scripts と一番上のファイルだけ）。渡す秘密は SUPABASE_DB_URL と通知のトピックだけ
+name: Supabase Keepalive
+
+on:
+  schedule:
+    - cron: "43 20 * * *"   # 毎日 05:43（日本時間）
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # cone の形の sparse-checkout は、一番上のファイル（pipeline.json）も取り出す
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - name: Supabase に書き込む
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
+        run: .github/scripts/supabase-keepalive.sh

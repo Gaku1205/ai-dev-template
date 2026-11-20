@@ -472,6 +472,15 @@ AIの実行記録から、許可されず拒否された操作（`permission_den
 
 進行中の作業と同じ場所を触るだけ（結果を使うわけではない）なら、`ai:blocked` ではなく順番待ち（`ai:queue`）を使う。
 
+## Supabase を起こしておく（`supabase-keepalive.sh`）
+
+Supabase の無料プランは、1週間データベースの操作が少ないと、プロジェクトを一時停止する。止まると、公開したアプリの会員・課金・保存が動かず、表の変更（`deploy-supabase.sh`）も流せない（11/21、tide-almanac が 11/12 頃から止まっていて、表の変更が4回とも `tenant/user ... not found` で落ちていた。画面には「ログを見てください」としか出なかった）。
+
+- `supabase-keepalive.yml` が毎日 05:43（日本時間）に `supabase-keepalive.sh` を動かす。公開先（`pipeline.json` の `deploy`）に `supabase` があるリポジトリだけで、小さな表 `app_meta.heartbeat`（1行だけ）に今の時刻を書く。つなぐだけでは操作に数えられないので、書き込みをする。`supabase` が無いリポジトリでは何もしない
+- もう止まっていたら、ワークフローを失敗にして、スマホに知らせる（`notify.sh` の `deploy_failed`）。起こすのは人間（Supabase のダッシュボードで Resume project）
+- 渡す秘密は `SUPABASE_DB_URL` と通知のトピックだけ。アプリのコードは動かさない（`.github/scripts` と一番上のファイルだけを取り出す）
+- 表の変更の公開が失敗したときも、同じ判定（`supabase-lib.sh`）で理由を公開の状態の説明に書く（止まっている・パスワードが違う・つながらない）。当てはまらなければ今までどおり「ログを見てください」。説明に入れるのは決まった文だけ（psql の文そのものは入れない）
+
 ## Vercel の使用量の見張り（`vercel-usage.sh`）
 
 Vercel の Hobby は、30日の使用量が上限に届くとアカウントごと止まる（11/20 に、Fluid Active CPU が 6h25m / 4h で止まった）。止まる前に気づくため、`.github/scripts/vercel-usage.sh` が1日1回、使用量を見る（呼ぶ段は watchdog か夜の点検に、人間が足す）。

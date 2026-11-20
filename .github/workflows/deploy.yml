@@ -258,8 +258,11 @@ jobs:
         run: .github/scripts/deploy-supabase.sh
       - if: success()
         run: .github/scripts/deploy-status.sh supabase success "表の変更を流しました（${{ steps.migrate.outputs.applied }} 個）"
+      # 理由が分かれば（Supabase の一時停止など。deploy-supabase.sh が決まった文だけを出す）それを説明にする
       - if: failure()
-        run: .github/scripts/deploy-status.sh supabase failure "表の変更を流せませんでした（ログを見てください）" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        env:
+          REASON: ${{ steps.migrate.outputs.reason }}
+        run: .github/scripts/deploy-status.sh supabase failure "${REASON:-表の変更を流せませんでした（ログを見てください）}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
   # Pages がまだ有効でなければ有効にする（Source を GitHub Actions に）。github.token にはその権限が無いので、パイプラインの鍵で。
   # 11/20、Vercel から移した senpai-warikan で、Pages が無効のまま公開が 404 で落ちた（マネージャーの環境から Pages の API が通らず、移す時に有効にできなかった）
