@@ -2,11 +2,12 @@
 # 今あるアプリを、Vercel から GitHub Pages に移す（マネージャーが手で使う）。
 #   使い方：GH_TOKEN=<そのリポジトリに push・PR・Pages ができる鍵> move-to-pages.sh <owner/repo>
 #
-#   1. そのリポジトリにサーバーで動くファイル（app/api/・route.ts・middleware.ts・"use server"・supabase/migrations）があれば、理由を出して止まる
+#   1. そのリポジトリにサーバーで動くファイル（app/api/・route.ts・middleware.ts・"use server"・supabase/migrations）や、
+#      静的な書き出しで壊れる物（generateStaticParams の無い動的なルート [id]・サーバーのページで読む searchParams）があれば、理由を出して止まる
 #   2. 無ければ、pipeline.json（deploy を github-pages・build に PAGES_BASE_PATH=/<リポジトリ名> npm run build）と next.config.ts
 #      （output: "export"・trailingSlash・images.unoptimized・basePath）を書き換える PR を作る
 #   3. Pages を有効にする（もう有効なら飛ばす）
-#   4. basePath の付け忘れになりそうな物（素の <a href="/…">・<img src="/…">）を探して、PR の本文に一覧を書く
+#   4. basePath の付け忘れになりそうな物（素の <a href="/…">・<img src="/…">・コードの "/xxx.jpg" のような素材の道）を探して、PR の本文に一覧を書く
 #
 # テスト用の環境変数：MOVE_GIT_URL（clone 先の書式。%s にリポジトリ名）
 set -uo pipefail
@@ -33,6 +34,24 @@ while IFS= read -r f; do found+=("$f（route）"); done < <(git ls-files | grep 
 while IFS= read -r f; do found+=("$f（middleware）"); done < <(git ls-files | grep -E '(^|/)(middleware|proxy)\.(ts|js|mjs)$' | head -n 5)
 while IFS= read -r f; do found+=("$f（サーバーアクション）"); done < <(git grep -lE '^[[:space:]]*["'"'"']use server["'"'"']' -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' 2> /dev/null | head -n 5)
 while IFS= read -r f; do found+=("$f（Supabase の migrations）"); done < <(git ls-files | grep -E '(^|/)supabase/migrations/' | head -n 3)
+# 静的な書き出し（output: "export"）で壊れる物。端末で作った id のページは作れず、アドレスの値はビルドの時に空になる
+# 全部を確かめてから、壊れる物を5件までに絞る（先に5件で切ると、後ろの壊れるページを見落とす）
+n=0
+while IFS= read -r f; do
+  [ "$n" -ge 5 ] && break
+  if ! grep -q 'generateStaticParams' "$f" 2> /dev/null; then
+    found+=("$f（動的なルート。generateStaticParams が無い。/x/?id=… にしてブラウザで読む）")
+    n=$((n + 1))
+  fi
+done < <(git ls-files | grep -E '(^|/)app/(.*/)?\[[^/]+\]/page\.(tsx|jsx|ts|js)$')
+n=0
+while IFS= read -r f; do
+  [ "$n" -ge 5 ] && break
+  if ! grep -qE '^[[:space:]]*["'"'"']use client["'"'"']' "$f" 2> /dev/null; then
+    found+=("$f（サーバーのページで searchParams を読んでいる。ブラウザの useSearchParams にする）")
+    n=$((n + 1))
+  fi
+done < <(git grep -lE '\bsearchParams\b' -- '*page.tsx' '*page.jsx' '*page.ts' '*page.js' 2> /dev/null)
 if [ "${#found[@]}" -gt 0 ]; then
   echo "❌ $REPO はサーバーで動くファイルがあるので、GitHub Pages には移せません（Vercel のまま）：" >&2
   printf '  - %s\n' "${found[@]}" >&2
@@ -47,9 +66,11 @@ done
 pages_next_config > next.config.ts
 pages_pipeline_json "$NAME" pipeline.json > pipeline.json.new && mv pipeline.json.new pipeline.json
 
-# ---- 4. basePath の付け忘れ（素の <a href="/…">・<img src="/…">。next/link・next/image は自動で付く） ----
+# ---- 4. basePath の付け忘れ（素の <a href="/…">・<img src="/…">・コードの素材の道。next/link と import した画像は自動で付く） ----
 raw=$(git grep -nE '<(a|img)[^>]*(href|src)=("/[^/"]|\{?["'"'"']/[^/"'"'"'])' -- '*.tsx' '*.jsx' '*.html' 2> /dev/null | cut -c1-200 | head -n 60)
 css=$(git grep -nE 'url\(["'"'"']?/[^/]' -- '*.css' '*.tsx' 2> /dev/null | cut -c1-200 | head -n 20)
+# コードの中の素材の道（"/photos/a.jpg" など。next/image に文字で渡すと階層が付かない）
+assets=$(git grep -nE '["'"'"'`]/[A-Za-z0-9_./-]+\.(png|jpe?g|webp|avif|gif|svg|ico|mp4|webm|glb|gltf|hdr|woff2?|json)["'"'"'`]' -- '*.ts' '*.tsx' '*.js' '*.jsx' 2> /dev/null | grep -vE '(^|/)(next\.config|.*\.test)\.' | cut -c1-200 | head -n 30)
 
 git checkout -q -b "$BRANCH"
 git add -A
@@ -65,7 +86,7 @@ body="### 何を変えたか
 ${old_config:+- 元の next.config（${old_config# }）は置き換えた。独自の設定があった場合は、差分を見て戻してほしい
 }
 ### basePath の付け忘れになりそうな所（人が見て直す）
-Pages は \`https://<owner>.github.io/$NAME/\` に置かれるので、素の \`/\` から始まる \`<a href>\`・\`<img src>\` は 404 になる。\`next/link\`・\`next/image\` は自動で付く。
+Pages は \`https://<owner>.github.io/$NAME/\` に置かれるので、素の \`/\` から始まる \`<a href>\`・\`<img src>\` と、\`next/image\` に文字で渡す \`/photos/a.jpg\` のような道は 404 になる（前に \`process.env.NEXT_PUBLIC_BASE_PATH\` を付ける）。\`next/link\` と、import した画像は自動で付く。
 "
 if [ -n "$raw" ]; then body="${body}
 \`\`\`
@@ -78,6 +99,12 @@ if [ -n "$css" ]; then body="${body}
 CSS・コードの \`url(/…)\`：
 \`\`\`
 ${css}
+\`\`\`
+"; fi
+if [ -n "$assets" ]; then body="${body}
+コードの中の素材の道（\`next/image\` に渡すなら、前に \`NEXT_PUBLIC_BASE_PATH\` を付ける）：
+\`\`\`
+${assets}
 \`\`\`
 "; fi
 body="${body}
