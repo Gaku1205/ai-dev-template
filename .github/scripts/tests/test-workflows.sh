@@ -713,4 +713,18 @@ wf="$(cat "$WORKFLOWS/bootstrap.yml")"
 assert_contains "配り先を変えたときもコミットする" "$wf" "env.CHANGED_SYNC_TARGETS == '1'"
 assert_contains "sync-targets を add する" "$wf" "git add .github/sync-targets"
 
+# Pages がまだ無効なら、公開の前にパイプラインの鍵で有効にする（11/20 senpai-warikan が 404 で落ちた）
+dp="$(cat "$WORKFLOWS/deploy.yml")"
+assert_contains "deploy.yml：Pages を有効にする段がある" "$dp" "GitHub Pages を有効にする（まだなら）"
+assert_contains "deploy.yml：App の鍵で、だめなら PIPELINE_TOKEN で" "$dp" 'PAT: ${{ secrets.PIPELINE_TOKEN }}'
+pe=$(python3 - "$WORKFLOWS/deploy.yml" <<'PY'
+import sys, yaml
+j = yaml.safe_load(open(sys.argv[1]))['jobs']
+pe, pg = j['pages-enable'], j['pages']
+uses = [str(st.get('uses', '')) for st in pe['steps']]
+print('checkout=%s secret_in_pages=%s needs=%s' % (any('checkout' in u for u in uses), 'PIPELINE_TOKEN' in yaml.dump(pg) or 'PIPELINE_APP_PRIVATE_KEY' in yaml.dump(pg), 'pages-enable' in pg['needs']))
+PY
+)
+assert_eq "deploy.yml：鍵の段は別のジョブ（checkout しない）・公開のジョブに鍵を渡さない" "checkout=False secret_in_pages=False needs=True" "$pe"
+
 finish
