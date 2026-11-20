@@ -44,15 +44,16 @@ scrub() { local s="$1"; printf '%s' "${s//"$VERCEL_TOKEN"/***}"; }
 scope=()
 [ -z "${VERCEL_TEAM_ID:-}" ] || scope=(--scope "$VERCEL_TEAM_ID")
 raw=""
+err_file=$(mktemp)
 for fmt in "--format json" ""; do
   # shellcheck disable=SC2086  # $fmt は、空か「--format json」（2語に分ける）
-  if raw=$(timeout 120 npx --yes vercel@latest billing usage --since 30d --group-by project $fmt "${scope[@]}" 2> /dev/null); then
+  if raw=$(timeout 120 npx --yes vercel@latest billing usage --since 30d --group-by project $fmt "${scope[@]}" 2> "$err_file"); then
     cli_ok=1
     break
   fi
   cli_ok=0
 done
-[ "${cli_ok:-0}" = 1 ] || warn "Vercel の CLI が失敗しました（$(scrub "$(printf '%s' "$raw" | head -c 200)")）"
+[ "${cli_ok:-0}" = 1 ] || warn "Vercel の CLI が失敗しました（$(scrub "$( { printf '%s' "$raw"; grep -v '^\s*$' "$err_file" | tail -n 3; } | tr '\n' ' ')" | head -c 300)）"
 
 # 項目ごとに集計する（形が違えば失敗にする）
 # shellcheck disable=SC2016  # jq の中の $ は jq の変数
