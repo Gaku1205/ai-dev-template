@@ -261,9 +261,64 @@ jobs:
       - if: failure()
         run: .github/scripts/deploy-status.sh supabase failure "表の変更を流せませんでした（ログを見てください）" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-  pages:
+  # Pages がまだ有効でなければ有効にする（Source を GitHub Actions に）。github.token にはその権限が無いので、パイプラインの鍵で。
+  # 11/20、Vercel から移した senpai-warikan で、Pages が無効のまま公開が 404 で落ちた（マネージャーの環境から Pages の API が通らず、移す時に有効にできなかった）
+  # 鍵（PIPELINE_TOKEN・App の秘密鍵）は、アプリのコード（npm ci・build）が動くジョブに渡さないので、別のジョブに分ける。checkout もしない
+  pages-enable:
     needs: plan
     if: needs.plan.outputs.pages == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions: {}
+    steps:
+      # 秘密鍵を PKCS#8 にそろえる（create-github-app-token は Node 24 だと「BEGIN RSA PRIVATE KEY」の形式を読めず Invalid keyData になる）
+      - name: パイプラインの鍵の秘密鍵をそろえる
+        id: app-key
+        if: vars.PIPELINE_APP_ID != ''
+        continue-on-error: true
+        env:
+          KEY: ${{ secrets.PIPELINE_APP_PRIVATE_KEY }}
+        run: |
+          # 貼るときに改行が消えて1行になっていても、頭と終わりの行と中身から組み立て直す
+          k=$(printf '%s' "$KEY" | tr -d '\r'); k=${k//\\n/$'\n'}
+          type=$(printf '%s' "$k" | grep -oE 'BEGIN [A-Z ]*PRIVATE KEY' | head -1 | sed 's/^BEGIN //')
+          # 頭と終わりの行が抜けていたら、GitHub App の鍵の形式（RSA）とみなす
+          [ -n "$type" ] || type="RSA PRIVATE KEY"
+          body=$(printf '%s' "$k" | sed -e 's/-----BEGIN [A-Z ]*PRIVATE KEY-----//' -e 's/-----END [A-Z ]*PRIVATE KEY-----//' | tr -d ' \n\t"')
+          pem=$(printf -- '-----BEGIN %s-----\n%s\n-----END %s-----\n' "$type" "$(printf '%s' "$body" | fold -w 64)" "$type" | openssl pkey 2> /dev/null) \
+            || { b=no; e=no; case "$k" in *"-----BEGIN"*) b=yes;; esac; case "$k" in *"-----END"*) e=yes;; esac
+                 echo "::error::PIPELINE_APP_PRIVATE_KEY を秘密鍵として読めません（.pem の中身を -----BEGIN から -----END まで全部貼る）。手がかり：全体 ${#KEY} 文字・$(printf '%s\n' "$KEY" | wc -l) 行・BEGIN の行 $b・END の行 $e・中身 ${#body} 文字（2048ビットの鍵なら中身は約1,600文字）"; exit 1; }
+          while IFS= read -r line; do [ -n "$line" ] && echo "::add-mask::$line"; done <<< "$pem"
+          { echo 'pem<<PEM_END'; echo "$pem"; echo 'PEM_END'; } >> "$GITHUB_OUTPUT"
+      # パイプラインの鍵：GitHub App があれば、その1時間だけの鍵を使う（回数制限がオーナーと別・期限切れなし）。無ければ PIPELINE_TOKEN
+      - name: パイプラインの鍵を作る
+        id: app-token
+        if: steps.app-key.outputs.pem != ''
+        # 鍵が作れなくても（秘密鍵の貼り間違いなど）止めずに PIPELINE_TOKEN で続ける。Doctor が ❌ で知らせる
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.PIPELINE_APP_ID }}
+          private-key: ${{ steps.app-key.outputs.pem }}
+      - name: GitHub Pages を有効にする（まだなら）
+        continue-on-error: true
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          PAT: ${{ secrets.PIPELINE_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          # App の鍵に Pages を変える権限が無いこともあるので、だめなら PIPELINE_TOKEN でもう一度
+          for t in "$APP_TOKEN" "$PAT"; do
+            [ -n "$t" ] || continue
+            if GH_TOKEN="$t" gh api "repos/$REPO/pages" > /dev/null 2>&1; then echo "Pages はもう有効です"; exit 0; fi
+            if GH_TOKEN="$t" gh api -X POST "repos/$REPO/pages" -f build_type=workflow > /dev/null 2>&1; then echo "Pages を有効にしました（Source：GitHub Actions）"; exit 0; fi
+          done
+          echo "::warning::Pages を有効にできませんでした。Settings → Pages の Source を GitHub Actions にしてください"
+
+  pages:
+    needs: [plan, pages-enable]
+    # 有効にする段がうまくいかなくても（鍵が無いなど）、公開は今まで通り試す
+    if: ${{ !cancelled() && needs.plan.outputs.pages == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -302,51 +357,6 @@ jobs:
           fi
           touch "$dir/.nojekyll"
           echo "dir=$dir" >> "$GITHUB_OUTPUT"
-      # 秘密鍵を PKCS#8 にそろえる（create-github-app-token は Node 24 だと「BEGIN RSA PRIVATE KEY」の形式を読めず Invalid keyData になる）
-      - name: パイプラインの鍵の秘密鍵をそろえる
-        id: app-key
-        if: vars.PIPELINE_APP_ID != ''
-        continue-on-error: true
-        env:
-          KEY: ${{ secrets.PIPELINE_APP_PRIVATE_KEY }}
-        run: |
-          # 貼るときに改行が消えて1行になっていても、頭と終わりの行と中身から組み立て直す
-          k=$(printf '%s' "$KEY" | tr -d '\r'); k=${k//\\n/$'\n'}
-          type=$(printf '%s' "$k" | grep -oE 'BEGIN [A-Z ]*PRIVATE KEY' | head -1 | sed 's/^BEGIN //')
-          # 頭と終わりの行が抜けていたら、GitHub App の鍵の形式（RSA）とみなす
-          [ -n "$type" ] || type="RSA PRIVATE KEY"
-          body=$(printf '%s' "$k" | sed -e 's/-----BEGIN [A-Z ]*PRIVATE KEY-----//' -e 's/-----END [A-Z ]*PRIVATE KEY-----//' | tr -d ' \n\t"')
-          pem=$(printf -- '-----BEGIN %s-----\n%s\n-----END %s-----\n' "$type" "$(printf '%s' "$body" | fold -w 64)" "$type" | openssl pkey 2> /dev/null) \
-            || { b=no; e=no; case "$k" in *"-----BEGIN"*) b=yes;; esac; case "$k" in *"-----END"*) e=yes;; esac
-                 echo "::error::PIPELINE_APP_PRIVATE_KEY を秘密鍵として読めません（.pem の中身を -----BEGIN から -----END まで全部貼る）。手がかり：全体 ${#KEY} 文字・$(printf '%s\n' "$KEY" | wc -l) 行・BEGIN の行 $b・END の行 $e・中身 ${#body} 文字（2048ビットの鍵なら中身は約1,600文字）"; exit 1; }
-          while IFS= read -r line; do [ -n "$line" ] && echo "::add-mask::$line"; done <<< "$pem"
-          { echo 'pem<<PEM_END'; echo "$pem"; echo 'PEM_END'; } >> "$GITHUB_OUTPUT"
-      # パイプラインの鍵：GitHub App があれば、その1時間だけの鍵を使う（回数制限がオーナーと別・期限切れなし）。無ければ PIPELINE_TOKEN
-      - name: パイプラインの鍵を作る
-        id: app-token
-        if: steps.app-key.outputs.pem != ''
-        # 鍵が作れなくても（秘密鍵の貼り間違いなど）止めずに PIPELINE_TOKEN で続ける。Doctor が ❌ で知らせる
-        continue-on-error: true
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.PIPELINE_APP_ID }}
-          private-key: ${{ steps.app-key.outputs.pem }}
-      # Pages がまだ有効でなければ有効にする（Source を GitHub Actions に）。github.token にはその権限が無いので、パイプラインの鍵で。
-      # 11/20、Vercel から移した senpai-warikan で、Pages が無効のまま公開が 404 で落ちた（この環境から Pages の API が通らず、移す時に有効にできなかった）
-      - name: GitHub Pages を有効にする（まだなら）
-        continue-on-error: true
-        env:
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
-          PAT: ${{ secrets.PIPELINE_TOKEN }}
-          REPO: ${{ github.repository }}
-        run: |
-          # App の鍵に Pages を変える権限が無いこともあるので、だめなら PIPELINE_TOKEN でもう一度
-          for t in "$APP_TOKEN" "$PAT"; do
-            [ -n "$t" ] || continue
-            if GH_TOKEN="$t" gh api "repos/$REPO/pages" > /dev/null 2>&1; then echo "Pages はもう有効です"; exit 0; fi
-            if GH_TOKEN="$t" gh api -X POST "repos/$REPO/pages" -f build_type=workflow > /dev/null 2>&1; then echo "Pages を有効にしました（Source：GitHub Actions）"; exit 0; fi
-          done
-          echo "::warning::Pages を有効にできませんでした。Settings → Pages の Source を GitHub Actions にしてください"
       - uses: actions/upload-pages-artifact@v4
         with:
           path: ${{ steps.build.outputs.dir }}
