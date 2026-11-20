@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# agent-desk の自己点検（POST /api/selfcheck）を呼ぶ。見張り役（watchdog.yml）から30分ごとに使う。AI は使わない。
+# agent-desk の自己点検（POST /api/selfcheck）を呼ぶ。見張り役（watchdog.yml）の定期の起動と目覚ましの時に使う（workflow_run では呼ばない）。AI は使わない。
 # 入力：AGENT_DESK_URL、GH_TOKEN（App の鍵。agent-desk が GitHub に照会して確かめる）、GITHUB_REPOSITORY
 # どの場合も終了コードは 0（見張り役を止めない）。
 #   URL か鍵が空 → 何もしない / 404 → 黙って飛ばす（入口が本番に入る前） / 2xx → 結果を1行出す
 #   401・5xx・時間切れ・つながらない → ::warning:: を1行出す
 # 鍵は curl の引数に出さず、標準入力のヘッダ（-H @-）で渡す。set -x は使わない。
-# 「テンプレートの時だけ呼ぶ」は、ワークフロー側の if: github.event.repository.is_template で絞る。
+# 「テンプレートの時だけ呼ぶ」は、ワークフロー側の run の中で、API（repos/<リポジトリ> の is_template）で確かめて絞る。
 set -uo pipefail
 
 if [ -z "${AGENT_DESK_URL:-}" ] || [ -z "${GH_TOKEN:-}" ]; then
