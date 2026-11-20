@@ -55,6 +55,19 @@ check_stop action "actions.ts（サーバーアクション）"
 mk_repo mig; mkdir -p "$T/work/mig/supabase/migrations"; echo 'select 1;' > "$T/work/mig/supabase/migrations/0001.sql"
 check_stop mig "supabase/migrations/0001.sql"
 
+mk_repo dyn; mkdir -p "$T/work/dyn/src/app/class/[id]"; echo 'export default function P() { return null; }' > "$T/work/dyn/src/app/class/[id]/page.tsx"
+check_stop dyn "generateStaticParams が無い"
+mk_repo sp; printf 'export default async function P({ searchParams }: { searchParams: Promise<Record<string, string>> }) { await searchParams; return null; }\n' > "$T/work/sp/src/app/page.tsx"
+check_stop sp "searchParams を読んでいる"
+echo "== generateStaticParams のある動的なルート・ブラウザで読む searchParams は止めない"
+mk_repo dynok; mkdir -p "$T/work/dynok/src/app/w/[slug]"; printf 'export function generateStaticParams() { return [{ slug: "a" }]; }\nexport default function P() { return null; }\n' > "$T/work/dynok/src/app/w/[slug]/page.tsx"
+printf '"use client";\nimport { useSearchParams } from "next/navigation";\nexport default function P() { const searchParams = useSearchParams(); return <p>{searchParams.get("a")}</p>; }\n' > "$T/work/dynok/src/app/page.tsx"
+printf 'export const PHOTOS = [{ src: "/photos/01-sea.jpg" }];\n' > "$T/work/dynok/src/app/photos.ts"
+commit_repo dynok
+out=$(run_move dynok); rc=$?
+assert_eq "止めない" "0" "$rc"
+assert_contains "本文：コードの中の素材の道" "$(cat "$T/pr-body.txt")" '"/photos/01-sea.jpg"'
+
 echo "== 無ければ PR を作り、Pages を有効にする"
 mk_repo ok; commit_repo ok
 out=$(run_move ok); rc=$?
@@ -70,6 +83,7 @@ assert_contains "next.config：export" "$nc" 'output: "export"'
 assert_contains "next.config：trailingSlash" "$nc" "trailingSlash: true"
 assert_contains "next.config：画像" "$nc" "unoptimized: true"
 assert_contains "next.config：basePath" "$nc" "basePath"
+assert_contains "next.config：NEXT_PUBLIC_BASE_PATH" "$nc" "NEXT_PUBLIC_BASE_PATH: basePath"
 body=$(cat "$T/pr-body.txt")
 assert_contains "本文：素の a href" "$body" 'src/app/page.tsx:1:'
 assert_contains "本文：素の a href の中身" "$body" '<a href="/about">'

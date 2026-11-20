@@ -36,6 +36,8 @@ assert_contains "output: export" "$cfg" 'output: "export"'
 assert_contains "trailingSlash" "$cfg" "trailingSlash: true"
 assert_contains "images.unoptimized" "$cfg" "images: { unoptimized: true }"
 assert_contains "basePath は PAGES_BASE_PATH から" "$cfg" 'process.env.PAGES_BASE_PATH ?? ""'
+assert_contains "決まった形の値だけ使う" "$cfg" '/^\/[A-Za-z0-9._-]+$/.test(raw)'
+assert_contains "NEXT_PUBLIC_BASE_PATH を渡す" "$cfg" "env: { NEXT_PUBLIC_BASE_PATH: basePath }"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 assert_eq "元が無ければ確認コマンドも入れる" "4" "$(pages_pipeline_json my-app | jq '.checks | length')"
 assert_eq "build に基準のパス" '[{"kind":"github-pages","build":"PAGES_BASE_PATH=/my-app npm run build"}]' "$(pages_pipeline_json my-app | jq -c .deploy)"
