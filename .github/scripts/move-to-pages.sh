@@ -35,12 +35,23 @@ while IFS= read -r f; do found+=("$f（middleware）"); done < <(git ls-files | 
 while IFS= read -r f; do found+=("$f（サーバーアクション）"); done < <(git grep -lE '^[[:space:]]*["'"'"']use server["'"'"']' -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' 2> /dev/null | head -n 5)
 while IFS= read -r f; do found+=("$f（Supabase の migrations）"); done < <(git ls-files | grep -E '(^|/)supabase/migrations/' | head -n 3)
 # 静的な書き出し（output: "export"）で壊れる物。端末で作った id のページは作れず、アドレスの値はビルドの時に空になる
+# 全部を確かめてから、壊れる物を5件までに絞る（先に5件で切ると、後ろの壊れるページを見落とす）
+n=0
 while IFS= read -r f; do
-  grep -q 'generateStaticParams' "$f" 2> /dev/null || found+=("$f（動的なルート。generateStaticParams が無い。/x/?id=… にしてブラウザで読む）")
-done < <(git ls-files | grep -E '(^|/)app/(.*/)?\[[^/]+\]/page\.(tsx|jsx|ts|js)$' | head -n 5)
+  [ "$n" -ge 5 ] && break
+  if ! grep -q 'generateStaticParams' "$f" 2> /dev/null; then
+    found+=("$f（動的なルート。generateStaticParams が無い。/x/?id=… にしてブラウザで読む）")
+    n=$((n + 1))
+  fi
+done < <(git ls-files | grep -E '(^|/)app/(.*/)?\[[^/]+\]/page\.(tsx|jsx|ts|js)$')
+n=0
 while IFS= read -r f; do
-  grep -qE '^[[:space:]]*["'"'"']use client["'"'"']' "$f" 2> /dev/null || found+=("$f（サーバーのページで searchParams を読んでいる。ブラウザの useSearchParams にする）")
-done < <(git grep -lE '\bsearchParams\b' -- '*page.tsx' '*page.jsx' '*page.ts' '*page.js' 2> /dev/null | head -n 5)
+  [ "$n" -ge 5 ] && break
+  if ! grep -qE '^[[:space:]]*["'"'"']use client["'"'"']' "$f" 2> /dev/null; then
+    found+=("$f（サーバーのページで searchParams を読んでいる。ブラウザの useSearchParams にする）")
+    n=$((n + 1))
+  fi
+done < <(git grep -lE '\bsearchParams\b' -- '*page.tsx' '*page.jsx' '*page.ts' '*page.js' 2> /dev/null)
 if [ "${#found[@]}" -gt 0 ]; then
   echo "❌ $REPO はサーバーで動くファイルがあるので、GitHub Pages には移せません（Vercel のまま）：" >&2
   printf '  - %s\n' "${found[@]}" >&2
