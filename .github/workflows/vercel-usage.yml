@@ -43,7 +43,9 @@ jobs:
           node-version: 22
       - name: Vercel の使用量を見る
         env:
-          GH_TOKEN: ${{ github.token }}
+          # 75% を超えたら、いちばん使っているプロジェクトのリポジトリ（VERCEL_REPO_MAP）に Issue を作るので、
+          # このリポジトリだけの github.token ではなく、工場と同じ Environment の FACTORY_TOKEN（無ければ github.token）
+          GH_TOKEN: ${{ secrets.FACTORY_TOKEN || github.token }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
           VERCEL_PLAN: ${{ vars.VERCEL_PLAN }}
