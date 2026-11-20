@@ -483,8 +483,9 @@ Supabase の無料プランは、1週間データベースの操作が少ない�
 
 ## Vercel の使用量の見張り（`vercel-usage.sh`）
 
-Vercel の Hobby は、30日の使用量が上限に届くとアカウントごと止まる（11/20 に、Fluid Active CPU が 6h25m / 4h で止まった）。止まる前に気づくため、`.github/scripts/vercel-usage.sh` が1日1回、使用量を見る（呼ぶ段は watchdog か夜の点検に、人間が足す）。
+Vercel の Hobby は、30日の使用量が上限に届くとアカウントごと止まる（11/20 に、Fluid Active CPU が 6h25m / 4h で止まった）。止まる前に気づくため、`.github/scripts/vercel-usage.sh` が1日1回、使用量を見る。
 
+- 動かす所：`.github/workflows/vercel-usage.yml` が毎日 03:17（日本時間。`cron: "17 18 * * *"`）に動かす（手でも動かせる）。テンプレート本体だけで動く（最初のジョブが API で `is_template` を確かめ、配ったアプリでは何もせず終わる）。Vercel の鍵 `VERCEL_TOKEN` は、工場と同じ Environment `factory` に置く。Issue を作る鍵は `FACTORY_TOKEN`（無ければ `github.token`）。通知は `NTFY_TOPIC`・`NOTIFY_EVENTS`
 - 読む物：`npx --yes vercel@latest billing usage --since 30d --group-by project`（まず `--format json`、だめなら指定なし）。鍵は環境変数 `VERCEL_TOKEN` だけで渡し（`--token` は使わない）、出力に混ざっても伏せる。チームは `VERCEL_TEAM_ID`（`--scope` で渡す）
 - 上限：スクリプトの中の表（Fluid Active CPU 4時間・Fast Origin Transfer 10GB・Function Invocations 100万回・CDN Requests 100万回・Fluid Provisioned Memory 360GB-Hrs）。`VERCEL_PLAN=pro` なら何もしない
 - 知らせ方（項目ごと）：
@@ -496,6 +497,14 @@ Vercel の Hobby は、30日の使用量が上限に届くとアカウントご�
 - 取れなかったとき（鍵が無い・CLI のエラー・出力の形が変わった）は、`::warning::` を1行出して 0 で終わる（見張りを止めない）
 - 出力の読み方（CLI の出力は実物で確かめてから直す前提）：JSON の配列（または `data`・`usage`・`rows`・`items` の中の配列）の1行を「プロジェクト・項目名・量」と読み、量は表の単位とみなす（行に `unit` があれば bytes→GB、seconds・ms→時間に直す）
 
+## 見張り役から agent-desk の自己点検を呼ぶ（`selfcheck-call.sh`）
+
+`watchdog.yml` の「agent-desk の自己点検を呼ぶ」段が、`.github/scripts/selfcheck-call.sh` で agent-desk の `POST /api/selfcheck` を呼ぶ。AI は使わない。
+
+- 動く条件：変数 `AGENT_DESK_URL` があり、起動が `workflow_run` ではない（定期の起動と目覚ましの時だけ。ワークフローが終わるたびには呼ばない）、App の鍵が取れて、API で確かめて `is_template` が true（テンプレート本体だけ。配ったアプリの見張り役からは呼ばない）
+- 結果：404 は黙って飛ばす（入口がまだ本番に入っていない）。2xx は結果を1行出す。401・5xx・30秒の時間切れ・つながらない時は `::warning::` を1行出す
+- 失敗しても見張り役を止めない（段は `continue-on-error: true`・1分の枠で、スクリプトの終了コードは常に 0）。鍵は curl の引数に出さず、標準入力のヘッダで渡す
+
 ## 公開先の決め方：サーバーの要らないアプリは GitHub Pages（`pick-deploy.sh`・`move-to-pages.sh`）
 
 Vercel の Hobby は CPU の上限で止まると、サーバーの要らないアプリまで公開できなくなり、非商用だけという決まりもある。そこで、**サーバーで動く物が無いアプリは GitHub Pages、サーバーが要る物だけ Vercel** にする。
@@ -506,6 +515,9 @@ Vercel の Hobby は CPU の上限で止まると、サーバーの要らない�
   - 説明にサーバーの要らない印（データは端末・静的・ポートフォリオ・ゲーム・サーバー不要など）があるときだけ `github-pages`
 - **工場**（`factory.sh`）：`pick_deploy` が `github-pages` なら、`pipeline.json` の deploy を `[{"kind":"github-pages","build":"PAGES_BASE_PATH=/<リポジトリ名> npm run build"}]` にし、`next.config.ts` を `output: "export"`・`trailingSlash: true`・`images: { unoptimized: true }`・`basePath`（公開のビルドだけ `PAGES_BASE_PATH` から）にする。`vercel.json` は消し、Vercel のプロジェクト・鍵は作らず写さない。Pages は工場が有効にする。どちらにしたかと理由は、最初のコメントと、サービスの `docs/spec.md`（「公開先」の行）に1行書く。課金・ログインの有無は、環境変数 `APP_PAID`・`APP_LOGIN`（`yes`）で渡せる
 - **今あるアプリを移す**：`GH_TOKEN=… .github/scripts/move-to-pages.sh <owner/repo>`（マネージャーが手で使う）。サーバーで動くファイル（`app/api/`・`route.ts`・`middleware.ts`・`"use server"`・`supabase/migrations`）があれば、理由を出して止まる。無ければ、上と同じ `pipeline.json`・`next.config.ts` にする PR（ブランチ `move-to-pages`）を作り、Pages を有効にする（もう有効なら飛ばす）。素の `<a href="/…">`・`<img src="/…">`（`basePath` が付かない）を探し、PR の本文に一覧を書く。`next/link`・`next/image` は自動で付く
+  - 静的な書き出しで壊れる物でも止まる（理由に一覧を出す。それぞれ5件まで）：`generateStaticParams` が無い `[id]` のページ（`/x/?id=…` にしてブラウザで読む）、`"use client"` の無いサーバーのページで `searchParams` を読んでいる物（ブラウザの `useSearchParams` にする）
+  - 素の `<a>`・`<img>` のほかに、CSS の `url(/…)` と、コードの中の素材の道（`"/photos/a.jpg"` のように文字で書いた `.png`・`.jpg`・`.webp`・`.svg`・`.mp4`・`.glb`・`.woff2`・`.json` など。`next/image` に文字で渡すと `basePath` が付かない。`next.config` とテストは除く）も、PR の本文の一覧に入れる
+- **Pages の有効化**（`deploy.yml` の `pages-enable`）：公開のたびに、`pages` の前に別のジョブで、Pages がまだ無効なら有効にする（Source を GitHub Actions に。`POST repos/<リポジトリ>/pages` の `build_type=workflow`）。`github.token` には権限が無いので、App の鍵 → `PIPELINE_TOKEN` の順で試す。アプリのコードが動くジョブに鍵を渡さないよう別のジョブにしてある。どちらでも有効にできなければ `::warning::` だけで続け、その後の `pages` が 404 で落ちる（Settings → Pages の Source を GitHub Actions にして、公開をやり直す）
 - 移したあと、Pages が動くのを見てから Vercel のプロジェクトを止める
 
 ## スクリプトのテスト
