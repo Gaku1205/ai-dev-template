@@ -82,6 +82,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
+          MAX_CONFLICT_FIX: ${{ vars.MAX_CONFLICT_FIX }}
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
           CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -165,6 +166,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
+          MAX_CONFLICT_FIX: ${{ vars.MAX_CONFLICT_FIX }}
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
           CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -228,6 +230,7 @@ jobs:
           EXECUTION_FILE: ${{ runner.temp }}/ai-result/execution.json
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
+          MAX_CONFLICT_FIX: ${{ vars.MAX_CONFLICT_FIX }}
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
           RUN_STARTED: ${{ github.event.workflow_run.run_started_at }}
           CONCLUSION: ${{ github.event.workflow_run.conclusion }}
