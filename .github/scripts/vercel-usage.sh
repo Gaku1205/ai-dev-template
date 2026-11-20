@@ -53,7 +53,7 @@ for fmt in "--format json" ""; do
   fi
   cli_ok=0
 done
-[ "${cli_ok:-0}" = 1 ] || warn "Vercel の CLI が失敗しました（$(scrub "$( { printf '%s' "$raw"; grep -v '^\s*$' "$err_file" | tail -n 3; } | tr '\n' ' ' | head -c 300)")）"
+[ "${cli_ok:-0}" = 1 ] || warn "Vercel の CLI が失敗しました（$(scrub "$( { printf '%s' "$raw"; grep -v '^\s*$' "$err_file" | tail -n 3; } | tr '\n' ' ')" | head -c 300)）"
 
 # 項目ごとに集計する（形が違えば失敗にする）
 # shellcheck disable=SC2016  # jq の中の $ は jq の変数
