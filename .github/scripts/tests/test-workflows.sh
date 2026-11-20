@@ -713,4 +713,9 @@ wf="$(cat "$WORKFLOWS/bootstrap.yml")"
 assert_contains "配り先を変えたときもコミットする" "$wf" "env.CHANGED_SYNC_TARGETS == '1'"
 assert_contains "sync-targets を add する" "$wf" "git add .github/sync-targets"
 
+# Pages がまだ無効なら、公開の前にパイプラインの鍵で有効にする（11/20 senpai-warikan が 404 で落ちた）
+dp="$(cat "$WORKFLOWS/deploy.yml")"
+assert_contains "deploy.yml：Pages を有効にする段がある" "$dp" "GitHub Pages を有効にする（まだなら）"
+assert_contains "deploy.yml：App の鍵で、だめなら PIPELINE_TOKEN で" "$dp" 'PAT: ${{ secrets.PIPELINE_TOKEN }}'
+
 finish
