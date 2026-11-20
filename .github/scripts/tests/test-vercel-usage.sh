@@ -11,7 +11,7 @@ printf '%s\n' '#!/usr/bin/env bash' \
   "echo \"\$*\" >> '$MOCK_DIR/npx.log'" \
   "echo \"token=\$VERCEL_TOKEN\" >> '$MOCK_DIR/npx.env'" \
   "if [ -f '$MOCK_DIR/fail' ]; then echo \"error: invalid token \$VERCEL_TOKEN\"; exit 1; fi" \
-  "if [ -f '$MOCK_DIR/fail_err' ]; then printf 'l1\n\nl2\nl3 \$VERCEL_TOKEN\nl4\n' >&2; exit 1; fi" \
+  "if [ -f '$MOCK_DIR/fail_err' ]; then printf 'l1\n\nl2\nl3 %s\nl4\n' \"\$VERCEL_TOKEN\" >&2; exit 1; fi" \
   "cat '$MOCK_DIR/usage.json'" >"$MOCK_DIR/bin/npx"
 chmod +x "$MOCK_DIR/bin/npx"
 
@@ -146,7 +146,7 @@ touch "$MOCK_DIR/fail_err"
 run_script_keep vercel-usage.sh; rc=$?
 assert_eq "stderr に出して失敗しても 0" "0" "$rc"
 assert_contains "stderr の文が警告に入る" "$LAST_OUT" "l4"
-assert_contains "最後の3行（空行は除く）が出る" "$LAST_OUT" "l2 l3"
+assert_contains "最後の3行（空行は除く）が出る。鍵は *** に伏せられる" "$LAST_OUT" "l2 l3 *** l4"
 assert_not_contains "古い行は出ない" "$LAST_OUT" "l1"
 assert_not_contains "stderr の鍵も伏せる" "$(all_text)" "$TOKEN"
 rm -f "$MOCK_DIR/fail_err"
