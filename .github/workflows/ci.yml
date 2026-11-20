@@ -48,9 +48,18 @@ jobs:
             enabled=$(jq -r '.scripts["test:visual"] != null' package.json)
           fi
           echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
+      # ブラウザは actions/cache に置き、apt（Ubuntu のミラー）は足りない物があるときだけ使う（外の障害で落ちにくくする。#255）
+      - name: 見た目のテスト用のブラウザのキャッシュ
+        if: steps.visual.outputs.enabled == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: 見た目のテスト用のブラウザを入れる
         if: steps.visual.outputs.enabled == 'true'
-        run: npx playwright install --with-deps chromium
+        run: |
+          npx playwright install chromium
+          node -e "require('@playwright/test').chromium.launch().then((b) => b.close())" > /dev/null 2>&1 || npx playwright install --with-deps chromium
       - name: 見た目のテスト
         if: steps.visual.outputs.enabled == 'true'
         run: npm run test:visual

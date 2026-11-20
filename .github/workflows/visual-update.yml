@@ -32,7 +32,16 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      # ブラウザは actions/cache に置き、apt（Ubuntu のミラー）は足りない物があるときだけ使う（外の障害で落ちにくくする。#255）
+      - name: 見た目のテスト用のブラウザのキャッシュ
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: 見た目のテスト用のブラウザを入れる
+        run: |
+          npx playwright install chromium
+          node -e "require('@playwright/test').chromium.launch().then((b) => b.close())" > /dev/null 2>&1 || npx playwright install --with-deps chromium
       - name: 基準の画像を撮り直す
         # all：差が閾値の中で「通っている」画像も含めて全部撮り直す（変わっていない画像は同じ中身になるので、コミットには出ない）
         run: npm run test:visual -- --update-snapshots=all

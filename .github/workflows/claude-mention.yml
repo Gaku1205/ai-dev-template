@@ -88,9 +88,18 @@ jobs:
           echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
           # AIに許すコマンド（見た目のテストを動かすだけ。基準の画像の撮り直しは --disallowedTools で止める）
           if [ "$enabled" = true ]; then echo "allowed=Bash(npm run test:visual),Bash(npm run test:visual -- -g:*),Bash(npx playwright test:*)" >> "$GITHUB_OUTPUT"; else echo "allowed=" >> "$GITHUB_OUTPUT"; fi
+      # ブラウザは actions/cache に置き、apt（Ubuntu のミラー）は足りない物があるときだけ使う（外の障害で落ちにくくする。#255）
+      - name: 見た目のテスト用のブラウザのキャッシュ
+        if: steps.visual.outputs.enabled == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: 見た目のテスト用のブラウザを入れる
         if: steps.visual.outputs.enabled == 'true'
-        run: npx playwright install --with-deps chromium
+        run: |
+          npx playwright install chromium
+          node -e "require('@playwright/test').chromium.launch().then((b) => b.close())" > /dev/null 2>&1 || npx playwright install --with-deps chromium
       # 見た目のテストが落ちていたら、差分の画像を .visual-diff/ に取ってくる（AI が見て、意図した変更か崩れかを決める。git には入れない）
       # トークンを持って動くので、作業フォルダ（行へのコメントのときはPRのコード）の版ではなく、main から取った版を動かす
       - name: 見た目のテストの差分の画像を取ってくる
