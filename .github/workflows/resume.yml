@@ -59,6 +59,7 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
           MAX_CONFLICT_FIX: ${{ vars.MAX_CONFLICT_FIX }}
+          MAX_AUTO_FIX_TOTAL: ${{ vars.MAX_AUTO_FIX_TOTAL }}
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
           NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
           IS_PR: ${{ github.event_name == 'pull_request_target' }}
