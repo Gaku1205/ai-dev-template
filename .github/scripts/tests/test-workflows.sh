@@ -727,4 +727,10 @@ PY
 )
 assert_eq "deploy.yml：鍵の段は別のジョブ（checkout しない）・公開のジョブに鍵を渡さない" "checkout=False secret_in_pages=False needs=True" "$pe"
 
+# 外の Actions はタグではなくコミットの SHA で止める（タグは書き換えられる。11/21 のセキュリティの見直し）。
+# 書き方は「owner/repo@<40桁の SHA> # vX.Y.Z」。更新は .github/dependabot.yml の自動の PR
+echo "== 外の Actions は SHA で止めてある"
+unpinned=$(grep -rnE '^\s*-?\s*uses:' "$WORKFLOWS" "$WORKFLOWS/../actions" | grep -vE 'uses:\s*\./' | grep -vE '@[0-9a-f]{40} # v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+assert_eq "タグ指定の uses が無い" "" "$unpinned"
+
 finish

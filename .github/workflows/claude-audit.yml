@@ -29,7 +29,7 @@ jobs:
       deployments: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -57,7 +57,7 @@ jobs:
       - name: 手順書とスクリプトを読み取り専用にする
         if: steps.gate.outputs.run == 'true' && steps.docs.outputs.ok == 'true'
         run: chmod -R a-w .github .claude CLAUDE.md AGENTS.md 2> /dev/null || true
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: claude
         if: steps.gate.outputs.run == 'true' && steps.docs.outputs.ok == 'true'
         continue-on-error: true
@@ -76,7 +76,7 @@ jobs:
             - 質問して止まらない。オーナーはこの場にいない
           claude_args: '--model sonnet --max-turns 80 --allowedTools "Read,Write,Glob,Grep"'
       # 結果のファイルが無いまま終わったら（AIの使用が混み合って止まった 529 など）、1回だけやり直す。黙って「問題なし」にしない
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: claude_retry
         if: ${{ !cancelled() && steps.claude.outcome != 'skipped' && hashFiles('.audit/result.json') == '' }}
         continue-on-error: true
@@ -100,7 +100,7 @@ jobs:
         env:
           EXECUTION_FILE: ${{ steps.claude_retry.outputs.execution_file || steps.claude.outputs.execution_file }}
         run: bash .github/scripts/ai-report.sh --title "Claude Audit" "$EXECUTION_FILE" || true
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: ${{ !cancelled() && steps.claude.outcome != 'skipped' }}
         with:
           name: audit-out
@@ -145,16 +145,16 @@ jobs:
         if: steps.app-key.outputs.pem != ''
         # 鍵が作れなくても（秘密鍵の貼り間違いなど）止めずに PIPELINE_TOKEN で続ける。Doctor が ❌ で知らせる
         continue-on-error: true
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           app-id: ${{ vars.PIPELINE_APP_ID }}
           private-key: ${{ steps.app-key.outputs.pem }}
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 1
           persist-credentials: false
           sparse-checkout: .github/scripts
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         continue-on-error: true
         with:
           name: audit-out

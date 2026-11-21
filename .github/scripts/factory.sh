@@ -357,6 +357,8 @@ PY3
   rm -f docs/factory.md
   # 工場のIssueの雛形も、テンプレート本体だけの物
   rm -f .github/ISSUE_TEMPLATE/new-service.yml
+  # 外の Actions の更新の PR（dependabot）も本体だけで出す。アプリのワークフローは配る PR で揃う
+  rm -f .github/dependabot.yml
   git add -A
   git -c user.name="pipeline-factory" -c user.email="noreply@github.com" commit -q -m "工場：${name} の最初の準備（${APP_STACK}）"
   git push -q origin HEAD:main

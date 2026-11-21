@@ -29,7 +29,7 @@ jobs:
       deployments: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -39,7 +39,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force && '1' || '0' }}
         run: bash .github/scripts/found-gate.sh try
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         if: steps.gate.outputs.run == 'true'
         with:
           node-version: 22
@@ -47,7 +47,7 @@ jobs:
       - name: 日本語のフォントのキャッシュを戻す
         id: ja-fonts-cache
         if: steps.gate.outputs.run == 'true'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ja-fonts-apt
           key: ja-fonts-apt-${{ runner.os }}-v1
@@ -61,7 +61,7 @@ jobs:
       - name: 日本語のフォントのキャッシュを残す
         if: steps.shot-prep.outputs.ja_fonts_deb == 'true' && steps.ja-fonts-cache.outputs.cache-hit != 'true'
         continue-on-error: true
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ja-fonts-apt
           key: ja-fonts-apt-${{ runner.os }}-v1
@@ -77,7 +77,7 @@ jobs:
       - name: 手順書とスクリプトを読み取り専用にする
         if: steps.gate.outputs.run == 'true'
         run: chmod -R a-w .github .claude CLAUDE.md AGENTS.md 2> /dev/null || true
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: claude
         if: steps.gate.outputs.run == 'true'
         continue-on-error: true
@@ -98,7 +98,7 @@ jobs:
             - 質問して止まらない。オーナーはこの場にいない
           claude_args: '--model sonnet --max-turns 60 --allowedTools "Read,Write,Glob,Grep,Bash(node .github/scripts/shot.mjs:*)"'
       # 結果のファイルが無いまま終わったら（AIの使用が混み合って止まった 529 など）、1回だけやり直す。黙って「問題なし」にしない
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: claude_retry
         if: ${{ !cancelled() && steps.claude.outcome != 'skipped' && hashFiles('.try/result.json') == '' }}
         continue-on-error: true
@@ -124,7 +124,7 @@ jobs:
         env:
           EXECUTION_FILE: ${{ steps.claude_retry.outputs.execution_file || steps.claude.outputs.execution_file }}
         run: bash .github/scripts/ai-report.sh --title "Claude Try" "$EXECUTION_FILE" || true
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: ${{ !cancelled() && steps.claude.outcome != 'skipped' }}
         with:
           name: try-out
@@ -169,16 +169,16 @@ jobs:
         if: steps.app-key.outputs.pem != ''
         # 鍵が作れなくても（秘密鍵の貼り間違いなど）止めずに PIPELINE_TOKEN で続ける。Doctor が ❌ で知らせる
         continue-on-error: true
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           app-id: ${{ vars.PIPELINE_APP_ID }}
           private-key: ${{ steps.app-key.outputs.pem }}
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 1
           persist-credentials: false
           sparse-checkout: .github/scripts
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         continue-on-error: true
         with:
           name: try-out

@@ -18,7 +18,8 @@ copy_pipeline() { # 配り先のルート
   local dir="$1" name
   # テンプレート本体だけの物（配り先では動かない）：工場のIssueの雛形
   # app-fixtures：配る前のテスト用の見本（配り先に入ると、見本の中でさらに見本を回してしまう）
-  local excludes=(--exclude=sync-keep --exclude=sync-targets --exclude=ISSUE_TEMPLATE/new-service.yml --exclude=app-fixtures)
+  # dependabot.yml：外の Actions の更新の PR は本体だけで出す（配り先で出ても、次に配る PR で上書きされる）
+  local excludes=(--exclude=sync-keep --exclude=sync-targets --exclude=dependabot.yml --exclude=ISSUE_TEMPLATE/new-service.yml --exclude=app-fixtures)
   if [ -f "$dir/.github/sync-keep" ]; then
     while IFS= read -r name || [ -n "$name" ]; do
       name="${name%$'\r'}"

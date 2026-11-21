@@ -40,11 +40,11 @@ jobs:
         if: steps.app-key.outputs.pem != ''
         # 鍵が作れなくても（秘密鍵の貼り間違いなど）止めずに PIPELINE_TOKEN で続ける。Doctor が ❌ で知らせる
         continue-on-error: true
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           app-id: ${{ vars.PIPELINE_APP_ID }}
           private-key: ${{ steps.app-key.outputs.pem }}
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN }}
           NUMBER: ${{ github.event.issue.number }}
