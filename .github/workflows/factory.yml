@@ -48,7 +48,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number || inputs.issue }}
         run: gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/labels" -f "labels[]=factory" > /dev/null || echo "::warning::factory の印を付けられませんでした"
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 1
       # 相談してから作るとき：オーナーと決めた事（名前・種類・説明・選んだ案と見た目・答え・注文）を、相談の記録から読む（AIに決め直させない）
@@ -86,7 +86,7 @@ jobs:
           detail="$(printf '%s' "$BODY" | tr -d '\r' | grep -v '^DETAIL_END$' | head -c 3000 | iconv -c -f utf-8 -t utf-8)"
           { echo 'detail<<DETAIL_END'; printf '%s\n' "$detail"; echo 'DETAIL_END'; } >> "$GITHUB_OUTPUT"
       # AIは名前・言語・説明を決めて、ファイルに書くだけ（ほかの操作は許さない。鍵も渡さない）
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: claude
         if: github.event_name == 'issues'
         continue-on-error: true
@@ -169,11 +169,11 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 1
       # 撮影（shot.mjs）は Node 22 以上が要る。撮影は ubuntu-latest に入っている Chrome を使う
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
       # ゲームは、ブラウザの技術で作って Electron で exe にする雛形（examples/game）に切り替えてから作る。
@@ -201,7 +201,7 @@ jobs:
       # 日本語のフォントの .deb をキャッシュから戻す（Ubuntu のミラーに行かずに入れる。#255 の2つ目）。戻すのも残すのもAIが動く前
       - name: 日本語のフォントのキャッシュを戻す
         id: ja-fonts-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ja-fonts-apt
           key: ja-fonts-apt-${{ runner.os }}-v1
@@ -215,7 +215,7 @@ jobs:
       - name: 日本語のフォントのキャッシュを残す
         if: steps.shot-prep.outputs.ja_fonts_deb == 'true' && steps.ja-fonts-cache.outputs.cache-hit != 'true'
         continue-on-error: true
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ja-fonts-apt
           key: ja-fonts-apt-${{ runner.os }}-v1
@@ -257,7 +257,7 @@ jobs:
             list="${SENDER},${SENDER%\[bot\]}"
           fi
           echo "list=$list" >> "$GITHUB_OUTPUT"
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: designer
         continue-on-error: true
         with:
@@ -285,7 +285,7 @@ jobs:
         id: check1
         if: ${{ !cancelled() }}
         run: .github/scripts/factory-checks.sh
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: fixer
         continue-on-error: true
         if: ${{ !cancelled() && steps.check1.outputs.ok == 'false' && steps.check1.outputs.site == 'true' }}
@@ -316,7 +316,7 @@ jobs:
             詳しいメモ（オーナーと相談して決めた事・注文があれば、ここに入っている）：
             ${{ needs.plan.outputs.detail }}
         run: .github/scripts/design-review.sh prepare site
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: judge1
         if: ${{ !cancelled() && steps.review1.outputs.ok == 'true' }}
         continue-on-error: true
@@ -343,7 +343,7 @@ jobs:
           if [ -d public ]; then cp -R public "$b/public"; fi
           if [ -f docs/design.md ] && [ ! -L docs/design.md ]; then cp docs/design.md "$b/design.md"; fi
           echo "ok=true" >> "$GITHUB_OUTPUT"
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: jfix
         if: ${{ !cancelled() && steps.snapshot.outputs.ok == 'true' }}
         continue-on-error: true
@@ -382,7 +382,7 @@ jobs:
             詳しいメモ（オーナーと相談して決めた事・注文があれば、ここに入っている）：
             ${{ needs.plan.outputs.detail }}
         run: .github/scripts/design-review.sh prepare site
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: judge2
         if: ${{ !cancelled() && steps.review2.outputs.ok == 'true' }}
         continue-on-error: true
@@ -487,7 +487,7 @@ jobs:
           fi
           touch "$d/.keep"
       # 審査の記録（審査役の答え・指摘の紙・関門・渡した紙）を残す。あとから「なぜ落ちたか」を調べるため
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: ${{ !cancelled() }}
         with:
           name: factory-judge-record-${{ matrix.variant }}
@@ -501,7 +501,7 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 14
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: ${{ !cancelled() }}
         with:
           name: factory-design-${{ matrix.variant }}
@@ -520,10 +520,10 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 1
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         continue-on-error: true
         with:
           pattern: factory-design-*
@@ -558,7 +558,7 @@ jobs:
             cat "$RUNNER_TEMP/design/judge.md"
           fi
           touch "$RUNNER_TEMP/design/.keep"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: factory-design
           path: ${{ runner.temp }}/design
@@ -578,12 +578,12 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       # デザイン担当が入れた道具（GSAP・three.js など）を、新しいリポジトリの package.json に入れる
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         if: needs.design-pick.result == 'success'
         continue-on-error: true
         with:

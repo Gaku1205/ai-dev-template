@@ -23,18 +23,18 @@ jobs:
       contents: read
     steps:
       # ここではPRのコードを動かすので、Secret は使わず、トークンも残さない
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           persist-credentials: false
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       # ブラウザは actions/cache に置き、apt（Ubuntu のミラー）はライブラリかフォントが足りないときだけ使う（外の障害で落ちにくくする。#255）
       - name: 見た目のテスト用のブラウザのキャッシュ
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -51,7 +51,7 @@ jobs:
       - name: 基準の画像を撮り直す
         # all：差が閾値の中で「通っている」画像も含めて全部撮り直す（変わっていない画像は同じ中身になるので、コミットには出ない）
         run: npm run test:visual -- --update-snapshots=all
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: visual-snapshots
           path: tests/visual
@@ -90,16 +90,16 @@ jobs:
         if: steps.app-key.outputs.pem != ''
         # 鍵が作れなくても（秘密鍵の貼り間違いなど）止めずに PIPELINE_TOKEN で続ける。Doctor が ❌ で知らせる
         continue-on-error: true
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           app-id: ${{ vars.PIPELINE_APP_ID }}
           private-key: ${{ steps.app-key.outputs.pem }}
       # ここではPRのコードを動かさない（npm も実行しない）。画像（png）だけを取り出す
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           token: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN }}
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: visual-snapshots
           path: ${{ runner.temp }}/snap
@@ -162,7 +162,7 @@ jobs:
         if: steps.app-key.outputs.pem != ''
         # 鍵が作れなくても（秘密鍵の貼り間違いなど）止めずに PIPELINE_TOKEN で続ける。Doctor が ❌ で知らせる
         continue-on-error: true
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           app-id: ${{ vars.PIPELINE_APP_ID }}
           private-key: ${{ steps.app-key.outputs.pem }}
@@ -173,7 +173,7 @@ jobs:
         run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/$PR/labels/visual%3Aupdate" > /dev/null || true
       # 撮り直し自体が失敗した（画像の比べではなく、位置や数値を確かめるテストが落ちた、など）：黙って止まらず、AIに直させる
       # PRのコードではなく、main の進行役のスクリプトを使う（Secret を持つジョブで、PRのコードを動かさない）
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         if: needs.shoot.result == 'failure'
         with:
           ref: ${{ github.event.repository.default_branch }}

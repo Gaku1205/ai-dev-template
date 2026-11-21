@@ -28,16 +28,16 @@ jobs:
       - name: 始めた時刻（進捗ログ用）
         id: started
         run: echo "at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 1
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
       # 日本語のフォントの .deb をキャッシュから戻す（Ubuntu のミラーに行かずに入れる。#255 の2つ目）。戻すのも残すのもAIが動く前
       - name: 日本語のフォントのキャッシュを戻す
         id: ja-fonts-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ja-fonts-apt
           key: ja-fonts-apt-${{ runner.os }}-v1
@@ -50,7 +50,7 @@ jobs:
       - name: 日本語のフォントのキャッシュを残す
         if: steps.shot-prep.outputs.ja_fonts_deb == 'true' && steps.ja-fonts-cache.outputs.cache-hit != 'true'
         continue-on-error: true
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ja-fonts-apt
           key: ja-fonts-apt-${{ runner.os }}-v1
@@ -91,7 +91,7 @@ jobs:
           echo "list=$list" >> "$GITHUB_OUTPUT"
       - name: 手順書とスクリプトを読み取り専用にする
         run: chmod -R a-w .github .claude CLAUDE.md AGENTS.md 2> /dev/null || true
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: claude
         continue-on-error: true
         with:
@@ -122,7 +122,7 @@ jobs:
           echo "画面案がある：$([ -f mocks/mocks.json ] && echo yes || echo no)・やり直す：$redo"
           echo "redo=$redo" >> "$GITHUB_OUTPUT"
           echo "hint=${hint//$'\n'/ }" >> "$GITHUB_OUTPUT"
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: claude_retry
         if: ${{ !cancelled() && steps.retry.outputs.redo == 'true' }}
         continue-on-error: true
@@ -153,7 +153,7 @@ jobs:
         env:
           BRIEF_FILE: mocks/issue.txt
         run: .github/scripts/design-review.sh prepare mocks
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: judge1
         if: ${{ !cancelled() && steps.review1.outputs.ok == 'true' }}
         continue-on-error: true
@@ -171,7 +171,7 @@ jobs:
         id: verdict1
         if: ${{ !cancelled() && steps.review1.outputs.ok == 'true' }}
         run: .github/scripts/design-review.sh verdict screen 1
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: fix
         if: ${{ !cancelled() && steps.verdict1.outputs.pass == 'false' }}
         continue-on-error: true
@@ -191,7 +191,7 @@ jobs:
         env:
           BRIEF_FILE: mocks/issue.txt
         run: .github/scripts/design-review.sh prepare mocks
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: judge2
         if: ${{ !cancelled() && steps.review2.outputs.ok == 'true' }}
         continue-on-error: true
@@ -226,7 +226,7 @@ jobs:
           mkdir -p mocks
           if [ -n "$EXECUTION_FILE" ] && [ -f "$EXECUTION_FILE" ]; then cp "$EXECUTION_FILE" mocks/claude-execution-output.json; fi
       # 審査の記録（審査役の答え・指摘の紙・関門・渡した紙）を残す。あとから「なぜ落ちたか」を調べるため
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: ${{ !cancelled() }}
         with:
           name: mocks-judge-record
@@ -240,7 +240,7 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 14
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: ${{ !cancelled() }}
         with:
           name: mocks-out
@@ -289,14 +289,14 @@ jobs:
         if: steps.app-key.outputs.pem != ''
         # 鍵が作れなくても（秘密鍵の貼り間違いなど）止めずに PIPELINE_TOKEN で続ける。Doctor が ❌ で知らせる
         continue-on-error: true
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           app-id: ${{ vars.PIPELINE_APP_ID }}
           private-key: ${{ steps.app-key.outputs.pem }}
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 1
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         if: needs.work.result == 'success'
         continue-on-error: true
         with:

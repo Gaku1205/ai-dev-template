@@ -1,0 +1,18 @@
+# 外の Actions（SHA で止めてある）を新しい版に上げる PR を、月に1回、1本にまとめて出す。
+# テンプレート本体だけの物（アプリには配らない：sync-to-apps.sh。アプリのワークフローは配る PR で同じ SHA になる）
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/*
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "Actions の更新"
+    labels:
+      - dependencies
