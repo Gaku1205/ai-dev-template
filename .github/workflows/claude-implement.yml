@@ -81,6 +81,14 @@ jobs:
           else
             npx playwright install --with-deps chromium
           fi
+      # 日本語のフォントの .deb をキャッシュから戻す（Ubuntu のミラーに行かずに入れる。#255 の2つ目）。戻すのも残すのもAIが動く前
+      - name: 日本語のフォントのキャッシュを戻す
+        id: ja-fonts-cache
+        if: steps.stack.outputs.node != ''
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/ja-fonts-apt
+          key: ja-fonts-apt-${{ runner.os }}-v1
       # 画面のあるアプリでは、AIが作った画面を本物のブラウザで撮って見て直せるようにする（.github/scripts/shot.mjs。ubuntu-latest の Chrome を使う）。
       # 文字だけで作ると、揃うはずの列のずれ・重なり・空いた帯・弱い主役に気づけないため
       - name: 画面を撮れるか
@@ -102,11 +110,18 @@ jobs:
             # Ubuntu 24.04 は、Chrome の安全な囲い（sandbox）に要る仕組みを止めていることがあるので、使えるようにする
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 > /dev/null 2>&1 || true
             # 日本語のフォントが無いと、canvas のゲームなど Web フォントを読まない画面の日本語が □ で撮れる
-            .github/scripts/install-ja-fonts.sh
+            JA_FONTS_CACHE="$HOME/.cache/ja-fonts-apt" .github/scripts/install-ja-fonts.sh
           else
             echo "allowed=" >> "$GITHUB_OUTPUT"
             echo "prompt=" >> "$GITHUB_OUTPUT"
           fi
+      - name: 日本語のフォントのキャッシュを残す
+        if: steps.shots.outputs.ja_fonts_deb == 'true' && steps.ja-fonts-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/ja-fonts-apt
+          key: ja-fonts-apt-${{ runner.os }}-v1
       # 目標の画面：オーナーが画面案（claude-mocks.yml）から選んだざっくり画面があれば、ai-mocks ブランチから .shots/target/ に取ってきて、実装AIに渡す
       - name: 目標の画面を取る
         id: target
