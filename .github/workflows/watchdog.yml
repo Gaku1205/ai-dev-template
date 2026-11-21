@@ -87,6 +87,7 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
           MAX_CONFLICT_FIX: ${{ vars.MAX_CONFLICT_FIX }}
+          MAX_AUTO_FIX_TOTAL: ${{ vars.MAX_AUTO_FIX_TOTAL }}
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
           RETRY_TIMER: ${{ vars.RETRY_TIMER }}
         run: .github/scripts/watchdog.sh
