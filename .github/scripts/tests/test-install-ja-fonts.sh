@@ -33,4 +33,29 @@ echo "== 入れられなくても止めない（注意だけ出す）"
 out=$(run APT_FAIL=1); rc=$?
 assert_eq "終了コード 0" "0" "$rc"
 assert_contains "注意を出す" "$out" "入れられませんでした"
+echo "== JA_FONTS_CACHE：.deb を別のフォルダに置かせ、入れた後に人の物へ戻して、キャッシュに残す印を書く"
+C="$T/cache"; rm -rf "$C"; : > "$T/out"
+out=$(run JA_FONTS_CACHE="$C" GITHUB_OUTPUT="$T/out")
+assert_contains "apt に置き場を渡す" "$(cat "$T/sudo.log")" "Dir::Cache::Archives=$C/"
+assert_contains "入れた後も .deb を消させない" "$(cat "$T/sudo.log")" "APT::Keep-Downloaded-Packages=true"
+assert_contains "人の物に戻す" "$(cat "$T/sudo.log")" "chown -R"
+assert_eq "partial を作っておく" "yes" "$([ -d "$C/partial" ] && echo yes || echo no)"
+assert_eq ".deb が無ければ、残す印は書かない" "" "$(cat "$T/out")"
+
+echo "== キャッシュに .deb があれば、ミラーから取らないと書き、残す印を書く"
+touch "$C/fonts-noto-cjk_1%3a20230817_all.deb" "$C/lock"; : > "$T/out"
+out=$(run JA_FONTS_CACHE="$C" GITHUB_OUTPUT="$T/out")
+assert_contains "キャッシュを使うと書く" "$out" "キャッシュにある"
+assert_eq "残す印" "ja_fonts_deb=true" "$(cat "$T/out")"
+assert_eq "apt の lock は残さない" "no" "$([ -f "$C/lock" ] && echo yes || echo no)"
+
+echo "== JA_FONTS_CACHE が無ければ、今までどおり（置き場を渡さない）"
+out=$(run)
+assert_not_contains "置き場を渡さない" "$(cat "$T/sudo.log")" "Dir::Cache::Archives"
+assert_not_contains "chown しない" "$(cat "$T/sudo.log")" "chown"
+
+echo "== キャッシュがあっても、入れられなければ止めない"
+out=$(run JA_FONTS_CACHE="$C" GITHUB_OUTPUT="$T/out" APT_FAIL=1); rc=$?
+assert_eq "終了コード 0" "0" "$rc"
+assert_contains "注意を出す" "$out" "入れられませんでした"
 finish
