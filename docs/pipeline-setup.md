@@ -118,6 +118,7 @@ README には載せていない。どれも**入れなくても既定値で動�
 | `VERCEL_DEPLOY_DELAY_MIN` | Variable | `3`（分） | main の CI が通ってから Vercel に公開するまで待つ分。待つ間にまたマージされれば新しい方だけ公開する（無料プランの「1日100回」対策） |
 | `SYNC_DELAY_MIN` | Variable | `15`（分） | テンプレート本体が、配り先への更新を配るまで待つ分（本体だけが使う） |
 | `AGENT_DESK_URL` | Variable | なし | 通知を押したときに開く画面（agent-desk）のアドレス。無ければ Issue・PR を開く |
+| `MAX_AUTO_FIX_TOTAL` | Variable | `8` | AI に直させる依頼の全部の回数の上限。指摘が毎回変わっていても、これに届いたら人間に回す（同じ指摘が続いた回数の上限は `MAX_AUTO_FIX`＋強いモデルの1回。`docs/pipeline.md`） |
 | `MAX_CONFLICT_FIX` | Variable | `3` | main とのコンフリクトの解消を AI に頼める回数（直す回数とは別に数える）。超えたら人間に回す。基準の画像だけのコンフリクトは AI を呼ばずに解くので数えない（`docs/pipeline.md` の「人間に回る（止まる）とき」） |
 | `PARALLEL_SCOPE` | Variable | 未設定＝`global` | 並列の上限（`PARALLEL_DAY`・`PARALLEL_NIGHT`。agent-desk の設定が書く）を数える広さ。`global`＝同じ持ち主の、パイプラインのある全部のリポジトリで合わせて数える（夜の上限1なら、全部で1件ずつ。空きができたら、ほかのリポジトリの順番待ちも始める）。`repo`＝リポジトリごとに数える（前の動き）。`global` には、パイプラインの GitHub App を持ち主のリポジトリ全部に Install しておく。読めないリポジトリがあると、黙って広げずリポジトリごとに数え、実行の Summary と Doctor に ⚠️ を出す（`docs/pipeline.md` の「順番待ちの進め方」） |
 

@@ -17,6 +17,8 @@ REPO="${GITHUB_REPOSITORY}"
 OWNER="${REPO%%/*}"
 # AIに自動で直させる回数の上限（CIの失敗とレビューの指摘を合わせて数える）。超えたら人間に回す
 MAX_AUTO_FIX="${MAX_AUTO_FIX:-2}"
+# 同じ指摘が続いた回数ではなく、直す依頼の全部の回数の上限（毎回ちがう指摘が出続けて終わらないのを防ぐ）
+MAX_AUTO_FIX_TOTAL="${MAX_AUTO_FIX_TOTAL:-8}"
 AUTO_FIX_MARK="<!-- auto-fix -->"
 # main とのコンフリクトの解消をAIに頼める回数の上限。直す回数（MAX_AUTO_FIX＋強いモデルの1回）とは別に数える
 # （並列で main が進むたびに、PRの中身と関係なく直す回数が減って、本物の指摘を直せずに止まらないように。agent-desk PR #528）
@@ -512,6 +514,34 @@ count_auto_fix_in() {
         | select((.body | contains($kmark)) == ($kind == "conflict"))] | length'
 }
 
+# 指摘の指紋：止めた理由の短い文（human_reason）から作る。同じ指摘なら同じ文字列（空白は1つにそろえる）
+fix_key_of() {
+  local r
+  r=$(printf '%s' "${1:-}" | tr '\r\n' '  ' | sed 's/  */ /g; s/^ //; s/ $//')
+  [ -n "$r" ] || r="AIが直せませんでした"
+  printf '%s' "$r" | sha1sum | cut -c1-12
+}
+
+# 同じ指摘が続いた回数：再開の後で、いちばん新しい依頼から遡って、指紋（auto-fix-key）が引数の指紋と同じ依頼が続いている数。
+# 指紋の無い古い依頼は、どの指摘とも同じとして数える。標準入力にコメントの配列（JSON）、引数に指紋（空なら全部同じ＝全部の回数）
+count_same_fix_in() {
+  jq --arg mark "$AUTO_FIX_MARK" --arg kmark "$CONFLICT_KIND_MARK" --arg key "${1:-}" \
+    --arg resume "$RESUME_MARK" --arg stale "$STALE_FIX_RE" "$STALE_FIX_JQ"'
+    stale_ids as $void
+    | (map(select(.body | contains($resume)) | .created_at) | max // "") as $since
+    | [.[] | select((.body | contains($mark)) and .created_at > $since) | select(.id as $i | $void | index($i) | not)
+        | select((.body | contains($kmark)) | not)
+        | ((.body | capture("<!-- auto-fix-key: (?<k>[0-9a-f]+) -->") | .k) // null)]
+    | reverse
+    | reduce .[] as $k ({n: 0, go: true};
+        if .go and ($k == null or $key == "" or $k == $key) then .n += 1 else .go = false end)
+    | .n'
+}
+
+count_same_fix() { # PR番号 指紋
+  all_comments "$1" | count_same_fix_in "${2:-}"
+}
+
 # 見た目のテストの基準の画像の置き場所（glob。1行に1つ）。pipeline.json の visual_baseline（文字列か配列）。無ければ tests/visual/**/*.png
 baseline_image_globs() {
   local f="${STACK_FILE:-pipeline.json}" g=""
@@ -640,14 +670,22 @@ ${CONFLICT_KIND_MARK}
 <!-- auto-fix-body: $(pr_body_hash "$pr") -->"
     return
   fi
-  count=$(count_auto_fix "$pr")
+  local all_count fix_key
+  all_count=$(count_auto_fix "$pr")
+  fix_key=$(fix_key_of "$human_reason")
+  # 同じ指摘が続いた回数で数える（指摘が変わったら数え直す）。全部の回数は MAX_AUTO_FIX_TOTAL で別に止める
+  count=$(count_same_fix "$pr" "$fix_key")
   # 普通のモデルで MAX_AUTO_FIX 回直しても駄目なら、最後に1回だけ、いちばん強いモデル（opus）で直す
   total=$((MAX_AUTO_FIX + 1))
+  # 止めた理由には、AIへの依頼文（message）ではなく、人向けの短い1文を入れる（4番目。改行は空白にして1行にする）
+  human_reason=$(printf '%s' "$human_reason" | tr '\r\n' '  ' | sed 's/  */ /g; s/^ //; s/ $//')
+  [ -n "$human_reason" ] || human_reason="AIが直せませんでした"
+  if [ "$all_count" -ge "$MAX_AUTO_FIX_TOTAL" ] && [ "$count" -lt "$total" ]; then
+    stop_for_human "$pr" "直す依頼が${all_count}回になりました（毎回ちがう指摘。PR が大きすぎる見込み。Issue を分けることを考えてください）（最後の理由：${human_reason}）"
+    return
+  fi
   if [ "$count" -ge "$total" ]; then
-    # 止めた理由には、AIへの依頼文（message）ではなく、人向けの短い1文を入れる（4番目。改行は空白にして1行にする）
-    human_reason=$(printf '%s' "$human_reason" | tr '\r\n' '  ' | sed 's/  */ /g; s/^ //; s/ $//')
-    [ -n "$human_reason" ] || human_reason="AIが直せませんでした"
-    stop_for_human "$pr" "AIが${total}回（最後の1回は強いモデル）直しても解決しませんでした（最後の理由：${human_reason}）"
+    stop_for_human "$pr" "同じ指摘が${total}回（最後の1回は強いモデル）直りませんでした（最後の理由：${human_reason}）"
     return
   fi
   if [ "$count" -ge "$MAX_AUTO_FIX" ]; then
@@ -661,6 +699,7 @@ ${note}
 直したら、確認コマンド（pipeline.json の checks。無ければ型チェック・リント・テスト・ビルド）を全部通してから、このPRのブランチにpushしてください。（自動の依頼 $((count + 1))/${total}）
 
 ${AUTO_FIX_MARK}
+<!-- auto-fix-key: ${fix_key} -->
 <!-- auto-fix-sha: ${sha} -->
 <!-- auto-fix-body: $(pr_body_hash "$pr") -->${model_mark}"
 }
