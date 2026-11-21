@@ -18,6 +18,7 @@
 #   S_<名前>：写す秘密の値（S_CLAUDE_CODE_OAUTH_TOKEN など）、V_<名前>：写す変数の値（V_PIPELINE_APP_ID など）
 #   DESIGN_FILE・CONTEXT_FILE・LIBS_FILE（任意）：デザイン担当が書いたデザイン仕様・使う人と場面・入れた道具（1行1つ）
 #   SITE_DIR（任意）：デザイン担当が作った画面（src/ と public/）。確認コマンドが通った印（.checks-ok）があり、形が正しいときだけ入れる
+#   BOARD_FILE（任意）：デザイン担当の factory-refs/board.md（実例のまとめ）。ふつうのファイルで 100KB までなら docs/design-ref/board.md に入れ、design.md の言及を向け直す。無ければ言及を消す
 #   DESIGN_REF_DIR（任意）：デザイン担当が作った画面を最後に撮った画像（PNG）。docs/design-ref/ に入れ、あとの Issue の目標の絵にする
 #   JUDGE_FILE（任意）：審査役の点の行（design-review.sh summary）。結果のコメントに載せる
 #   IDEA_FILE（任意）：ゲームのデザイン担当が選んだ遊び方のアイデア（board.md の「## アイデア」）。結果のコメントに畳んで載せる
@@ -319,6 +320,26 @@ PY3
       count=$((count + 1)); total=$((total + size))
     done
     [ "$count" -gt 0 ] && echo "REF=$count" > "$work/ref.flag"
+  fi
+  # 参考にした実例のまとめ（board.md）。ふつうのファイルで 100KB までなら docs/design-ref/ に写して design.md の言及をそこへ向ける。
+  # 渡されない・使えないときは、新しいリポジトリに無い factory-refs/ への言及を消す（見出しは残す）
+  if [ "$(cat "$work/design.flag" 2> /dev/null)" = DESIGN=yes ] && [ -f docs/design.md ]; then
+    board=no
+    if [ -n "${BOARD_FILE:-}" ] && [ -f "$BOARD_FILE" ] && [ ! -L "$BOARD_FILE" ] && [ "$(wc -c < "$BOARD_FILE")" -le 102400 ]; then
+      mkdir -p docs/design-ref
+      cp "$BOARD_FILE" docs/design-ref/board.md
+      board=yes
+    fi
+    BOARD=$board python3 - <<'PY3'
+import os, re
+s = open("docs/design.md", encoding="utf-8").read()
+if os.environ["BOARD"] == "yes":
+    s = s.replace("factory-refs/board.md", "docs/design-ref/board.md").replace("factory-refs/shots/", "docs/design-ref/")
+s = re.sub(r"[（(][^（）()\n]*factory-refs/[^（）()\n]*[）)]", "", s)
+s = re.sub(r"`factory-refs/[^`\n]*`", "", s)
+s = re.sub(r"factory-refs/[^\s、。）)」`]*", "", s)
+open("docs/design.md", "w", encoding="utf-8").write(s)
+PY3
   fi
   # デザイン担当が入れた動き・3D の道具（GSAP・Lenis・three.js など）。デザイン仕様を使うときだけ、決まった物の中からだけ入れる（factory-libs.sh）
   # （アプリの AI は依存パッケージを足せないので、作るときに工場が入れておく）

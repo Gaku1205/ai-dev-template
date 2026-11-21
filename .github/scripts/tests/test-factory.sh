@@ -352,6 +352,29 @@ run_factory ref-nodesign nextjs "説明" DESIGN_FILE="$T/design-bad.md" DESIGN_R
 assert_eq "デザイン仕様が雛形のままなら入れない" "" "$(file_in o/ref-nodesign docs/design-ref/01-empty-390.png)"
 assert_not_contains "そのときは目標の絵を頼まない" "$(cat "$T/calls.log")" "design-ref"
 
+echo "== board.md（実例のまとめ）：渡されたら docs/design-ref/board.md に写して言及を向け直し、使えなければ言及を消す"
+{ echo "# デザイン仕様"; echo "## 参考にした実例（factory-refs/board.md・factory-refs/shots/）"
+  echo "詳しくは \`factory-refs/board.md\` と factory-refs/shots/ を見る"
+  for i in $(seq 1 60); do echo "- 色や文字の決まり その$i：夜の地に光る数字"; done; } > "$T/design-board.md"
+printf '# 実例のまとめ\n- 良い所\n' > "$T/board.md"
+run_factory board-ok nextjs "説明" DESIGN_FILE="$T/design-board.md" BOARD_FILE="$T/board.md" > /dev/null
+assert_contains "board.md を docs/design-ref/ に写す" "$(file_in o/board-ok docs/design-ref/board.md)" "実例のまとめ"
+assert_contains "言及が写した先を指す" "$(file_in o/board-ok docs/design.md)" "docs/design-ref/board.md"
+assert_not_contains "factory-refs を指さない" "$(file_in o/board-ok docs/design.md)" "factory-refs"
+assert_contains "見出しは残す" "$(file_in o/board-ok docs/design.md)" "## 参考にした実例"
+run_factory board-none nextjs "説明" DESIGN_FILE="$T/design-board.md" > /dev/null
+assert_not_contains "board.md が無ければ言及を消す" "$(file_in o/board-none docs/design.md)" "factory-refs"
+assert_contains "無くても見出しは残す" "$(file_in o/board-none docs/design.md)" "## 参考にした実例"
+assert_eq "board.md は入らない" "" "$(file_in o/board-none docs/design-ref/board.md)"
+ln -sf "$T/board.md" "$T/board-link.md"
+run_factory board-link nextjs "説明" DESIGN_FILE="$T/design-board.md" BOARD_FILE="$T/board-link.md" > /dev/null
+assert_eq "symlink は写さない" "" "$(file_in o/board-link docs/design-ref/board.md)"
+assert_not_contains "symlink のときも言及を消す" "$(file_in o/board-link docs/design.md)" "factory-refs"
+head -c 120000 /dev/zero | tr '\0' 'a' > "$T/board-big.md"
+run_factory board-big nextjs "説明" DESIGN_FILE="$T/design-board.md" BOARD_FILE="$T/board-big.md" > /dev/null
+assert_eq "大きすぎる物は写さない" "" "$(file_in o/board-big docs/design-ref/board.md)"
+assert_not_contains "大きすぎるときも言及を消す" "$(file_in o/board-big docs/design.md)" "factory-refs"
+
 echo "== 元のIssueの本文（詳しいメモ）は、最初のIssueの本文に添える"
 run_factory detail-ok nextjs "説明" MEMO_DETAIL="載せる作品：agent-desk と工場" > /dev/null
 assert_contains "詳しいメモが入る" "$(cat "$T/calls.log")" "載せる作品：agent-desk と工場"
