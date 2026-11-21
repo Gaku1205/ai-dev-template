@@ -40,7 +40,7 @@ jobs:
       - name: 始めた時刻（進捗ログ用）
         id: started
         run: echo "at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
       # PRのコードは動かさない。APIで変更の大きさと場所だけを見て、モデルを決める
@@ -176,7 +176,7 @@ jobs:
                 ((.permission_denials // [])[:5][] | "  拒否：\(.tool_name // "?")(\((.tool_input.command // .tool_input.file_path // "") | tostring | (split("\n")[0] // "") | .[0:120]))")' \
               "$EXECUTION_FILE" 2> /dev/null | tee -a "$GITHUB_STEP_SUMMARY" || true
           fi
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         continue-on-error: true
         with:

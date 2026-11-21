@@ -49,7 +49,7 @@ jobs:
       BASH_MAX_TIMEOUT_MS: "1200000"
     steps:
       # 履歴も全部取る（push の前に main を取り込むため。下の --append-system-prompt）
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       # あとで使う道具（PRのコードを動かしてよいかの判断・差分の画像の取得・結果の記録）は、main の版を API で取ってくる。
@@ -91,7 +91,7 @@ jobs:
       # ブラウザは actions/cache に置き、apt（Ubuntu のミラー）はライブラリかフォントが足りないときだけ使う（外の障害で落ちにくくする。#255）
       - name: 見た目のテスト用のブラウザのキャッシュ
         if: steps.visual.outputs.enabled == 'true'
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -205,7 +205,7 @@ jobs:
           if [ -n "$EXECUTION_FILE" ] && [ -f "$EXECUTION_FILE" ]; then cp "$EXECUTION_FILE" "$RUNNER_TEMP/ai-result/execution.json"; fi
           case "$PR_NUMBER" in '' | *[!0-9]*) ;; *) echo "$PR_NUMBER" > "$RUNNER_TEMP/ai-result/pr.txt" ;; esac
           touch "$RUNNER_TEMP/ai-result/.keep"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
           name: ai-result

@@ -45,7 +45,7 @@ jobs:
       BASH_MAX_TIMEOUT_MS: "1200000"
     steps:
       # 履歴も全部取る（push の前に main を取り込むため。下の --append-system-prompt）
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       # 言語の実行環境と依存を入れる（pipeline.json に合わせる。無ければ今までの Node 22・npm ci）
@@ -66,7 +66,7 @@ jobs:
       # ブラウザは actions/cache に置き、apt（Ubuntu のミラー）はライブラリかフォントが足りないときだけ使う（外の障害で落ちにくくする。#255）
       - name: 見た目のテスト用のブラウザのキャッシュ
         if: steps.visual.outputs.enabled == 'true'
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -85,7 +85,7 @@ jobs:
       - name: 日本語のフォントのキャッシュを戻す
         id: ja-fonts-cache
         if: steps.stack.outputs.node != ''
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ja-fonts-apt
           key: ja-fonts-apt-${{ runner.os }}-v1
@@ -118,7 +118,7 @@ jobs:
       - name: 日本語のフォントのキャッシュを残す
         if: steps.shots.outputs.ja_fonts_deb == 'true' && steps.ja-fonts-cache.outputs.cache-hit != 'true'
         continue-on-error: true
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ja-fonts-apt
           key: ja-fonts-apt-${{ runner.os }}-v1
@@ -266,7 +266,7 @@ jobs:
           if [ -n "$EXECUTION_FILE" ] && [ -f "$EXECUTION_FILE" ]; then cp "$EXECUTION_FILE" "$RUNNER_TEMP/ai-result/execution.json"; fi
           if [ -f .review/critique.md ] && [ ! -L .review/critique.md ]; then head -c 20000 .review/critique.md > "$RUNNER_TEMP/ai-result/critique.md"; fi
           touch "$RUNNER_TEMP/ai-result/.keep"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
           name: ai-result
@@ -316,12 +316,12 @@ jobs:
         with:
           app-id: ${{ vars.PIPELINE_APP_ID }}
           private-key: ${{ steps.app-key.outputs.pem }}
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           persist-credentials: false
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         continue-on-error: true
         with:
           name: ai-result

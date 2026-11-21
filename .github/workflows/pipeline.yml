@@ -66,7 +66,7 @@ jobs:
           private-key: ${{ steps.app-key.outputs.pem }}
           # 配り先のCIが落ちたとき、テンプレートにまとめの Issue を作る（sync-failure-report.sh。#129）。鍵をオーナーの全部のリポジトリに使えるようにする（sync.yml と同じ）
           owner: ${{ github.repository_owner }}
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # 進捗ログ：CIの所要時間と結果（モデルは使わないので null）。ワークフローのトークンで書く（オーナーの名義のコメントにしない）
       - name: 進捗ログ（CI）
         continue-on-error: true
@@ -140,9 +140,9 @@ jobs:
         with:
           app-id: ${{ vars.PIPELINE_APP_ID }}
           private-key: ${{ steps.app-key.outputs.pem }}
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # レビューAIの実行記録と、使ったモデル（claude-review.yml が ai-result として残す）。データとしてだけ読む。無くても続ける
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         continue-on-error: true
         with:
           name: ai-result
@@ -216,9 +216,9 @@ jobs:
         with:
           app-id: ${{ vars.PIPELINE_APP_ID }}
           private-key: ${{ steps.app-key.outputs.pem }}
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # 修正AIの実行記録（claude-mention.yml が ai-result として残す）。データとしてだけ読む。無くても続ける
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         continue-on-error: true
         with:
           name: ai-result

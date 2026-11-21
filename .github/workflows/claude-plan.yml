@@ -61,7 +61,7 @@ jobs:
       pull-requests: read
       id-token: write
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
       # パイプラインの App（ボット）がラベル・コメントで起こした実行を、AIのアクションが断らないようにする。
@@ -289,7 +289,7 @@ jobs:
           if [ -n "$EXECUTION_FILE" ] && [ -f "$EXECUTION_FILE" ]; then cp "$EXECUTION_FILE" "$RUNNER_TEMP/ai-result/execution.json"; fi
           if [ -f plan-result.txt ] && [ ! -L plan-result.txt ]; then cp plan-result.txt "$RUNNER_TEMP/ai-result/plan-result.txt"; fi
           touch "$RUNNER_TEMP/ai-result/.keep"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
           name: ai-result
@@ -344,12 +344,12 @@ jobs:
           private-key: ${{ steps.app-key.outputs.pem }}
           # 並列の上限を全部のリポジトリで数える（#216）ため、持ち主のリポジトリ全部に効く鍵にする（AIが動かないジョブ）
           owner: ${{ github.repository_owner }}
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           persist-credentials: false
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         continue-on-error: true
         with:
           name: ai-result
