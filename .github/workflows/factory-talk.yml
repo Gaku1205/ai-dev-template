@@ -161,12 +161,28 @@ jobs:
           # 見た目の方向の段階で書いた設計メモ（持ち物・考えの候補）と、使った絵の出どころも引き継ぐ（無くても続ける）
           git show "FETCH_HEAD:$path/concept.md" > talk/concept.md 2> /dev/null || rm -f talk/concept.md
           git show "FETCH_HEAD:$path/credits.json" > talk/chosen-credits.json 2> /dev/null || rm -f talk/chosen-credits.json
+      # 日本語のフォントの .deb をキャッシュから戻す（Ubuntu のミラーに行かずに入れる。#255 の2つ目）。戻すのも残すのもAIが動く前
+      - name: 日本語のフォントのキャッシュを戻す
+        id: ja-fonts-cache
+        if: needs.route.outputs.next == 'looks' || needs.route.outputs.next == 'mocks'
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/ja-fonts-apt
+          key: ja-fonts-apt-${{ runner.os }}-v1
       - name: 撮影の準備
+        id: shot-prep
         if: needs.route.outputs.next == 'looks' || needs.route.outputs.next == 'mocks'
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 > /dev/null 2>&1 || true
           google-chrome --version || echo "::warning::Chrome が見つかりません（画面を撮れません）"
-          .github/scripts/install-ja-fonts.sh
+          JA_FONTS_CACHE="$HOME/.cache/ja-fonts-apt" .github/scripts/install-ja-fonts.sh
+      - name: 日本語のフォントのキャッシュを残す
+        if: steps.shot-prep.outputs.ja_fonts_deb == 'true' && steps.ja-fonts-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/ja-fonts-apt
+          key: ja-fonts-apt-${{ runner.os }}-v1
       - name: 手順書とスクリプトを読み取り専用にする
         run: chmod -R a-w .github .claude CLAUDE.md AGENTS.md
       - uses: anthropics/claude-code-action@v1

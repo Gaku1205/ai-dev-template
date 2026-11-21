@@ -34,11 +34,26 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+      # 日本語のフォントの .deb をキャッシュから戻す（Ubuntu のミラーに行かずに入れる。#255 の2つ目）。戻すのも残すのもAIが動く前
+      - name: 日本語のフォントのキャッシュを戻す
+        id: ja-fonts-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/ja-fonts-apt
+          key: ja-fonts-apt-${{ runner.os }}-v1
       - name: 撮影の準備
+        id: shot-prep
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 > /dev/null 2>&1 || true
-          .github/scripts/install-ja-fonts.sh
+          JA_FONTS_CACHE="$HOME/.cache/ja-fonts-apt" .github/scripts/install-ja-fonts.sh
           mkdir -p mocks
+      - name: 日本語のフォントのキャッシュを残す
+        if: steps.shot-prep.outputs.ja_fonts_deb == 'true' && steps.ja-fonts-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/ja-fonts-apt
+          key: ja-fonts-apt-${{ runner.os }}-v1
       # 今の画面を撮っておく（AIが今の見た目を見て、そこからの作り直しを考えるため。撮れなくても続ける）
       - name: 今の画面を撮る
         continue-on-error: true
