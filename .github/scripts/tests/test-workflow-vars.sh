@@ -8,10 +8,9 @@ WORKFLOWS="$(cd "$SCRIPTS_DIR/../workflows" && pwd)"
 SETUP_DOC="$SCRIPTS_DIR/../../docs/pipeline-setup.md"
 
 # 知っている抜け（理由つき）。ワークフローが直ったら、ここから消す。消せば、以後は渡し忘れでこのテストが落ちる
-#   #304：PARALLEL_SCOPE を渡すワークフロー（queue.yml・claude-plan.yml・watchdog.yml の env）の直しは、マネージャーが行う
-KNOWN_UNPASSED_VARS="PARALLEL_SCOPE"
-#   #304：visual-update.yml の「撮り直しが失敗したら、AIに直させる」の env に、直す回数の Variable を足す直しも、マネージャーが行う
-KNOWN_MISSING_FIX_ENV="visual-update.yml"
+#   #304 の2つ（PARALLEL_SCOPE・visual-update.yml の直す回数）は、マネージャーがワークフローを直したので空
+KNOWN_UNPASSED_VARS=""
+KNOWN_MISSING_FIX_ENV=""
 
 # 引数：ワークフローのフォルダ 設定の文書 スクリプトのフォルダ 知っている抜け（Variable） 知っている抜け（ワークフロー）
 # 出力：1行ずつ「unpassed:名前」か「fixenv:ファイル:段の名前:足りない名前」。無ければ何も出さない
@@ -58,11 +57,6 @@ PY
 
 echo "== 今のワークフロー：スクリプトが読む Variable は渡してあり、直す回数を使う段は直す回数の Variable を持つ（知っている抜けを除く）"
 assert_eq "渡し忘れが無い" "" "$(check_vars "$WORKFLOWS" "$SETUP_DOC" "$SCRIPTS_DIR" "$KNOWN_UNPASSED_VARS" "$KNOWN_MISSING_FIX_ENV")"
-
-echo "== 知っている抜けは、今も本当に抜けている（直ったら、一覧から消す）"
-out=$(check_vars "$WORKFLOWS" "$SETUP_DOC" "$SCRIPTS_DIR" "" "")
-assert_contains "PARALLEL_SCOPE が渡されていない（#304）" "$out" "unpassed:PARALLEL_SCOPE"
-assert_contains "visual-update.yml の段に直す回数が無い（#304）" "$out" "fixenv:visual-update.yml:撮り直しが失敗したら、AIに直させる:MAX_AUTO_FIX"
 
 echo "== わざと抜いた見本で、渡し忘れを見つけられる"
 fx=$(mktemp -d); mkdir -p "$fx/wf" "$fx/scripts"

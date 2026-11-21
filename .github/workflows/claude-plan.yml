@@ -16,6 +16,7 @@ env:
   PARALLEL_TZ: ${{ vars.PARALLEL_TZ }}
   PARALLEL_OVERRIDE: ${{ vars.PARALLEL_OVERRIDE }}
   MAX_PARALLEL: ${{ vars.MAX_PARALLEL }}
+  PARALLEL_SCOPE: ${{ vars.PARALLEL_SCOPE }}
 
 jobs:
   # 「新サービス：」のIssueに ai:plan が付いたら、外して、工場が受け持つことを書く（テンプレート自身の企画・実装に回さない）

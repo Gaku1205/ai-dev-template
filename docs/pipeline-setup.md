@@ -49,7 +49,7 @@ AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions
 工場は、サーバーで動く物（API・ログイン・課金・データベースなど）が無いアプリを GitHub Pages に出し、サーバーが要るものだけ Vercel に出す。決め方は `.github/scripts/pick-deploy.sh`（迷ったら Vercel）。課金・ログインがあるときは、環境変数 `APP_PAID=yes`・`APP_LOGIN=yes` で工場に伝える。
 今あるアプリを移すときは、`GH_TOKEN=… .github/scripts/move-to-pages.sh <owner/repo>` を使う。サーバーで動くファイルがあれば止まる。詳しくは `docs/pipeline.md`「公開先の決め方」。
 
-2026-11-20、Vercel の Hobby のアカウントが、1つのアプリ（agent-desk）の CPU で上限を超えて止まり、サーバーの要らないアプリまで30日公開できなくなった。Hobby は非商用だけという決まりもあるので、Vercel にはサーバーが要る物だけを置く。Vercel の使用量は、テンプレート本体の `vercel-usage.yml` が毎日見て、上限の50%・75%・90%と急な増え方で知らせる（鍵は Environment「factory」の `VERCEL_TOKEN`）。
+2026-11-20、Vercel の Hobby のアカウントが、1つのアプリ（agent-desk）の CPU で上限を超えて止まり、サーバーの要らないアプリまで30日公開できなくなった。Hobby は非商用だけという決まりもあるので、Vercel にはサーバーが要る物だけを置く。Vercel の使用量は、テンプレート本体の `vercel-usage.yml` を手で動かすと、上限の50%・75%・90%と急な増え方で知らせる（鍵は Environment「factory」の `VERCEL_TOKEN`。Hobby では使用量が読めないので、定期は Pro にするまで止めてある）。
 
 ### AWS App Runner（1つの AWS アカウントで1回だけ）
 
@@ -96,7 +96,7 @@ AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions
 
 1. GitHub の Settings → Developer settings → GitHub Apps → **New GitHub App**
 2. 名前は好きに（例：`gaku-pipeline`）。Homepage URL はリポジトリのURLでよい。**Webhook の Active は外す**
-3. Repository permissions：Actions（Read）、Checks（Read）、Commit statuses（Read）、Contents（Read and write）、Issues（Read and write）、Pull requests（Read and write）、Workflows（Read and write）。Administration（Read）は任意（Doctor がブランチ削除の設定を見るのに使う）
+3. Repository permissions：Actions（Read）、Checks（Read）、Commit statuses（Read）、Contents（Read and write）、Issues（Read and write）、Pull requests（Read and write）、Workflows（Read and write）。Administration（Read）は任意（Doctor がブランチ削除の設定を見るのに使う）。GitHub Pages に出すアプリの Pages を自動で有効にするなら Pages（Read and write）も足す（Administration の write は AI の動く App には渡さない）
 4. Where can this GitHub App be installed? は **Only on this account** → Create
 5. 出てきた **App ID** を、リポジトリの Variable `PIPELINE_APP_ID` に入れる
 6. ページ下の **Generate a private key** で .pem をダウンロードし、中身を Secret `PIPELINE_APP_PRIVATE_KEY` に入れる
@@ -105,7 +105,7 @@ AIに許すコマンドを決めるので、`pipeline.json` と `.github/actions
 
 ### 従来の方法：`PIPELINE_TOKEN`
 
-README の手順は GitHub App に一本化している。すでに Secret `PIPELINE_TOKEN` で動いている人は、そのまま動く（コードは変えていない。Doctor は ⚠️ で App への切り替えを勧めるだけ）。作るなら、GitHub の Settings → Developer settings → Fine-grained tokens で、このリポジトリだけを選び、Actions・Checks・Commit statuses を Read、Contents・Issues・Pull requests・Workflows を Read and write にする。回数制限をオーナーと共有し、期限がある。
+README の手順は GitHub App に一本化している。すでに Secret `PIPELINE_TOKEN` で動いている人は、そのまま動く（コードは変えていない。Doctor は ⚠️ で App への切り替えを勧めるだけ）。作るなら、GitHub の Settings → Developer settings → Fine-grained tokens で、このリポジトリだけを選び、Actions・Checks・Commit statuses を Read、Contents・Issues・Pull requests・Workflows を Read and write にする。GitHub Pages のサイトを自動で作るなら Pages と Administration も Read and write にする（`POST /pages` に両方が要る。足りないと Deploy に `app：HTTP xxx pat：HTTP xxx` の警告が出るので、手で Settings → Pages の Source を GitHub Actions にする）。回数制限をオーナーと共有し、期限がある。
 
 ## 変えたい人向けの設定
 
