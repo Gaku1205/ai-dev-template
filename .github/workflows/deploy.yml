@@ -311,12 +311,17 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           # App の鍵に Pages を変える権限が無いこともあるので、だめなら PIPELINE_TOKEN でもう一度
-          for t in "$APP_TOKEN" "$PAT"; do
+          # サイトを作る（POST /pages）には、鍵に Pages（write）と Administration（write）の両方が要る（11/21。AI の動く App には Administration を渡さない）
+          why=""
+          for name in app pat; do
+            if [ "$name" = app ]; then t="$APP_TOKEN"; else t="$PAT"; fi
             [ -n "$t" ] || continue
             if GH_TOKEN="$t" gh api "repos/$REPO/pages" > /dev/null 2>&1; then echo "Pages はもう有効です"; exit 0; fi
-            if GH_TOKEN="$t" gh api -X POST "repos/$REPO/pages" -f build_type=workflow > /dev/null 2>&1; then echo "Pages を有効にしました（Source：GitHub Actions）"; exit 0; fi
+            if out=$(GH_TOKEN="$t" gh api -X POST "repos/$REPO/pages" -f build_type=workflow 2>&1); then echo "Pages を有効にしました（Source：GitHub Actions）"; exit 0; fi
+            code=$(printf '%s' "$out" | grep -oE 'HTTP [0-9]{3}' | head -n 1)
+            why="${why}${name}：${code:-不明} "
           done
-          echo "::warning::Pages を有効にできませんでした。Settings → Pages の Source を GitHub Actions にしてください"
+          echo "::warning::Pages を有効にできませんでした（${why:-鍵がありません}）。サイトを作るには、鍵に Pages（write）と Administration（write）の両方が要ります。Settings → Pages の Source を GitHub Actions にしてください"
 
   pages:
     needs: [plan, pages-enable]
