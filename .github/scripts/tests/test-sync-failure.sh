@@ -96,4 +96,21 @@ assert_eq "通知は送られない" "0" "$(notify_count)"
 assert_contains "小さい番号の Issue（#101）にコメントが付く" "$(comments_of 101)" "\`o/app4\` PR #70：CIが落ちました"
 assert_eq "開いている Issue は1つ" "1" "$(issue_count)"
 
+echo "== 作った直後の一覧に、自分の Issue がまだ出ない：自分の Issue をまとめ先にして、落ちた配り先を書く（#298・#300）"
+mv "$MOCK_DIR/bin/gh.real" "$MOCK_DIR/bin/gh"
+setup_state "$MARK"
+mv "$MOCK_DIR/bin/gh" "$MOCK_DIR/bin/gh.real"
+cat > "$MOCK_DIR/bin/gh" <<SH
+#!/usr/bin/env bash
+# Issue の一覧は、いつも空で返す（作った直後で、まだ一覧に出ない場面）
+case "\$*" in *"issues?state=all"*) exit 0 ;; esac
+exec "$MOCK_DIR/bin/gh.real" "\$@"
+SH
+chmod +x "$MOCK_DIR/bin/gh"
+fail_ci o/app5
+assert_eq "通知が1件" "1" "$(notify_count)"
+assert_eq "Issue は1つ" "1" "$(issue_count)"
+assert_contains "作った Issue に落ちた配り先が書かれる" "$(comments_of 101)" "\`o/app5\` PR #70：CIが落ちました"
+mv "$MOCK_DIR/bin/gh.real" "$MOCK_DIR/bin/gh"
+
 finish
