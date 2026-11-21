@@ -4,14 +4,14 @@
 
 人間がやるのは「何を作るか決める」ことと、AIが判断に迷って止まったときの確認だけ。合否はAIではなくCI（確認コマンド。Next.js なら型チェック・リント・テスト・ビルド。package-lock.json があれば npm audit --omit=dev --audit-level=high も。テンプレートでは落とし、配り先のアプリでは警告だけ）が決めます。
 
-**言語も公開先も選べます。** 何も書かなければ Next.js＋Vercel。リポジトリ直下の `pipeline.json` に書けば、Python・Go・Java・.NET などで動き、公開先は AWS App Runner（Web・API）、GitHub Releases（exe などの配布物）、Expo（スマホアプリ）から選べます（`docs/pipeline-setup.md`「言語と公開先」）。
+**言語も公開先も選べます。** 何も書かなければ Next.js＋Vercel。リポジトリ直下の `pipeline.json` に書けば、Python・Go・Java・.NET などで動き、公開先は GitHub Pages（サーバーの要らないアプリ）、AWS App Runner（Web・API）、GitHub Releases（exe などの配布物）、Expo（スマホアプリ）から選べます（`docs/pipeline-setup.md`「言語と公開先」）。
 
 ## 流れ
 
 ```
-メモを書く ─▶ 企画AIが清書 ─▶ 実装AI ─▶ PR ─▶ CI ─▶ レビューAI ─▶ 自動マージ ─▶ 公開（Vercel／App Runner／Releases／Expo）─▶ スマホに通知
+メモを書く ─▶ 企画AIが清書 ─▶ 実装AI ─▶ PR ─▶ CI ─▶ レビューAI ─▶ 自動マージ ─▶ 公開（Vercel／GitHub Pages／App Runner／Releases／Expo）─▶ スマホに通知
  (人間)                                           ▲            │           │
-                                                  └── AIが修正 ◀┴── 失敗・指摘（3回まで。最後の1回は opus）
+                                                  └── AIが修正 ◀┴── 失敗・指摘（同じ指摘で3回・全部で8回まで。最後の1回は opus）
                                                                   │
                                                       直らなければ ai:stuck ─▶ 人間に通知して止まる
 
@@ -88,7 +88,7 @@ git merge template/main --allow-unrelated-histories   # 2回目からは --allow
 
 ### Vercelの公開回数について
 
-Vercelの無料プランには、1日に公開できる回数の上限があります。AIは `claude/*` ブランチに何度もpushするので、そのたびにプレビューを作ると上限をすぐ使い切ってしまいます。`vercel.json` は、`claude/*` ブランチのプレビューを作らず、mainにマージされたときだけ公開するための設定です。また、直前のコミットが `.github/` と `docs/pipeline.md`・`docs/pipeline-setup.md`・`docs/factory.md` の変更だけなら、アプリは変わらないので公開を飛ばします（`ignoreCommand`）。
+Vercelの無料プランには、1日に公開できる回数の上限があります。AIは `claude/*` ブランチに何度もpushするので、そのたびにプレビューを作ると上限をすぐ使い切ってしまいます。`vercel.json` は、`claude/*` ブランチのプレビューを作らず、mainにマージされたときだけ公開するための設定です。また、直前のコミットが `.github/`・`.claude/` と `docs/pipeline.md`・`docs/pipeline-setup.md`・`docs/factory.md` の変更だけなら、アプリは変わらないので公開を飛ばします（`ignoreCommand`）。
 
 ## 安全のしくみ
 
@@ -97,7 +97,7 @@ Vercelの無料プランには、1日に公開できる回数の上限があり�
 - `.github/`・`.claude/`・`docs/pipeline.md`・`docs/pipeline-setup.md`・`CLAUDE.md`・`AGENTS.md`・`pipeline.json` を変えるPRは、CIとレビューが通っても自動でマージせず、人間に任せて通知する。仕組みそのものがAIの判断だけで書き換わらないようにするため。例外は、テンプレート自身（`pipeline-self-edit: auto`）が `.github/scripts/`・`docs/pipeline.md`・README だけを変えるPR（自動でマージする）と、テンプレートから配られた更新の PR（人間が書いてテンプレートの CI を通った物なので、配り先の CI が通れば自動でマージする）
 - AIは `.github/`・`docs/pipeline.md`・`CLAUDE.md`・依存パッケージを触らない
 - 進行役（`pipeline.yml`）はmainにある版が動くので、PRの中身で判断を書き換えられない
-- 自動の修正は3回まで（最後の1回は opus）、自動のやり直しは10回まで。無限に回らない。超えたら `ai:stuck` で人間に回す
+- 自動の修正は、同じ指摘で3回まで（最後の1回は opus）、毎回ちがう指摘でも全部で `MAX_AUTO_FIX_TOTAL`（既定8）回まで、自動のやり直しは10回まで。無限に回らない。超えたら `ai:stuck` で人間に回す
 - `ai:hold` を付けると、最後のマージだけ人間が押す
 - 公開後に壊れていたら、Vercelの画面から前の版にすぐ戻せる
 
