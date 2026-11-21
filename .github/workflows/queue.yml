@@ -18,6 +18,7 @@ env:
   PARALLEL_TZ: ${{ vars.PARALLEL_TZ }}
   PARALLEL_OVERRIDE: ${{ vars.PARALLEL_OVERRIDE }}
   MAX_PARALLEL: ${{ vars.MAX_PARALLEL }}
+  PARALLEL_SCOPE: ${{ vars.PARALLEL_SCOPE }}
 
 # 待ちの実行は1つだけ残り、新しい物に置き換えられる。関係ないラベルのイベント（ジョブが飛ばされる実行）が
 # 本物のきっかけ（Issue が閉じた、など）の待ちを置き換えて消さないよう、飛ばされる実行は別の組にする（ジョブの if と同じ条件）

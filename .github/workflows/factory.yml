@@ -467,6 +467,8 @@ jobs:
           for f in factory-context.md factory-libs.txt factory-todo.md factory-price.txt; do
             if [ -f "$f" ] && [ ! -L "$f" ]; then cp "$f" "$d/${f#factory-}"; fi
           done
+          # 参考にした実例のまとめ。新しいリポジトリの docs/design-ref/board.md に入れる（大きさなどは factory.sh が確かめる。#305）
+          if [ -f factory-refs/board.md ] && [ ! -L factory-refs/board.md ]; then cp factory-refs/board.md "$d/board.md"; fi
           # ゲームの遊び方のアイデア（board.md の「## アイデア」の節）。結果のコメントに載せる
           if [ -f factory-refs/board.md ] && [ ! -L factory-refs/board.md ]; then
             python3 - factory-refs/board.md "$d/idea.md" <<'PY' || true
@@ -629,6 +631,7 @@ jobs:
           CONTEXT_FILE: ${{ runner.temp }}/design/context.md
           LIBS_FILE: ${{ runner.temp }}/design/libs.txt
           DESIGN_REF_DIR: ${{ runner.temp }}/design/ref
+          BOARD_FILE: ${{ runner.temp }}/design/board.md
           JUDGE_FILE: ${{ runner.temp }}/design/judge.md
           SITE_DIR: ${{ runner.temp }}/design/site
           TODO_FILE: ${{ runner.temp }}/design/todo.md

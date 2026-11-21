@@ -187,6 +187,9 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
+          MAX_AUTO_FIX: ${{ vars.MAX_AUTO_FIX }}
+          MAX_AUTO_FIX_TOTAL: ${{ vars.MAX_AUTO_FIX_TOTAL }}
+          MAX_CONFLICT_FIX: ${{ vars.MAX_CONFLICT_FIX }}
         run: |
           source .github/scripts/pipeline-lib.sh
           has_label "$PR" "ai:stuck" && exit 0
