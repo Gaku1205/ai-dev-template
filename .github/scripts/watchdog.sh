@@ -825,6 +825,20 @@ open_items=$(printf '%s' "$open_items_json" | jq -r '.[] | [.number, ([.labels[]
 while IFS=$'\t' read -r n labels kind; do
   [ -z "$n" ] && continue
   [ "$fixed" -ge 20 ] && break
+  # 人間待ち（ai:skip）に ai:implement・ai:queue が付いていると、順番待ちが「始めます」と言うだけで誰も動かず、黙って止まる
+  if [ "$kind" = issue ]; then
+    case ",$labels," in
+      *,ai:skip,*)
+        skip_drop=()
+        case ",$labels," in *,ai:implement,*) skip_drop+=(ai:implement) ;; esac
+        case ",$labels," in *,ai:queue,*) skip_drop+=(ai:queue) ;; esac
+        if [ "${#skip_drop[@]}" -gt 0 ]; then
+          fix_labels "$n" "人間待ち（ai:skip）なので、${skip_drop[*]} を外しました" "${skip_drop[@]}"
+          continue
+        fi
+        ;;
+    esac
+  fi
   case ",$labels," in
     *,ai:implement,*)
       case ",$labels," in

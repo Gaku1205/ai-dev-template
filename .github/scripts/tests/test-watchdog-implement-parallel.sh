@@ -43,12 +43,15 @@ impl 100 '"wf_runs_fail":["claude-implement.yml"]'
 run_script watchdog.sh > /dev/null
 assert_eq "100分：拾う" "ai:implement,ai:retry" "$(labels_of 9)"
 
-echo "== 90分以上でも、ai:stuck・ai:skip は触らない"
-for l in ai:stuck ai:skip; do
-  init_state '{"labels":{"9":["ai:implement","'"$l"'"]},"issue_updated":{"9":"'"$(ago 200)"'"},'"$running"'}'
-  run_script watchdog.sh > /dev/null
-  assert_eq "$l：何もしない" "ai:implement,$l" "$(labels_of 9)"
-done
+echo "== 90分以上でも、ai:stuck は触らない"
+init_state '{"labels":{"9":["ai:implement","ai:stuck"]},"issue_updated":{"9":"'"$(ago 200)"'"},'"$running"'}'
+run_script watchdog.sh > /dev/null
+assert_eq "ai:stuck：何もしない" "ai:implement,ai:stuck" "$(labels_of 9)"
+
+echo "== 90分以上でも、ai:skip はやり直しにせず、矛盾の ai:implement を外す（3.9）"
+init_state '{"labels":{"9":["ai:implement","ai:skip"]},"issue_updated":{"9":"'"$(ago 200)"'"},'"$running"'}'
+run_script watchdog.sh > /dev/null
+assert_eq "ai:skip：ai:retry は付かない" "ai:skip" "$(labels_of 9)"
 
 echo "== 同時に動く別の Issue：止まった物だけ拾い、新しい物は触らない"
 init_state '{"labels":{"9":["ai:implement"],"10":["ai:implement"]},"issue_updated":{"9":"'"$(ago 120)"'","10":"'"$(ago 50)"'"},'"$running"'}'
