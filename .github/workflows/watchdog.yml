@@ -79,7 +79,7 @@ jobs:
           private-key: ${{ steps.app-key.outputs.pem }}
           # 並列の上限を全部のリポジトリで数える（#216）ため、持ち主のリポジトリ全部に効く鍵にする（AIが動かないジョブ）
           owner: ${{ github.repository_owner }}
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: 見張る
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.PIPELINE_TOKEN }}
