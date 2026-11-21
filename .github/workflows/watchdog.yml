@@ -90,7 +90,7 @@ jobs:
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
           RETRY_TIMER: ${{ vars.RETRY_TIMER }}
         run: .github/scripts/watchdog.sh
-      # agent-desk の自己点検（#256）。テンプレート本体だけで呼ぶ（配ったアプリの見張り役まで呼ぶと、同じ点検が何重にもなる）。
+      # agent-desk の自己点検（#256）と CPU の予算の知らせ。テンプレート本体だけで呼ぶ（配ったアプリの見張り役まで呼ぶと、同じ点検が何重にもなる）。
       # schedule の event には repository が無いことがあるので、テンプレートかどうかは API で確かめる。失敗しても見張りは止めない
       - name: agent-desk の自己点検を呼ぶ
         if: vars.AGENT_DESK_URL != '' && github.event_name != 'workflow_run'
@@ -100,6 +100,9 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           AGENT_DESK_URL: ${{ vars.AGENT_DESK_URL }}
           REPO: ${{ github.repository }}
+          # 答えの budget（CPU の予算。agent-desk#698）が warn・over なら、スマホに知らせる（同じ日・同じ段で1回）
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NOTIFY_EVENTS: ${{ vars.NOTIFY_EVENTS }}
         run: |
           [ -n "$GH_TOKEN" ] || exit 0
           [ "$(gh api "repos/$REPO" --jq .is_template 2>/dev/null)" = true ] || exit 0
