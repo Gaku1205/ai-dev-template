@@ -113,7 +113,7 @@ README には載せていない。どれも**入れなくても既定値で動�
 
 | 名前 | 種類 | 既定値 | 意味 |
 | --- | --- | --- | --- |
-| `NOTIFY_EVENTS` | Variable | `stuck,question,hold,manual,deployed,deploy_failed,limit,intake,repeat_fail` | 鳴らす通知の種類（カンマ区切り）。ほかに `merged`・`ci_failed` がある。意味は `.github/scripts/notify.sh` |
+| `NOTIFY_EVENTS` | Variable | `stuck,question,hold,manual,deployed,deploy_failed,limit,intake,repeat_fail,usage` | 鳴らす通知の種類（カンマ区切り）。ほかに `merged`・`ci_failed` がある。意味は `.github/scripts/notify.sh` |
 | `RETRY_TIMER` | Variable | 未設定＝on | `off` にすると、やり直しの目覚まし（`retry-timer.yml`）を使わず、定期の見張りだけでやり直す。目覚ましは待つあいだランナーを使うので、公開していないリポジトリで Actions の時間を節約したいとき |
 | `VERCEL_DEPLOY_DELAY_MIN` | Variable | `3`（分） | main の CI が通ってから Vercel に公開するまで待つ分。待つ間にまたマージされれば新しい方だけ公開する（無料プランの「1日100回」対策） |
 | `SYNC_DELAY_MIN` | Variable | `15`（分） | テンプレート本体が、配り先への更新を配るまで待つ分（本体だけが使う） |
