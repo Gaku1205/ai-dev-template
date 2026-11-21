@@ -397,9 +397,21 @@ requeue_issue_after_partial_merge() {
   local comments
   comments=$(all_comments "$issue") || return 1
   printf '%s' "$comments" | jq -e --arg m "$mark" 'any(.[]; .body | contains($m))' > /dev/null && return 1
+  url="${GITHUB_SERVER_URL:-https://github.com}/${REPO}/pull/${pr}"
+  # 人間待ち（ai:skip）の Issue は、順番待ちに戻さない（戻すと「始めます」と言うだけで実装が始まらず、黙って止まる）
+  local skipmark="<!-- refs-merge-skip-pr: #${pr} -->" rc=0
+  has_label "$issue" "ai:skip" || rc=$?
+  if [ "$rc" -eq 2 ]; then return 1; fi
+  if [ "$rc" -eq 0 ]; then
+    printf '%s' "$comments" | jq -e --arg m "$skipmark" 'any(.[]; .body | contains($m))' > /dev/null && return 1
+    comment "$issue" "PR #${pr}（${url}）がマージされました。この Issue は人間の作業待ち（ai:skip）なので、順番待ちには戻しません。
+
+${skipmark}" || return 1
+    echo "PR #${pr}：#${issue} は人間待ち（ai:skip）なので、順番待ちには戻しませんでした"
+    return 0
+  fi
   count=$(printf '%s' "$comments" | jq '[.[] | select(.body | test("<!-- refs-merge-pr: #[0-9]+ -->"))] | length')
   count=$((count + 1))
-  url="${GITHUB_SERVER_URL:-https://github.com}/${REPO}/pull/${pr}"
   if [ "$count" -ge "$REFS_MERGE_STOP_COUNT" ]; then
     comment "$issue" "PR #${pr}（${url}）がマージされました。一部だけを直すPR（Refs）が ${count} 回続きました。
 
@@ -1192,7 +1204,7 @@ start_next_in_queue_repo() {
   echo "実装中 ${busy} / 停止中 ${stuck}（数えない） / openのPR ${prs}（並列の上限 ${limit}：${limit_info#* }）"
   # 並べ替えは全体でする（ページごとに並べると、2ページ目の急ぎ・番号の小さい物が後ろに回る）
   queue=$(open_items_json "ai:queue" \
-    | jq -r '[.[] | select(.pull_request | not) | {n: .number, p: ([.labels[].name] | index("priority:high") != null)}] | sort_by((if .p then 0 else 1 end), .n) | .[].n') || return 1
+    | jq -r '[.[] | select(.pull_request | not) | select(([.labels[].name] | index("ai:skip")) == null) | {n: .number, p: ([.labels[].name] | index("priority:high") != null)}] | sort_by((if .p then 0 else 1 end), .n) | .[].n') || return 1
   # 人間のマージ待ちのPRは、この実行で1回だけ調べる（下の inflight_touches・目印の付け替えで使い回す）
   remember_hold_prs
   if [ -z "$queue" ]; then
@@ -1539,10 +1551,10 @@ start_next_in_queue_global() {
   remember_hold_prs
   holds=$(hold_prs 2> /dev/null) || holds=""
   # このリポジトリの順番待ちは一覧から（検索の反映の遅れで、付けたばかりの ai:queue を見落とさない）。ほかのリポジトリは検索から
-  own_items=$(open_items_json "ai:queue" | jq -c --arg r "$REPO" '[.[] | select(.pull_request | not) | {repo: $r, n: .number, p: ([.labels[].name] | index("priority:high") != null)}]') || return 1
+  own_items=$(open_items_json "ai:queue" | jq -c --arg r "$REPO" '[.[] | select(.pull_request | not) | select(([.labels[].name] | index("ai:skip")) == null) | {repo: $r, n: .number, p: ([.labels[].name] | index("priority:high") != null)}]') || return 1
   own_queue=$(printf '%s' "$own_items" | jq -r '.[].n')
   cand=$(printf '%s' "$GLOBAL_QUEUE_ITEMS" | jq -c --arg own "${REPO,,}" --argjson mine "$own_items" '
-    $mine + [.[] | ((.repository_url // "") | sub("^.*/repos/"; "")) as $r | select(($r | ascii_downcase) != $own and $r != "")
+    $mine + [.[] | ((.repository_url // "") | sub("^.*/repos/"; "")) as $r | select(($r | ascii_downcase) != $own and $r != "") | select(([(.labels // [])[].name] | index("ai:skip")) == null)
       | {repo: $r, n: .number, p: ([(.labels // [])[].name] | index("priority:high") != null)}]')
   if [ "$(printf '%s' "$cand" | jq 'length')" -eq 0 ]; then
     echo "順番待ちはありません（全部のリポジトリ）"

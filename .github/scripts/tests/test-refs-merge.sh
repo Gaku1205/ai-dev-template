@@ -28,6 +28,14 @@ echo "== ④ 二重に呼んでも1回だけ"
 run_lib "requeue_issue_after_partial_merge 5" > /dev/null
 assert_eq "コメントは1つ" "1" "$(comments_of 7 | grep -c 'refs-merge-pr')"
 
+echo "== ai:skip（人間待ち）の Issue は順番待ちに戻さず、コメントは1回だけ"
+init_pr 5 "$partial" '["ai:skip","ai:implement"]'
+run_lib "requeue_issue_after_partial_merge 5" > /dev/null
+assert_not_contains "ai:queue は付かない" "$(labels_of 7)" "ai:queue"
+assert_contains "人間待ちと書く" "$(comments_of 7)" "人間の作業待ち（ai:skip）なので、順番待ちには戻しません"
+run_lib "requeue_issue_after_partial_merge 5" > /dev/null
+assert_eq "コメントは1つ" "1" "$(comments_of 7 | grep -c 'refs-merge-skip-pr')"
+
 echo "== ② 未チェック行が取れないときの文言"
 init_pr 5 $'Refs #7\n\n## 受け入れ条件\n- [x] 全部\n' '["ai:implement"]'
 run_lib "requeue_issue_after_partial_merge 5" > /dev/null

@@ -11,6 +11,13 @@ run_script queue-next.sh > /dev/null
 assert_eq "#2 が実装に回る" "ai:implement" "$(labels_of 2)"
 assert_eq "#3 は待ったまま" "ai:queue" "$(labels_of 3)"
 
+echo "== ai:skip（人間待ち）の付いた物は選ばず、「始めます」とも言わない"
+init_state '{"labels":{"2":["ai:queue","ai:skip"],"3":["ai:queue"]}}'
+run_script queue-next.sh > /dev/null
+assert_eq "#2 は動かさない" "ai:queue,ai:skip" "$(labels_of 2)"
+assert_not_contains "#2 に始めますと言わない" "$(comments_of 2)" "始めます"
+assert_eq "#3 が実装に回る" "ai:implement" "$(labels_of 3)"
+
 echo "== 企画の段階で止まった物（人間の作業待ち・質問）があっても、止まらない"
 init_state '{"labels":{"1":["ai:stuck"],"2":["ai:queue"]}}'
 run_script queue-next.sh > /dev/null
