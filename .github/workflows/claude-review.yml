@@ -40,7 +40,7 @@ jobs:
       - name: 始めた時刻（進捗ログ用）
         id: started
         run: echo "at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 1
       # PRのコードは動かさない。APIで変更の大きさと場所だけを見て、モデルを決める
@@ -119,7 +119,7 @@ jobs:
           fi
           cp "$RUNNER_TEMP/thread.md" thread.md
           if [ -d .git ]; then echo "thread.md" >> .git/info/exclude; fi
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: claude
         env:
           GH_TOKEN: ${{ github.token }}
@@ -176,7 +176,7 @@ jobs:
                 ((.permission_denials // [])[:5][] | "  拒否：\(.tool_name // "?")(\((.tool_input.command // .tool_input.file_path // "") | tostring | (split("\n")[0] // "") | .[0:120]))")' \
               "$EXECUTION_FILE" 2> /dev/null | tee -a "$GITHUB_STEP_SUMMARY" || true
           fi
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: ${{ !cancelled() }}
         continue-on-error: true
         with:

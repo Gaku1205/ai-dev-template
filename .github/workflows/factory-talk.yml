@@ -42,7 +42,7 @@ jobs:
     outputs:
       next: ${{ steps.next.outputs.next }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 1
       - name: 始める（新しい Issue）
@@ -92,7 +92,7 @@ jobs:
             echo "ai=true" >> "$GITHUB_OUTPUT"
           fi
       # 文で書かれた返事を、AIが「どれを選んだか・質問の答え・注文」に読み替える（ファイルを書くだけ）
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         if: steps.reply.outputs.ai == 'true'
         continue-on-error: true
         with:
@@ -121,7 +121,7 @@ jobs:
           case "$next" in ideas | looks | mocks | confirm | go | clarify) ;; *) echo "::error::知らない段階：$next"; exit 1 ;; esac
           echo "次：$next"
           echo "next=$next" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: talk-route
           path: talk/
@@ -142,13 +142,13 @@ jobs:
       # 作る役と直す役が使ってよい操作（同じ物）
       MAKER_TOOLS: 'Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Bash(node .github/scripts/shot.mjs:*),Bash(node .claude/skills/taste-skill/scripts/draw.mjs:*),Bash(node .claude/skills/taste-skill/scripts/lint.mjs:*),Bash(node .claude/skills/taste-skill/scripts/inspect.mjs:*),Bash(node .claude/skills/taste-skill/scripts/assets.mjs:*)'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 1
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: talk-route
           path: talk
@@ -165,7 +165,7 @@ jobs:
       - name: 日本語のフォントのキャッシュを戻す
         id: ja-fonts-cache
         if: needs.route.outputs.next == 'looks' || needs.route.outputs.next == 'mocks'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ja-fonts-apt
           key: ja-fonts-apt-${{ runner.os }}-v1
@@ -179,13 +179,13 @@ jobs:
       - name: 日本語のフォントのキャッシュを残す
         if: steps.shot-prep.outputs.ja_fonts_deb == 'true' && steps.ja-fonts-cache.outputs.cache-hit != 'true'
         continue-on-error: true
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ja-fonts-apt
           key: ja-fonts-apt-${{ runner.os }}-v1
       - name: 手順書とスクリプトを読み取り専用にする
         run: chmod -R a-w .github .claude CLAUDE.md AGENTS.md
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         continue-on-error: true
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -204,7 +204,7 @@ jobs:
         id: review1
         if: ${{ !cancelled() && (env.NEXT == 'looks' || env.NEXT == 'mocks') }}
         run: .github/scripts/design-review.sh prepare talk "$NEXT"
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: judge1
         if: ${{ !cancelled() && steps.review1.outputs.ok == 'true' }}
         continue-on-error: true
@@ -233,7 +233,7 @@ jobs:
             done
           fi
       # 審査の記録（審査役の答え・指摘の紙・関門・渡した紙）を残す。あとから「なぜ落ちたか」を調べるため
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: ${{ !cancelled() && (env.NEXT == 'looks' || env.NEXT == 'mocks') }}
         with:
           name: talk-judge-record
@@ -247,7 +247,7 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 14
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: ${{ !cancelled() }}
         with:
           name: talk-out
@@ -277,14 +277,14 @@ jobs:
       issues: write
       actions: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 1
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: talk-route
           path: talk
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         if: needs.work.result == 'success'
         continue-on-error: true
         with:

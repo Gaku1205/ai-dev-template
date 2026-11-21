@@ -102,6 +102,7 @@ assert_contains "sync-keep に書いた物は残る" "$files" ".github/workflows
 assert_contains "sync-keep 自身も残る" "$files" ".github/sync-keep"
 assert_not_contains "配り先の一覧（sync-targets）は配らない" "$files" ".github/sync-targets"
 assert_not_contains "工場のIssueの雛形は配らない" "$files" "ISSUE_TEMPLATE/new-service.yml"
+assert_not_contains "Actions の更新の設定（dependabot.yml）は配らない" "$files" ".github/dependabot.yml"
 assert_eq "CLAUDE.md は変えない" "アプリの決まり" "$(show app CLAUDE.md)"
 assert_eq "仕様書は変えない" "アプリの仕様" "$(show app docs/spec.md)"
 assert_contains "配り先だけのスキルは残る" "$files" ".claude/skills/mine/SKILL.md"

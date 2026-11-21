@@ -61,7 +61,7 @@ jobs:
       pull-requests: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 1
       # パイプラインの App（ボット）がラベル・コメントで起こした実行を、AIのアクションが断らないようにする。
@@ -108,7 +108,7 @@ jobs:
           fi
           cp "$RUNNER_TEMP/thread.md" thread.md
           if [ -d .git ]; then echo "thread.md" >> .git/info/exclude; fi
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: claude
         continue-on-error: true
         env:
@@ -201,7 +201,7 @@ jobs:
           echo "作業回数の上限に届いて、結果が無い：$more"
           echo "more=$more" >> "$GITHUB_OUTPUT"
       # 上限を増やしたやり直し（1回だけ）。指示は上と同じで、最後に「2回目であること・読む量を絞ること」を足してある
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: claude_more
         if: ${{ !cancelled() && steps.turns.outputs.more == 'true' }}
         continue-on-error: true
@@ -289,7 +289,7 @@ jobs:
           if [ -n "$EXECUTION_FILE" ] && [ -f "$EXECUTION_FILE" ]; then cp "$EXECUTION_FILE" "$RUNNER_TEMP/ai-result/execution.json"; fi
           if [ -f plan-result.txt ] && [ ! -L plan-result.txt ]; then cp plan-result.txt "$RUNNER_TEMP/ai-result/plan-result.txt"; fi
           touch "$RUNNER_TEMP/ai-result/.keep"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: ${{ !cancelled() }}
         with:
           name: ai-result
@@ -338,18 +338,18 @@ jobs:
         if: steps.app-key.outputs.pem != ''
         # 鍵が作れなくても（秘密鍵の貼り間違いなど）止めずに PIPELINE_TOKEN で続ける。Doctor が ❌ で知らせる
         continue-on-error: true
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           app-id: ${{ vars.PIPELINE_APP_ID }}
           private-key: ${{ steps.app-key.outputs.pem }}
           # 並列の上限を全部のリポジトリで数える（#216）ため、持ち主のリポジトリ全部に効く鍵にする（AIが動かないジョブ）
           owner: ${{ github.repository_owner }}
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           persist-credentials: false
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         continue-on-error: true
         with:
           name: ai-result
