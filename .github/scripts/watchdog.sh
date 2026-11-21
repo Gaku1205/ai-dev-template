@@ -795,6 +795,108 @@ for n in $(open_numbers_with_label "ai:blocked"); do
   echo "#$n：待ち先が全部終わったので、企画に戻しました"
 done
 
+# ---- 3.7 順番待ち（ai:queue・ai:blocked）が、動いていない相手を待っている ----
+# 待っている相手：ai:queue は、いちばん新しい「順番待ちの理由：」のコメントの #番号。ai:blocked は、待ち先の印（blocked-by）のうち、このリポジトリの物。
+# 相手が次のどれかなら、待っている側の Issue に1回だけコメントして、スマホに知らせる（同じ「待つ側＋相手＋理由」は1日1回まで）：
+#   ・ai:skip / ai:stuck が付いている　・待ち同士が輪になっている　・ai:implement・ai:review・ai:plan・ai:mocks が付いているのに、
+#     WAIT_IDLE_MIN 分（既定60）のあいだ Issue・PR の更新も Actions の実行も無い。
+# 相手が閉じていれば、知らせない（ai:blocked は 3.6 が企画に戻す。ai:queue は、下の 4. が進める）。相手の状態を読めなければ、何もしない
+WAIT_IDLE_MIN="${WAIT_IDLE_MIN:-60}"
+WAIT_RENOTIFY_MIN="${WAIT_RENOTIFY_MIN:-1440}"
+
+# 相手 #n に、最後の WAIT_IDLE_MIN 分のあいだ動きがあったか（読めないときも「あった」とみなす）。あれば 0
+wait_opponent_active() {
+  local n="$1" at m pr_at c st
+  at=$(gh api "repos/$REPO/issues/$n" -q '.updated_at // ""' 2> /dev/null) || return 0
+  [ -n "$at" ] || return 0
+  m=$(idle_min "$at")
+  [ "$m" -lt "$WAIT_IDLE_MIN" ] && return 0
+  pr_at=$(printf '%s' "$open_prs" | jq -r --arg p "claude/issue-$n-" '[.[] | select(.head.ref | startswith($p)) | .updated_at] | max // ""')
+  if [ -n "$pr_at" ] && [ "$(idle_min "$pr_at")" -lt "$WAIT_IDLE_MIN" ]; then return 0; fi
+  if has_label "$n" "ai:implement"; then
+    [ "${implement_running:-unknown}" = 0 ] || return 0
+  fi
+  for st in in_progress queued; do
+    c=$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/actions/runs?status=$st&per_page=50" \
+      -q "[.workflow_runs[] | select(.status != \"completed\" and ((.head_branch // \"\") | startswith(\"claude/issue-$n-\")))] | length" 2> /dev/null) || return 0
+    [[ "$c" =~ ^[0-9]+$ ]] || return 0
+    [ "$c" -gt 0 ] && return 0
+  done
+  return 1
+}
+
+# 待ち同士の輪：#2 から、待っている相手をたどって #1 に戻れるか。戻れれば 0
+wait_reaches() { # 出発 目標
+  local seen=" " queue="$1" cur o
+  while [ -n "$queue" ]; do
+    cur="${queue%% *}"
+    if [ "$queue" = "$cur" ]; then queue=""; else queue="${queue#* }"; fi
+    case "$seen" in *" $cur "*) continue ;; esac
+    seen="${seen}${cur} "
+    for o in ${WAITS[$cur]:-}; do
+      [ "$o" = "$2" ] && return 0
+      queue="${queue:+$queue }$o"
+    done
+  done
+  return 1
+}
+
+declare -A WAITS=()
+for n in $(open_numbers_with_label "ai:queue") $(open_numbers_with_label "ai:blocked"); do
+  has_label_or_unreadable "$n" "ai:stuck" && continue
+  has_label_or_unreadable "$n" "ai:skip" && continue
+  ops=""
+  if has_label "$n" "ai:queue"; then
+    ops="$ops $(all_comments "$n" | jq -r 'map(select(.body | test("順番待ちの理由"))) | last | .body // ""' | grep -oE '#[0-9]+' | tr -d '#' | tr '\n' ' ')" || true
+  fi
+  if has_label "$n" "ai:blocked"; then
+    while IFS= read -r mark; do
+      [[ "$mark" =~ $BLOCKED_MARK_RE ]] || continue
+      [ "${BASH_REMATCH[1]}" = "$REPO" ] && ops="$ops ${BASH_REMATCH[2]}"
+    done < <(all_comments "$n" | jq -r 'map(select(.body | test("<!-- blocked-by: "))) | last | .body // ""' | grep -oE "$BLOCKED_MARK_RE" || true)
+  fi
+  clean=""
+  for o in $ops; do
+    [ "$o" = "$n" ] && continue
+    case " $clean " in *" $o "*) continue ;; esac
+    clean="${clean:+$clean }$o"
+  done
+  [ -n "$clean" ] && WAITS[$n]="$clean"
+done
+
+for n in "${!WAITS[@]}"; do
+  for o in ${WAITS[$n]}; do
+    ostate=$(gh api "repos/$REPO/issues/$o" -q .state 2> /dev/null) || ostate=""
+    case "$ostate" in
+      closed) echo "#$n：待ち先 #$o は閉じているので、知らせません（順番待ちは進みます）"; continue ;;
+      open) ;;
+      *) echo "#$n：待ち先 #$o の状態を読めないので、今回は見ません"; continue ;;
+    esac
+    kind="" why=""
+    if has_label "$o" "ai:stuck"; then
+      kind=stuck; why="#$o が人間の確認待ち（ai:stuck）で止まっています"
+    elif has_label "$o" "ai:skip"; then
+      kind=skip; why="#$o が人間待ち（ai:skip）で止まっています"
+    elif wait_reaches "$o" "$n"; then
+      kind=cycle; why="#$o も（途中の物を通して）この Issue の完了を待っていて、待ちが輪になっています"
+    elif { has_label "$o" "ai:implement" || has_label "$o" "ai:review" || has_label "$o" "ai:plan" || has_label "$o" "ai:mocks"; } &&
+      ! wait_opponent_active "$o"; then
+      kind=idle; why="#$o は動いているはずのラベルが付いていますが、${WAIT_IDLE_MIN}分以上、Issue・PR の更新も Actions の実行もありません"
+    fi
+    [ -n "$kind" ] || continue
+    wmark="<!-- wait-stuck: #${n}>#${o}:${kind} -->"
+    if all_comments "$n" | jq -e --arg mk "$wmark" --argjson min "$WAIT_RENOTIFY_MIN" '
+        any(.[]; (.body | contains($mk)) and ((now - ((.created_at | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) // 0)) < $min * 60))' > /dev/null 2>&1; then
+      continue
+    fi
+    comment "$n" "⚠️ 順番待ちが止まっているかもしれません：#${o} を待っていますが、${why}。人間が #${o} を確かめてください（見張り役）。
+
+${wmark}" || continue
+    echo "#$n：動いていない #$o を待っています（${kind}）"
+    notify stuck "順番待ちが動いていない相手を待っています" "#${n} $(issue_title "$n" 2> /dev/null)：${why}" 4
+  done
+done
+
 # ---- 3.8 使い終わった claude/* ブランチを掃除する ----
 # 開いているPRが無く、最後のコミットから2日以上たった物だけ（作業中の物は消さない）。1回に消すのは20本まで
 cleaned=0
