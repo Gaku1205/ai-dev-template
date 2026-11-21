@@ -36,14 +36,17 @@ if [ -z "$target" ]; then
 
 落ちた配り先は、下のコメントに1行ずつ書きます。原因を直したら、人間がこの Issue を閉じてください（自動では閉じません）。"
   mine=$(gh api "repos/$src/issues" -f title="$title" -f body="$issue_body" -q .number 2> /dev/null) || exit 0
-  # 同時に落ちた別アプリが同時に作ったときは、いちばん番号が小さい Issue をまとめ先にする
-  target=$(find_target) || exit 0
-  [ -n "$target" ] || exit 0
+  # 同時に落ちた別アプリが同時に作ったときは、いちばん番号が小さい Issue をまとめ先にする。
+  # 作った直後は、一覧に自分の Issue がまだ出ないことがある（GitHub の一覧は少し遅れる）。そのときは自分の Issue をまとめ先にする
+  # （ここで止めると、落ちた配り先が1行も書かれない Issue だけが残る。ai-dev-template#298・#300）
+  target=$(find_target) || target=""
+  if [ -z "$target" ] || [ "$target" -gt "$mine" ]; then target="$mine"; fi
 fi
 
 if [ "$mine" = "$target" ]; then
   # 自分が作った（まとめ先になった）ので、この1件は通知する。落ちたアプリも1行残す
-  gh api "repos/$src/issues/$target/comments" -f body="\`${app}\` PR #${pr}：CIが落ちました" > /dev/null 2>&1 || true
+  gh api "repos/$src/issues/$target/comments" -f body="\`${app}\` PR #${pr}：CIが落ちました" > /dev/null \
+    || echo "::warning::${src} の Issue #${target} に、落ちた配り先（${app} PR #${pr}）を書けませんでした"
   exit 0
 fi
 
