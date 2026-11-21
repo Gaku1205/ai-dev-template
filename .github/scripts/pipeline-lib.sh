@@ -672,7 +672,9 @@ ${CONFLICT_KIND_MARK}
   fi
   local all_count fix_key
   all_count=$(count_auto_fix "$pr")
-  fix_key=$(fix_key_of "$human_reason")
+  # 指紋の引き継ぎ（6番目）：出し直す依頼（reissue_stale_fix）は、もとの依頼の指紋をそのまま使う
+  fix_key="${6:-}"
+  [ -n "$fix_key" ] || fix_key=$(fix_key_of "$human_reason")
   # 同じ指摘が続いた回数で数える（指摘が変わったら数え直す）。全部の回数は MAX_AUTO_FIX_TOTAL で別に止める
   count=$(count_same_fix "$pr" "$fix_key")
   # 普通のモデルで MAX_AUTO_FIX 回直しても駄目なら、最後に1回だけ、いちばん強いモデル（opus）で直す
@@ -2543,7 +2545,7 @@ review_has_findings() { # PR番号 先頭コミット
 # いまの先頭コミットに、別の依頼がもう出ていれば出し直さない（その修正AIに任せる）。MAX_STALE_FIX 回を超えたら人間に回す
 STALE_FIX_NOTE='（前の依頼は、依頼のあとにPRが更新されたため、修正AIが動きませんでした。直す回数には数えず、最新のコミットで出し直しています）'
 reissue_stale_fix() { # PR番号 動かなかった依頼のコメント（JSON）
-  local pr="$1" req="$2" body head stale message reason
+  local pr="$1" req="$2" body head stale message reason orig_key
   body=$(printf '%s' "$req" | jq -r .body)
   head=$(gh api "repos/$REPO/pulls/$pr" -q .head.sha)
   stale=$(count_stale_fix "$pr")
@@ -2574,10 +2576,10 @@ reissue_stale_fix() { # PR番号 動かなかった依頼のコメント（JSON�
   # コンフリクトの解消の依頼は、同じ種類のまま出し直す（直す回数ではなく、コンフリクトの回数で数える）
   if printf '%s' "$body" | grep -qF "$CONFLICT_KIND_MARK"; then
     request_conflict_fix_or_stop "$pr" "$head" "${message}${STALE_FIX_NOTE}" "main とのコンフリクトが解けませんでした"
-  elif [ -n "$reason" ]; then
-    request_fix_or_stop "$pr" "$head" "${message}${STALE_FIX_NOTE}" "$reason"
   else
-    request_fix_or_stop "$pr" "$head" "${message}${STALE_FIX_NOTE}"
+    # もとの依頼の指紋を引き継ぐ（理由の文から作り直すと指紋が変わり、同じ指摘の回数・強いモデルの回が数え直しになる）
+    orig_key=$(printf '%s\n' "$body" | sed -n 's/.*<!-- auto-fix-key: \([0-9a-f][0-9a-f]*\) -->.*/\1/p' | head -n 1)
+    request_fix_or_stop "$pr" "$head" "${message}${STALE_FIX_NOTE}" "$reason" fix "$orig_key"
   fi
   echo "PR #$pr：修正AIは「PRが更新された」ため動かなかったので、直す回数に数えず、最新のコミットで依頼を出し直しました"
 }

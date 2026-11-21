@@ -78,4 +78,14 @@ run_lib "request_fix_or_stop 89 abc123 '$AI_MSG' '指摘Z'" > /dev/null
 assert_not_contains "止めない" "$(labels_of 89)" "ai:stuck"
 assert_contains "1回目から" "$(comments_of 89)" "自動の依頼 1/3"
 
+echo "== 動かなかった依頼の出し直し（reissue_stale_fix）は、もとの依頼の指紋を引き継ぐ"
+init_state '{"labels":{"90":[]},"pulls":[{"number":90,"state":"open","body":"","head":{"sha":"abc123","ref":"x"},"labels":[]}]}'
+orig=$(run_lib "fix_key_of 'レビューの指摘が直りませんでした（指摘：src/a.ts:1）'")
+state_py "
+s['comments'].append({'id': 950, 'body': '@claude レビューで指摘があり、直してください。\n\n直したら（自動の依頼 2/3）\n\n<!-- auto-fix -->\n<!-- auto-fix-key: $orig -->\n<!-- auto-fix-sha: old000 -->\n<!-- auto-fix-body: 000 -->', 'user': {'login': 'github-actions[bot]'}, 'created_at': '2026-01-01T00:00:01Z', 'updated_at': '2026-01-01T00:00:01Z', 'issue': '90'})"
+req=$(python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print(json.dumps(s['comments'][0]))")
+run_lib "reissue_stale_fix 90 '$req'" > /dev/null
+c=$(comments_of 90)
+assert_eq "指紋が2つとも同じ（出し直しで変わらない）" "2" "$(printf '%s\n' "$c" | grep -c "auto-fix-key: $orig")"
+
 finish
