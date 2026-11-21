@@ -15,7 +15,9 @@ while [ $# -gt 0 ]; do
   shift
 done
 if [ "${FAKE_RC:-0}" -ne 0 ]; then printf '000'; exit "$FAKE_RC"; fi
-[ -n "$out" ] && echo '{"mismatches":2}' > "$out"
+if [ -n "$out" ]; then
+  if [ -n "${FAKE_BODY:-}" ]; then printf '%s' "$FAKE_BODY" > "$out"; else echo '{"mismatches":2}' > "$out"; fi
+fi
 printf '%s' "${FAKE_CODE:-200}"
 EOF
 chmod +x "$MOCK_DIR/bin/curl"
@@ -83,5 +85,67 @@ FAKE_RC=7 call
 assert_eq "終了コード 0" "0" "$RC"
 assert_contains "警告を出す" "$LAST_OUT" "::warning::"
 assert_not_contains "鍵が出力に出ない" "$LAST_OUT" "$SECRET"
+
+# ── CPU の予算（agent-desk#698）：budget が warn・over なら、同じ日・同じ段で1回だけスマホに知らせる ──
+export SELFCHECK_TODAY=2026-11-21 SELFCHECK_LOG_ISSUE=212
+init_state '{"issues_meta":{"212":{"title":"記録","state":"closed"}}}'
+ntfy_count() { grep -c 'ntfy.sh' "$MOCK_DIR/args.log" || true; }
+WARN_BODY='{"mismatches":0,"usage":{"todayMs":130000,"avg7Ms":60000,"ratio":0.54},"budget":"warn"}'
+OVER_BODY='{"mismatches":0,"usage":{"todayMs":250000,"avg7Ms":90000,"ratio":1.04},"budget":"over"}'
+
+echo "budget が ok なら知らせない"
+FAKE_BODY='{"usage":{"todayMs":1000,"avg7Ms":1000,"ratio":0.004},"budget":"ok"}' call
+assert_eq "終了コード 0" "0" "$RC"
+assert_eq "通知なし" "0" "$(ntfy_count)"
+assert_eq "記録も残さない" "" "$(comments_of 212)"
+
+echo "budget が unknown・無いなら知らせない"
+FAKE_BODY='{"usage":null,"budget":"unknown"}' call
+assert_eq "通知なし" "0" "$(ntfy_count)"
+FAKE_BODY='{"mismatches":1}' call
+assert_eq "budget が無くても通知なし" "0" "$(ntfy_count)"
+
+echo "warn：1回知らせて、記録を残す"
+FAKE_BODY="$WARN_BODY" call
+assert_eq "終了コード 0" "0" "$RC"
+assert_eq "通知1回" "1" "$(ntfy_count)"
+assert_contains "50% の題" "$(cat "$MOCK_DIR/stdin.log")" "予算の50%を超えました"
+assert_contains "今日の量が入る" "$(cat "$MOCK_DIR/stdin.log")" "130000ms"
+assert_contains "割合が入る" "$(cat "$MOCK_DIR/stdin.log")" "予算の 54%"
+assert_contains "種類は usage の優先度4" "$(cat "$MOCK_DIR/stdin.log")" '"priority": 4'
+assert_contains "記録のコメント" "$(comments_of 212)" '<!-- selfcheck-budget {"date":"2026-11-21","budget":"warn"} -->'
+assert_not_contains "鍵が通知に出ない" "$(grep -v '^Authorization: ' "$MOCK_DIR/stdin.log")" "$SECRET"
+
+echo "同じ日にもう一度 warn：鳴らさない（30分ごとの見張りで増えない）"
+FAKE_BODY="$WARN_BODY" call
+assert_eq "通知なし" "0" "$(ntfy_count)"
+assert_eq "記録は1つのまま" "1" "$(grep -c 'selfcheck-budget' <<< "$(comments_of 212)")"
+
+echo "同じ日に over へ上がった：もう一度知らせる"
+FAKE_BODY="$OVER_BODY" call
+assert_eq "通知1回" "1" "$(ntfy_count)"
+assert_contains "超えたの題" "$(cat "$MOCK_DIR/stdin.log")" "1日の予算を超えました"
+assert_contains "優先度5" "$(cat "$MOCK_DIR/stdin.log")" '"priority": 5'
+FAKE_BODY="$OVER_BODY" call
+assert_eq "over の2回目は鳴らさない" "0" "$(ntfy_count)"
+FAKE_BODY="$WARN_BODY" call
+assert_eq "over の後の warn も鳴らさない" "0" "$(ntfy_count)"
+
+echo "次の日：また知らせる"
+SELFCHECK_TODAY=2026-11-22 FAKE_BODY="$WARN_BODY" call
+assert_eq "通知1回" "1" "$(ntfy_count)"
+
+echo "bot でない人の偽の記録は数えない"
+init_state '{"issues_meta":{"212":{"title":"記録","state":"closed"}}}'
+state_py "s['comments'].append({'id': 999, 'body': '<!-- selfcheck-budget {\"date\":\"2026-11-21\",\"budget\":\"over\"} -->', 'user': {'login': 'stranger'}, 'created_at': '2026-11-21T00:00:00Z', 'updated_at': '2026-11-21T00:00:00Z', 'issue': '212'})"
+FAKE_BODY="$OVER_BODY" call
+assert_eq "知らせる" "1" "$(ntfy_count)"
+
+echo "記録が読めない：知らせずに警告（30分ごとに鳴らさない）"
+init_state '{"issues_meta":{"212":{"title":"記録","state":"closed"}},"read_fail_comments":["212"]}'
+FAKE_BODY="$OVER_BODY" call
+assert_eq "終了コード 0" "0" "$RC"
+assert_eq "通知なし" "0" "$(ntfy_count)"
+assert_contains "警告を出す" "$LAST_OUT" "::warning::"
 
 finish

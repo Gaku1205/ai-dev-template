@@ -486,7 +486,7 @@ Supabase の無料プランは、1週間データベースの操作が少ない�
 
 Vercel の Hobby は、30日の使用量が上限に届くとアカウントごと止まる（11/20 に、Fluid Active CPU が 6h25m / 4h で止まった）。止まる前に気づくため、`.github/scripts/vercel-usage.sh` が1日1回、使用量を見る。
 
-- 動かす所：`.github/workflows/vercel-usage.yml` が毎日 03:17（日本時間。`cron: "17 18 * * *"`）に動かす（手でも動かせる）。テンプレート本体だけで動く（最初のジョブが API で `is_template` を確かめ、配ったアプリでは何もせず終わる）。Vercel の鍵 `VERCEL_TOKEN` は、工場と同じ Environment `factory` に置く。Issue を作る鍵は `FACTORY_TOKEN`（無ければ `github.token`）。通知は `NTFY_TOPIC`・`NOTIFY_EVENTS`
+- 動かす所：`.github/workflows/vercel-usage.yml` を手で動かす（`workflow_dispatch` だけ）。Hobby では `vercel billing usage` が使えない（料金の明細が無く「Billing cost data is unavailable」）ので、定期の起動は Pro にするまで止めてある（Pro にしたら、毎日 03:17（日本時間。`cron: "17 18 * * *"`）の schedule を戻す）。Hobby の間は、下の「見張り役から agent-desk の自己点検を呼ぶ」の CPU の予算で見張る。テンプレート本体だけで動く（最初のジョブが API で `is_template` を確かめ、配ったアプリでは何もせず終わる）。Vercel の鍵 `VERCEL_TOKEN` は、工場と同じ Environment `factory` に置く。Issue を作る鍵は `FACTORY_TOKEN`（無ければ `github.token`）。通知は `NTFY_TOPIC`・`NOTIFY_EVENTS`
 - 読む物：`npx --yes vercel@latest billing usage --since 30d --group-by project`（まず `--format json`、だめなら指定なし）。鍵は環境変数 `VERCEL_TOKEN` だけで渡し（`--token` は使わない）、出力に混ざっても伏せる。チームは `VERCEL_TEAM_ID`（`--scope` で渡す）
 - 上限：スクリプトの中の表（Fluid Active CPU 4時間・Fast Origin Transfer 10GB・Function Invocations 100万回・CDN Requests 100万回・Fluid Provisioned Memory 360GB-Hrs）。`VERCEL_PLAN=pro` なら何もしない
 - 知らせ方（項目ごと）：
@@ -505,6 +505,9 @@ Vercel の Hobby は、30日の使用量が上限に届くとアカウントご�
 - 動く条件：変数 `AGENT_DESK_URL` があり、起動が `workflow_run` ではない（定期の起動と目覚ましの時だけ。ワークフローが終わるたびには呼ばない）、App の鍵が取れて、API で確かめて `is_template` が true（テンプレート本体だけ。配ったアプリの見張り役からは呼ばない）
 - 結果：404 は黙って飛ばす（入口がまだ本番に入っていない）。2xx は結果を1行出す。401・5xx・30秒の時間切れ・つながらない時は `::warning::` を1行出す
 - 失敗しても見張り役を止めない（段は `continue-on-error: true`・1分の枠で、スクリプトの終了コードは常に 0）。鍵は curl の引数に出さず、標準入力のヘッダで渡す
+- CPU の予算（agent-desk#698）：答えの `budget` が `warn`（1日の予算の50%以上）か `over`（100%以上）なら、スマホに知らせる（`notify.sh` の種類 `usage`。warn は優先度4・over は5。本文に今日の量・予算の割合・7日平均）。`ok`・`unknown`・無いときは知らせない
+  - 同じ日（日本時間）・同じ段では1回だけ（見張り役は30分ごとに呼ぶため）。warn の後に over に上がったら、もう一度知らせる。記録は閉じた Issue（`SELFCHECK_LOG_ISSUE`、既定 212）のコメントで、1行目が `<!-- selfcheck-budget {"date":…,"budget":…} -->`。bot（ログイン名が `[bot]` で終わる）が書いた物だけを数える。先に記録を残してから知らせる
+  - 記録が読めないときは、知らせずに `::warning::` を出す（読めないまま30分ごとに鳴らさないため）。通知に使う `NTFY_TOPIC`・`NOTIFY_EVENTS` は、この段にだけ渡す
 
 ## 公開先の決め方：サーバーの要らないアプリは GitHub Pages（`pick-deploy.sh`・`move-to-pages.sh`）
 

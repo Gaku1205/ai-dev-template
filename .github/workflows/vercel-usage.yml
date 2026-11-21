@@ -1,11 +1,12 @@
-# Vercel（Hobby）の30日の使用量を1日1回見て、上限に近づいたら、止まる前に知らせる（#269。11/20 に CPU の上限でアカウントが止まった再発の防止）。
+# Vercel の30日の使用量を見て、上限に近づいたら、止まる前に知らせる（#269。11/20 に CPU の上限でアカウントが止まった再発の防止）。
+# Hobby では `vercel billing usage` が使えない（料金の明細が無く「Billing cost data is unavailable」）ので、毎日警告を出すだけになる。
+# Pro にするまで定期の起動は止め、手で動かすだけにする。Hobby の間の見張りは、agent-desk が自分で数える CPU の予算（selfcheck-call.sh）
 # テンプレート本体だけで動く（配ったアプリでは、最初のジョブが「テンプレートではない」と分かって終わる）。
 # Vercel の鍵は、工場と同じ Environment「factory」の VERCEL_TOKEN。無ければ vercel-usage.sh が警告を1行出して終わる。
 name: Vercel Usage
 
 on:
-  schedule:
-    - cron: "17 18 * * *"   # 毎日 03:17（日本時間）
+  # Pro にしたら、定期の起動（例：cron "17 18 * * *" ＝毎日 03:17（日本時間））を戻す
   workflow_dispatch:
 
 permissions:
