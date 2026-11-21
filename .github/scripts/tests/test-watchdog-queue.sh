@@ -6,6 +6,10 @@ setup_mock
 reason_comment() { # 待つ側の番号 本文 [作った時刻]
   python3 -c "import json,sys;print(json.dumps({'id':int(sys.argv[1])*100,'issue':sys.argv[1],'body':sys.argv[2],'user':{'login':'claude[bot]'},'created_at':sys.argv[3],'updated_at':sys.argv[3]}))" "$1" "$2" "${3:-2026-01-01T00:00:00Z}"
 }
+# 場面ごとに、前の場面の通知の記録（curl.log）を消す（init_state は消さないので、包む）
+lib_init_state_def="$(declare -f init_state)"
+eval "lib_${lib_init_state_def}"
+init_state() { lib_init_state "$@"; : > "$MOCK_DIR/curl.log"; }
 stuck_notes() { grep -c '動いていない相手' "$MOCK_DIR/curl.log" || true; }
 wait_comments() { comments_of "$1" | grep -c 'wait-stuck' || true; }
 
