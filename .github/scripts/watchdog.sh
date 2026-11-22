@@ -89,18 +89,25 @@ issue_idle_min() {
 # 公開していないリポジトリでは待つあいだも Actions の時間を使うので、変数 RETRY_TIMER に off を入れれば止められる
 # 見張りが要る物（進行中の Issue・PR、ラベルの無い Issue）が1つでもあるか。あれば 0
 heartbeat_needed() {
-  local items pulls hold
+  local items pulls hold factory=0
   items=$(open_items_json) || return 1
-  if printf '%s' "$items" | jq -e --arg owner "${OWNER,,}" '
+  # テンプレートの「新サービス：〜」の Issue（工場の相談）は、needs_intake と同じく受付が拾わないので、見張りの対象にしない。
+  # 題名は一覧の写しで見る。該当する題名があるときだけ、リポジトリ1回の API でテンプレートか調べる（Issue ごとの API は増やさない）
+  if printf '%s' "$items" | jq -e 'any(.[]; (.pull_request == null) and ((.title // "") | test("^新サービス[：:]")))' > /dev/null 2>&1 \
+    && [ "$(gh api "repos/$REPO" -q .is_template 2> /dev/null)" = "true" ]; then
+    factory=1
+  fi
+  if printf '%s' "$items" | jq -e --arg owner "${OWNER,,}" --argjson factory "$factory" '
       def active($l): ($l | map(select(. == "ai:plan" or . == "ai:implement" or . == "ai:mocks" or . == "ai:blocked")) | length) > 0;
       def unlabeled($l): ($l | map(select(startswith("ai:"))) | length) == 0;
       def trusted: ((.user.login // "") | ascii_downcase) as $u | ($u == $owner or $u == "claude[bot]" or $u == "github-actions[bot]");
       # ラベルの無い Issue は、受付（intake）が拾い損ねた直後の物だけを見る（作って2時間まで）。古い物まで見ると、
       # ほぼ全部のリポジトリで見回りの目覚ましが止まらず、Actions の枠を1つずつ使い続ける（11/19 朝、11リポジトリで起きた）
       def recent: ((.created_at // .updated_at // "") | sub("\\.[0-9]+Z$"; "Z") | (try fromdateiso8601 catch 0)) > (now - 7200);
+      def factory_talk: $factory == 1 and ((.title // "") | test("^新サービス[：:]"));
       def watch: ((.labels // []) | map(.name)) as $l
         | ($l | any(. == "ai:stuck" or . == "ai:skip") | not)
-          and (active($l) or (unlabeled($l) and trusted and recent));
+          and (active($l) or (unlabeled($l) and trusted and recent and (factory_talk | not)));
       any(.[]; (.pull_request == null) and watch)' > /dev/null 2>&1; then
     return 0
   fi
