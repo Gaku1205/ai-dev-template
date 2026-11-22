@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>美容室ヤナギ 予約帳</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Klee+One:wght@400;600&family=Shippori+Mincho+B1:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --wood:#c39461;
+  --paper:#ffffff;
+  --ink:#2a221d;
+  --pencil:#4f4842;
+  --open:#f0e2cc;
+  --booked:#e6e2dc;
+  --closed:#d3cdc5;
+  --s-body:17px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:"Zen Kaku Gothic New",system-ui,sans-serif;
+  color:var(--ink);
+  background:var(--wood) url("img/oak-texture-5106733699-c1d5b0df29-b.jpg") center/cover;
+  min-height:100svh;
+  font-size:var(--s-body);
+  line-height:1.5;
+}
+.page{display:grid;grid-template-columns:420px 1fr;gap:56px;padding:28px 56px 28px 64px;min-height:100svh;align-items:start}
+/* left: on the wood */
+.shop{padding-top:20px}
+.where{font-size:16px;font-weight:500}
+h1{font-family:"Shippori Mincho B1",serif;font-weight:700;font-size:64px;line-height:1.05;margin:10px 0 6px;letter-spacing:-.01em}
+.lead{font-size:17px;max-width:24em;font-weight:500}
+.slips{margin-top:34px}
+.slips h2{font-size:18px;font-weight:700;margin-bottom:12px}
+.menu{list-style:none;display:flex;flex-direction:column;gap:8px}
+.menu a{display:grid;grid-template-columns:1fr auto auto;gap:16px;align-items:baseline;background:var(--paper);padding:13px 18px;color:var(--ink);text-decoration:none;font-size:17px;min-height:48px}
+.menu a span{font-variant-numeric:tabular-nums}
+.menu .len{font-weight:700}
+.menu a[aria-current]{background:var(--ink);color:var(--paper);transform:translateX(14px)}
+.staff{display:flex;gap:8px;flex-wrap:wrap}
+.staff a{background:var(--paper);color:var(--ink);text-decoration:none;padding:11px 16px;font-size:17px;min-height:46px;display:inline-flex;align-items:center}
+.staff a[aria-current]{background:var(--ink);color:var(--paper)}
+/* right: the book */
+.book{background:var(--paper);padding:26px 34px 22px;max-width:880px;width:100%;justify-self:end}
+.bookhead{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:6px}
+.date{font-family:"Shippori Mincho B1",serif;font-weight:700;font-size:44px;line-height:1}
+.date small{font-size:24px;margin-left:6px}
+.days{display:flex;gap:6px}
+.days a{color:var(--ink);text-decoration:none;background:var(--booked);padding:10px 14px;font-size:16px;min-height:44px;display:inline-flex;align-items:center}
+.note{font-size:16px;color:var(--pencil);margin-bottom:16px}
+.note b{color:var(--ink);background:var(--open);padding:0 6px;font-weight:700}
+.grid{display:grid;grid-template-columns:62px repeat(4,1fr);grid-template-rows:42px repeat(18,28px);gap:3px}
+.seat{font-weight:700;font-size:17px;display:flex;flex-direction:column;justify-content:flex-end;line-height:1.15;padding-bottom:4px}
+.seat small{font-weight:400;font-size:14px;color:var(--pencil)}
+.t{font-variant-numeric:tabular-nums;font-size:15px;color:var(--pencil);text-align:right;padding-right:10px;line-height:1}
+.t.h{color:var(--ink);font-weight:700}
+.c{font-family:"Klee One",serif;font-size:17px;padding:4px 10px;line-height:1.25;overflow:hidden}
+.b{background:var(--booked);color:var(--pencil)}
+.b em{font-style:normal;display:block;font-size:15px}
+.o{background:var(--open);color:var(--ink);font-weight:600;text-decoration:none;display:block}
+.o.short{background:#f5efe6;color:var(--pencil);font-weight:400}
+.x{background:var(--closed);color:var(--pencil)}
+.sel{background:var(--ink);color:var(--paper);font-weight:600;font-size:19px}
+.sel em{font-style:normal;display:block;font-size:15px;font-weight:400}
+.foot{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-top:16px}
+.pick{font-size:18px;font-weight:500}
+.pick b{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+.go{background:var(--ink);color:var(--paper);text-decoration:none;font-weight:700;font-size:18px;padding:16px 28px;min-height:56px;display:inline-flex;align-items:center}
+a:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+.credit{position:fixed;left:64px;bottom:14px;font-size:13px;color:var(--ink)}
+
+@media (max-width:1000px){
+  .page{display:block;padding:0}
+  .shop{padding:22px 18px 0}
+  .where{font-size:14px}
+  .where .seats{display:none}
+  h1{font-size:40px;margin:4px 0 2px}
+  .lead{display:none}
+  .slips{margin-top:14px}
+  .slips h2{display:none}
+  .menu{flex-direction:row;overflow-x:auto;gap:6px;padding-bottom:4px}
+  .menu li{flex:0 0 auto}
+  .menu a{display:flex;gap:8px;padding:10px 14px;font-size:15px;min-height:44px;white-space:nowrap}
+  .menu a .yen{display:none}
+  .menu a[aria-current]{transform:none}
+  .staffwrap{display:none}
+  .book{margin:14px 10px 0;padding:16px 10px 96px;max-width:none;width:auto;box-shadow:none}
+  .bookhead{align-items:center}
+  .pick .yenline{display:none}
+  .date{font-size:28px}
+  .date small{font-size:15px;margin-left:2px}
+  .days a{padding:8px 8px;font-size:14px;white-space:nowrap}
+  .note{font-size:14px;margin:6px 0 10px}
+  .grid{grid-template-columns:42px repeat(4,1fr);grid-template-rows:40px repeat(18,30px);gap:2px;height:392px;overflow:hidden}
+  .seat{font-size:15px}
+  .seat small{font-size:12.5px}
+  .t{font-size:13px;padding-right:5px}
+  .c{font-size:14px;padding:3px 5px}
+  .b em,.sel em{font-size:13px}
+  .sel{font-size:15px}
+  .foot{position:fixed;left:0;right:0;bottom:0;margin:0;padding:12px 18px 16px;background:var(--paper);border-top:3px solid #9c7448}
+  .pick{font-size:14px;line-height:1.35}
+  .pick b{font-size:19px;display:block}
+  .go{font-size:16px;padding:14px 16px;min-height:52px;white-space:nowrap}
+  .credit{display:none}
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <section class="shop">
+    <p class="where">博多・春吉（柳橋から徒歩3分）<span class="seats">　席4つ・スタッフ3人</span></p>
+    <h1>美容室ヤナギ</h1>
+    <p class="lead">お店の予約帳を、そのままお見せしています。空いている枡を押せば、その場で予約が決まります。</p>
+    <div class="slips">
+      <h2>メニュー</h2>
+      <ul class="menu">
+        <li><a href="#"><span>前髪カット</span><span class="len">15分</span><span class="yen">1,100円</span></a></li>
+        <li><a href="#"><span>カット</span><span class="len">60分</span><span class="yen">4,950円</span></a></li>
+        <li><a href="#" aria-current="true"><span>カット＋カラー</span><span class="len">2時間</span><span class="yen">10,450円</span></a></li>
+        <li><a href="#"><span>パーマ</span><span class="len">2時間</span><span class="yen">9,900円</span></a></li>
+        <li><a href="#"><span>トリートメント</span><span class="len">30分</span><span class="yen">3,300円</span></a></li>
+      </ul>
+    </div>
+    <div class="slips staffwrap">
+      <h2>担当</h2>
+      <div class="staff">
+        <a href="#">おまかせ</a><a href="#">中島 さき</a><a href="#" aria-current="true">古賀 りょう</a><a href="#">平田 みお</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="book" aria-label="11月23日の予約帳">
+    <div class="bookhead">
+      <p class="date">11月23日<small>（月・祝）</small></p>
+      <div class="days"><a href="#">← 22日</a><a href="#">24日 →</a></div>
+    </div>
+    <p class="note"><b>色の付いた枡</b>に、カット＋カラー（2時間）が入ります。火曜は定休日。</p>
+    <div class="grid">
+      <div></div>
+      <div class="seat">席1<small>窓ぎわ</small></div>
+      <div class="seat">席2<small>鏡が大きい席</small></div>
+      <div class="seat">席3<small>中ほど</small></div>
+      <div class="seat">席4<small>奥・放置用</small></div>
+
+      <div class="t h" style="grid-row:2">10:00</div>
+      <div class="t" style="grid-row:3">10:30</div>
+      <div class="t h" style="grid-row:4">11:00</div>
+      <div class="t" style="grid-row:5">11:30</div>
+      <div class="t h" style="grid-row:6">12:00</div>
+      <div class="t" style="grid-row:7">12:30</div>
+      <div class="t h" style="grid-row:8">13:00</div>
+      <div class="t" style="grid-row:9">13:30</div>
+      <div class="t h" style="grid-row:10">14:00</div>
+      <div class="t" style="grid-row:11">14:30</div>
+      <div class="t h" style="grid-row:12">15:00</div>
+      <div class="t" style="grid-row:13">15:30</div>
+      <div class="t h" style="grid-row:14">16:00</div>
+      <div class="t" style="grid-row:15">16:30</div>
+      <div class="t h" style="grid-row:16">17:00</div>
+      <div class="t" style="grid-row:17">17:30</div>
+      <div class="t h" style="grid-row:18">18:00</div>
+      <div class="t" style="grid-row:19">18:30</div>
+
+      <!-- 席1 -->
+      <div class="c b" style="grid-column:2;grid-row:2/4">中島<em>カット</em></div>
+      <div class="c b" style="grid-column:2;grid-row:4/8">中島<em>カット＋カラー</em></div>
+      <div class="c x" style="grid-column:2;grid-row:8/10">お昼</div>
+      <a class="c o short" href="#" style="grid-column:2;grid-row:10/12">空き1時間</a>
+      <div class="c b" style="grid-column:2;grid-row:12/16">古賀<em>パーマ</em></div>
+      <a class="c o" href="#" style="grid-column:2;grid-row:16/20">17:00〜</a>
+      <!-- 席2 -->
+      <a class="c o" href="#" style="grid-column:3;grid-row:2/4">10:00〜</a>
+      <div class="c sel" style="grid-column:3;grid-row:4/8">11:00〜13:00<em>古賀・あなた</em></div>
+      <div class="c b" style="grid-column:3;grid-row:8/10">古賀<em>カット</em></div>
+      <a class="c o" href="#" style="grid-column:3;grid-row:10/14">14:00〜</a>
+      <div class="c b" style="grid-column:3;grid-row:14/17">平田<em>カット＋前髪</em></div>
+      <a class="c o short" href="#" style="grid-column:3;grid-row:17/20">空き1時間半</a>
+      <!-- 席3 -->
+      <div class="c b" style="grid-column:4;grid-row:2/6">平田<em>カット＋カラー</em></div>
+      <a class="c o" href="#" style="grid-column:4;grid-row:6/10">12:00〜</a>
+      <div class="c b" style="grid-column:4;grid-row:10/12">平田<em>カット</em></div>
+      <a class="c o" href="#" style="grid-column:4;grid-row:12/20">15:00〜</a>
+      <!-- 席4 -->
+      <a class="c o short" href="#" style="grid-column:5;grid-row:2/4">空き1時間</a>
+      <div class="c b" style="grid-column:5;grid-row:4/6">放置<em>席1のお客さん</em></div>
+      <div class="c b" style="grid-column:5;grid-row:6/8">放置<em>席3のお客さん</em></div>
+      <a class="c o" href="#" style="grid-column:5;grid-row:8/12">13:00〜</a>
+      <div class="c x" style="grid-column:5;grid-row:12/20">お店が閉じています</div>
+    </div>
+    <div class="foot">
+      <p class="pick"><b>11:00〜13:00</b>席2・古賀<br>カット＋カラー<span class="yenline">　10,450円（お店で払います）</span></p>
+      <a class="go" href="#">この枡で予約する</a>
+    </div>
+  </section>
+</div>
+<p class="credit">木目の写真：Oak Texture（William Warby, CC BY 2.0）</p>
+</body>
+</html>

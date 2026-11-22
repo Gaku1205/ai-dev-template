@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>美容室ヤナギ 4つの席</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --walnut:#4a2f1d;
+  --paper:#ffffff;
+  --ink:#1f1813;
+  --oak:#e6c497;
+  --soft:#d8cfc6;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Zen Kaku Gothic New",system-ui,sans-serif;background:var(--walnut);color:var(--paper);font-size:17px;line-height:1.5}
+.num{font-family:"Familjen Grotesk","Zen Kaku Gothic New",sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.hero{position:relative;height:100svh;min-height:760px;overflow:hidden}
+.hero img.room{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center}
+.rail{position:absolute;left:0;right:0;top:calc(50% - 32px);height:64px;display:flex;align-items:center;gap:40px;padding:0 24px;background:rgba(31,24,19,.62)}
+.rail h1{font-size:34px;font-weight:700;white-space:nowrap;line-height:1}
+.rail h1 span{font-size:17px;font-weight:500;margin-left:12px}
+.rail p{font-size:17px;max-width:40ch;flex:1}
+.rail nav{display:flex;gap:22px;align-items:center;white-space:nowrap}
+.rail nav a{color:var(--paper);font-size:16px}
+.rail nav a.go{background:var(--paper);color:var(--ink);text-decoration:none;font-weight:700;padding:11px 20px;min-height:44px;display:inline-flex;align-items:center}
+.tag{position:absolute;background:var(--paper);color:var(--ink);text-decoration:none;padding:12px 16px 12px;width:auto;min-width:210px;max-width:270px;display:block}
+.tag::after{content:"";position:absolute;left:24px;width:4px;background:var(--paper)}
+.tag.up::after{top:100%;height:var(--stem)}
+.tag.down::after{bottom:100%;height:var(--stem)}
+.tag b{display:flex;align-items:baseline;gap:8px;font-size:18px;font-weight:700}
+.tag b i{font-style:normal;background:var(--oak);color:var(--ink);width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;font-size:17px}
+.tag small{font-size:14px;font-weight:500}
+.tag .when{display:block;font-size:40px;font-weight:600;line-height:1.05;margin-top:4px}
+.tag .who{font-size:15px}
+.tag.full .when{font-size:26px;color:#5b5049}
+.tag:focus-visible,.rail a:focus-visible{outline:3px solid var(--oak);outline-offset:3px}
+.day{position:absolute;right:24px;top:22px;background:var(--paper);color:var(--ink);padding:10px 16px;font-size:16px;font-weight:700}
+.day span{font-weight:500}
+.credit{position:absolute;left:24px;bottom:12px;font-size:13px;color:var(--paper);background:rgba(31,24,19,.62);padding:2px 8px}
+.seats{display:none}
+@media (min-width:1001px){
+  /* positions measured on the 1440×900 crop of the photograph */
+  .t1{left:calc(50% - 520px);top:calc(50% + 70px);--stem:0px}
+  .t2{left:calc(50% - 300px);top:calc(50% - 250px);--stem:120px}
+  .t3{left:calc(50% + 395px);top:calc(50% + 90px);--stem:0px}
+  .t4{left:calc(50% + 250px);top:calc(50% - 300px);--stem:150px}
+}
+@media (max-width:1000px){
+  .hero{height:auto;min-height:0}
+  .photo{position:relative;height:400px;overflow:hidden}
+  .hero img.room{position:absolute;inset:0}
+  .tag{display:none}
+  .pin{position:absolute;background:var(--oak);color:var(--ink);font-weight:700;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:18px;font-family:"Familjen Grotesk",sans-serif}
+  .p1{left:14px;top:270px}.p2{left:92px;top:180px}.p3{right:14px;top:240px}.p4{left:300px;top:158px}
+  .day{top:12px;right:12px;font-size:14px;padding:8px 12px}
+  .rail{position:static;height:auto;display:block;padding:16px 18px 6px;background:var(--walnut)}
+  .rail h1{font-size:30px}
+  .rail h1 span{display:block;margin:6px 0 0;font-size:15px}
+  .rail p,.rail nav{display:none}
+  .credit{display:none}
+  .seats{display:block;list-style:none;padding:6px 12px 0}
+  .seats li a{display:grid;grid-template-columns:40px 1fr auto;align-items:center;gap:12px;color:var(--paper);text-decoration:none;padding:9px 8px;min-height:60px;background:rgba(255,255,255,.07);margin-bottom:6px}
+  .seats i{font-style:normal;background:var(--oak);color:var(--ink);width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-weight:700;font-family:"Familjen Grotesk",sans-serif;font-size:18px}
+  .seats .nm{font-size:16px;font-weight:700;line-height:1.25}
+  .seats .nm small{display:block;font-weight:400;font-size:14px}
+  .seats .when{font-size:30px;font-weight:600}
+  .seats li.full .when{font-size:18px;color:var(--soft)}
+  .book{position:sticky;bottom:0;display:block;margin:6px 12px 12px;background:var(--paper);color:var(--ink);text-align:center;font-weight:700;font-size:17px;padding:15px;text-decoration:none;min-height:54px}
+}
+@media (min-width:1001px){.pin,.book{display:none}}
+</style>
+</head>
+<body>
+<section class="hero">
+  <div class="photo">
+    <img class="room" src="img/hair-salon-arlington-ma.jpg" alt="木の床に椅子が並ぶ美容室の店内" width="1920" height="1080">
+    <p class="day">11月23日（月・祝）<span>の空き</span></p>
+    <span class="pin p1">1</span><span class="pin p2">2</span><span class="pin p3">3</span><span class="pin p4">4</span>
+  </div>
+
+  <a class="tag up t2" href="#"><b><i class="num">2</i>鏡が大きい席</b><span class="when num">11:00</span><span class="who">古賀・カット＋カラーも入ります</span></a>
+  <a class="tag up t4" href="#"><b><i class="num">4</i>奥の席</b><span class="when num">13:00</span><span class="who">中島・カットまで</span></a>
+  <a class="tag down t1" href="#"><b><i class="num">1</i>窓ぎわの席</b><span class="when num">14:00</span><span class="who">中島・1時間だけ空き</span></a>
+  <a class="tag down t3 full" href="#"><b><i class="num">3</i>中ほどの席</b><span class="when num">15:00から</span><span class="who">平田・カラーの放置中</span></a>
+
+  <div class="rail">
+    <h1>美容室ヤナギ<span>博多・春吉の4席の美容室</span></h1>
+    <p>椅子の札は、その席がいちばん早く空く時間。押すと、その席の1日が開きます。</p>
+    <nav><a href="#">メニューと料金</a><a href="#">地図</a><a class="go" href="#">予約する</a></nav>
+  </div>
+
+  <ul class="seats">
+    <li><a href="#"><i>2</i><span class="nm">鏡が大きい席<small>古賀・カット＋カラーも入ります</small></span><span class="when num">11:00</span></a></li>
+    <li><a href="#"><i>4</i><span class="nm">奥の席<small>中島・カットまで</small></span><span class="when num">13:00</span></a></li>
+    <li><a href="#"><i>1</i><span class="nm">窓ぎわの席<small>中島・1時間だけ空き</small></span><span class="when num">14:00</span></a></li>
+    <li class="full"><a href="#"><i>3</i><span class="nm">中ほどの席<small>平田・カラーの放置中</small></span><span class="when num">15:00から</span></a></li>
+  </ul>
+  <a class="book" href="#">いちばん早い 11:00 で予約する</a>
+  <p class="credit">店内の写真：Hair salon - Arlington, MA（Daderot, CC0）</p>
+</section>
+</body>
+</html>

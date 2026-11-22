@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>美容室ヤナギ 予約 — カット＋カラー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ground:#f4f4f2; --surface:#ffffff; --border:#e9e5e0; --text:#1c1916; --muted:#5f5850;
+  --accent:#8b5a2b; --accent-soft:#f6efe7; --accent-track:#ead9c4; --accent-ink:#5a3818;
+  --busy:#e8e4df; --busy-ink:#4a443e;
+  --naka:#e1eee4; --koga:#e0e9f4; --hira:#f4e2e5;
+  --radius:6px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"DM Sans","Zen Kaku Gothic New",system-ui,sans-serif;background:var(--ground);color:var(--text);font-size:15px;line-height:1.5}
+.n{font-variant-numeric:tabular-nums}
+a{color:inherit}
+a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* shell: 230 sidebar + top bar 64 */
+.top{height:64px;display:flex;align-items:center;gap:24px;padding:0 29px 0 20px;background:#eaeae7}
+.mark{display:grid;grid-template-columns:repeat(2,11px);gap:3px}
+.mark i{width:11px;height:11px;background:var(--accent);border-radius:2px}
+.mark i:nth-child(4){background:var(--accent-track)}
+.brand{display:flex;align-items:center;gap:12px;width:210px;font-weight:700;font-size:16px}
+.brand small{display:block;font-weight:400;font-size:13px;color:var(--muted)}
+.date{display:flex;align-items:center;gap:6px;font-weight:600;font-size:16px}
+.date a{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--radius);text-decoration:none;background:var(--surface)}
+.top .right{margin-left:auto;display:flex;align-items:center;gap:20px;font-size:14px}
+.top .right span{color:var(--muted)}
+.wrap{display:grid;grid-template-columns:230px 1fr;min-height:calc(100svh - 64px)}
+.side{background:#eeeeeb;padding:20px 12px}
+.side h2{font-size:13px;font-weight:600;color:var(--muted);padding:0 10px 8px}
+.menu{list-style:none}
+.menu a{display:block;padding:10px 10px 11px;border-radius:var(--radius);text-decoration:none;margin-bottom:2px}
+.menu a[aria-current]{background:var(--accent-soft);color:var(--accent-ink)}
+.menu .row{display:flex;justify-content:space-between;font-size:15px;font-weight:500}
+.menu .row span:last-child{color:var(--muted);font-weight:400}
+.menu a[aria-current] .row span:last-child{color:var(--accent-ink)}
+.mini{display:flex;gap:2px;height:8px;margin-top:7px}
+.mini b{background:var(--accent);border-radius:2px}
+.mini b.wait{background:var(--accent-track)}
+.mini b.idle{background:transparent}
+.side .hours{margin:22px 10px 0;font-size:13px;color:var(--muted);line-height:1.6}
+.main{padding:24px 29px 28px}
+.title{display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
+h1{font-size:32px;font-weight:700;line-height:1.1}
+h1 span{font-size:18px;font-weight:500;color:var(--muted);margin-left:12px}
+.finding{font-size:16px;margin-top:8px;max-width:62ch}
+.finding b{color:var(--accent-ink)}
+.primary{background:var(--accent);color:#fff;border:0;border-radius:var(--radius);font:600 15px/1 "DM Sans","Zen Kaku Gothic New",sans-serif;padding:0 20px;height:44px;display:inline-flex;align-items:center;text-decoration:none;white-space:nowrap}
+/* the shape */
+.shape{margin-top:28px;display:grid;grid-template-columns:30fr 30fr 60fr;gap:4px;height:196px}
+.seg{border-radius:var(--radius);padding:18px 20px;display:flex;flex-direction:column;justify-content:space-between;background:var(--accent);color:#fff}
+.seg.wait{background:var(--accent-track);color:var(--accent-ink)}
+.seg b{font-size:64px;font-weight:600;line-height:1;letter-spacing:-.02em}
+.seg b small{font-size:20px;font-weight:500;margin-left:3px}
+.seg span{font-size:17px;font-weight:500}
+.axis{display:grid;grid-template-columns:30fr 30fr 60fr;gap:4px;font-size:13px;color:var(--muted);margin-top:6px}
+/* the day */
+.dayhead{display:flex;align-items:baseline;justify-content:space-between;margin-top:36px}
+.dayhead h2{font-size:18px;font-weight:600}
+.who{display:flex;gap:6px}
+.who a{text-decoration:none;font-size:14px;padding:6px 12px;border-radius:999px;background:var(--surface);min-height:34px;display:inline-flex;align-items:center}
+.who a[aria-current]{background:var(--accent-track);color:var(--accent-ink);font-weight:600}
+.lanes{margin-top:12px;display:grid;grid-template-columns:120px 1fr;row-gap:8px}
+.hours-axis{grid-column:2;position:relative;height:18px;font-size:13px;color:var(--muted)}
+.hours-axis span{position:absolute;transform:translateX(-50%)}
+.hours-axis span:first-child{transform:none}
+.person{display:flex;align-items:center;gap:10px;font-weight:600;font-size:15px}
+.person i{font-style:normal;width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:14px;color:var(--text)}
+.lane{position:relative;height:68px;background:var(--surface);border-radius:var(--radius)}
+.bar{position:absolute;top:6px;bottom:6px;border-radius:4px;background:var(--busy);color:var(--busy-ink);font-size:14px;padding:0 7px;display:flex;align-items:center;white-space:nowrap;overflow:hidden}
+.bar.gap{background:#f3f1ee}
+.bar.lunch{background:#f1efec;color:var(--muted)}
+.bar.pick{background:var(--accent);color:#fff;font-weight:600}
+.bar.pick.gap{background:var(--accent-track);color:var(--accent-ink)}
+.bar.can{background:var(--accent-soft);color:var(--accent-ink);font-weight:600;text-decoration:none}
+.times{margin-top:28px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.times h3{font-size:15px;font-weight:600;margin-right:6px}
+.times a{text-decoration:none;background:var(--surface);border-radius:var(--radius);padding:8px 12px;min-height:44px;display:inline-flex;align-items:center;gap:8px;font-size:15px}
+.times a b{font-size:17px;font-weight:600}
+.times a[aria-current]{background:var(--accent-track);color:var(--accent-ink)}
+.times a .note{font-size:13px;color:var(--muted)}
+.mobile-only{display:none}
+@media (max-width:700px){
+  .top{height:52px;padding:0 16px;gap:10px}
+  .brand{width:auto;font-size:15px}
+  .date{display:none}
+  .top .right span{display:none}
+  .wrap{display:block}
+  .side{background:none;padding:10px 0 0}
+  .side h2,.side .hours{display:none}
+  .menu{display:flex;gap:6px;overflow-x:auto;padding:0 16px 4px}
+  .menu li{flex:0 0 auto}
+  .menu a{background:var(--surface);padding:8px 12px;min-width:118px}
+  .menu a[aria-current]{background:var(--accent-soft)}
+  .menu .row{display:block;font-size:14px}
+  .menu .row span:last-child{display:none}
+  .main{padding:14px 16px 100px}
+  .title{display:block}
+  h1{font-size:26px}
+  h1 span{display:block;margin:4px 0 0;font-size:15px}
+  .title .primary{display:none}
+  .finding{font-size:14.5px}
+  .shape{height:100px;margin-top:14px}
+  .seg{padding:10px 10px}
+  .seg b small{font-size:13px}
+  .seg span{font-size:13px;line-height:1.3}
+  .seg .long{display:none}
+  .seg b{font-size:30px}
+  .who a{white-space:nowrap}
+
+  .axis{font-size:12px}
+  .dayhead{margin-top:20px;display:block}
+  .who{margin-top:8px;overflow-x:auto}
+  .lanes{display:none}
+  .times{display:block;margin-top:12px}
+  .times h3{display:none}
+  .times a{display:flex;justify-content:space-between;margin-bottom:6px;min-height:52px;padding:8px 12px}
+  .times a b{font-size:20px}
+  .times a.more{display:none}
+  .mobile-only{display:flex;position:fixed;left:0;right:0;bottom:0;padding:10px 16px 14px;background:#eaeae7}
+  .mobile-only .primary{width:100%;justify-content:center;height:52px;font-size:16px}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>美容室ヤナギ<small>博多・春吉</small></span></div>
+  <div class="date"><a href="#" aria-label="前の日">‹</a><span>11月23日（月・祝）</span><a href="#" aria-label="次の日">›</a></div>
+  <div class="right"><span>施術中は電話に出られません</span><a href="#">予約の確認・取り消し</a></div>
+</header>
+<div class="wrap">
+  <aside class="side">
+    <h2>メニュー</h2>
+    <ul class="menu">
+      <li><a href="#"><span class="row"><span>前髪カット</span><span class="n">1,100円</span></span><span class="mini"><b style="flex:15"></b><b class="idle" style="flex:105"></b></span></a></li>
+      <li><a href="#"><span class="row"><span>カット</span><span class="n">4,950円</span></span><span class="mini"><b style="flex:60"></b><b class="idle" style="flex:60"></b></span></a></li>
+      <li><a href="#" aria-current="true"><span class="row"><span>カット＋カラー</span><span class="n">10,450円</span></span><span class="mini"><b style="flex:30"></b><b class="wait" style="flex:30"></b><b style="flex:60"></b></span></a></li>
+      <li><a href="#"><span class="row"><span>白髪ぼかし</span><span class="n">7,700円</span></span><span class="mini"><b style="flex:20"></b><b class="wait" style="flex:25"></b><b style="flex:45"></b><b class="idle" style="flex:30"></b></span></a></li>
+      <li><a href="#"><span class="row"><span>パーマ</span><span class="n">9,900円</span></span><span class="mini"><b style="flex:40"></b><b class="wait" style="flex:20"></b><b style="flex:60"></b></span></a></li>
+      <li><a href="#"><span class="row"><span>トリートメント</span><span class="n">3,300円</span></span><span class="mini"><b style="flex:10"></b><b class="wait" style="flex:10"></b><b style="flex:10"></b><b class="idle" style="flex:90"></b></span></a></li>
+    </ul>
+    <p class="hours">10:00〜19:00（最終受付 17:00）<br>火曜定休・お支払いはお店で</p>
+  </aside>
+  <main class="main">
+    <div class="title">
+      <div>
+        <h1>カット＋カラー<span class="n">2時間・10,450円</span></h1>
+        <p class="finding">塗ったあとの<b>30分は放置</b>。そのあいだ担当の手が空くので、ほかの人の前髪カットと重ねて入れられます。だから今日も<b>6つの時間</b>が選べます。</p>
+      </div>
+      <a class="primary" href="#">11:00 古賀で予約する</a>
+    </div>
+
+    <div class="shape" aria-label="カット＋カラーの時間の形">
+      <div class="seg"><b class="n">30<small>分</small></b><span>相談・塗る</span></div>
+      <div class="seg wait"><b class="n">30<small>分</small></b><span>放置<span class="long">（担当の手が空く）</span></span></div>
+      <div class="seg"><b class="n">60<small>分</small></b><span>流す・切る・乾かす</span></div>
+    </div>
+    <div class="axis n"><span>11:00</span><span>11:30</span><span>12:00〜13:00</span></div>
+
+    <div class="dayhead">
+      <h2>11月23日、この形が入る所</h2>
+      <div class="who"><a href="#">おまかせ</a><a href="#">中島 さき</a><a href="#" aria-current="true">古賀 りょう</a><a href="#">平田 みお</a></div>
+    </div>
+    <div class="lanes">
+      <div></div>
+      <div class="hours-axis n"><span style="left:0">10:00</span><span style="left:22.22%">12:00</span><span style="left:44.44%">14:00</span><span style="left:66.67%">16:00</span><span style="left:88.89%">18:00</span></div>
+
+      <div class="person"><i style="background:var(--naka)">中</i>中島 さき</div>
+      <div class="lane">
+        <span class="bar" style="left:0;width:11.11%">カット</span>
+        <span class="bar" style="left:11.11%;width:11.11%">カット</span>
+        <span class="bar lunch" style="left:22.22%;width:11.11%">お昼</span>
+        <a class="bar can" href="#" style="left:33.33%;width:22.22%">13:00〜</a>
+        <span class="bar" style="left:38.89%;width:4.4%;padding:0 4px" title="前髪カット 13:30〜13:45">前髪</span>
+        <span class="bar" style="left:55.56%;width:22.22%">パーマ</span>
+        <a class="bar can" href="#" style="left:77.78%;width:22.22%">17:00〜</a>
+      </div>
+
+      <div class="person"><i style="background:var(--koga)">古</i>古賀 りょう</div>
+      <div class="lane">
+        <a class="bar can" href="#" style="left:0;width:11.11%">10:00〜</a>
+        <span class="bar pick" style="left:11.11%;width:5.56%">11:00</span>
+        <span class="bar pick gap" style="left:16.67%;width:5.56%">放置</span>
+        <span class="bar pick" style="left:22.22%;width:11.11%">あなた</span>
+        <span class="bar" style="left:33.33%;width:11.11%">カット</span>
+        <span class="bar lunch" style="left:44.44%;width:11.11%">お昼</span>
+        <span class="bar" style="left:55.56%;width:22.22%">パーマ</span>
+        <a class="bar can" href="#" style="left:77.78%;width:22.22%">17:00〜</a>
+      </div>
+
+      <div class="person"><i style="background:var(--hira)">平</i>平田 みお</div>
+      <div class="lane">
+        <span class="bar" style="left:0;width:5.56%">塗る</span>
+        <span class="bar gap" style="left:5.56%;width:5.56%">放置</span>
+        <span class="bar" style="left:11.11%;width:11.11%">流す・切る</span>
+        <span class="bar lunch" style="left:27.78%;width:11.11%">お昼</span>
+        <span class="bar" style="left:38.89%;width:11.11%">カット</span>
+        <span class="bar" style="left:50%;width:11.11%">カット</span>
+        <a class="bar can" href="#" style="left:61.11%;width:22.22%">15:30〜</a>
+        <span class="bar lunch" style="left:83.33%;width:16.67%">早上がり</span>
+      </div>
+    </div>
+
+    <div class="times">
+      <h3>選べる時間</h3>
+      <a href="#"><b class="n">10:00</b>古賀</a>
+      <a href="#" aria-current="true"><b class="n">11:00</b>古賀</a>
+      <a href="#"><b class="n">13:00</b>中島<span class="note">放置中に前髪カット</span></a>
+      <a href="#"><b class="n">15:30</b>平田</a>
+      <a href="#"><b class="n">17:00</b>古賀</a>
+      <a href="#" class="more"><b class="n">17:00</b>中島</a>
+    </div>
+  </main>
+</div>
+<div class="mobile-only"><a class="primary" href="#">11:00 古賀で予約する</a></div>
+</body>
+</html>
