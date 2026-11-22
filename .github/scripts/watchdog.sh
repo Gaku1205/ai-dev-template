@@ -967,8 +967,8 @@ done <<< "$open_items"
 # 閉じた物（直近7日に閉じた物だけ）に、ai:stuck・ai:retry・ai:queue・ai:plan・ai:question などが残っている
 since=$(date -u -d "7 days ago" +%Y-%m-%dT%H:%M:%SZ)
 closed_items=$(gh api "repos/$REPO/issues?state=closed&since=${since}&per_page=100" --paginate \
-  -q ".[] | select(.closed_at != null and .closed_at >= \"$since\") | [.number, ([.labels[].name] | join(\",\"))] | @tsv")
-while IFS=$'\t' read -r n labels; do
+  -q ".[] | select(.closed_at != null and .closed_at >= \"$since\") | [.number, ([.labels[].name] | join(\",\")), (.state_reason // \"\")] | @tsv")
+while IFS=$'\t' read -r n labels reason; do
   [ -z "$n" ] && continue
   [ "$fixed" -ge 20 ] && break
   stale=()
@@ -976,6 +976,13 @@ while IFS=$'\t' read -r n labels; do
     case ",$labels," in *,"$l",*) stale+=("$l") ;; esac
   done
   [ "${#stale[@]}" -eq 0 ] && continue
+  # 閉じた理由が completed で、残りが ai:implement だけ：いつもの終わり方の取りこぼしなので、コメントせずに黙って外す
+  if [ "$reason" = completed ] && [ "${#stale[@]}" -eq 1 ] && [ "${stale[0]}" = ai:implement ]; then
+    remove_label "$n" ai:implement
+    echo "#$n：閉じているのに残っていた ai:implement を、コメント無しで外しました"
+    fixed=$(( fixed + 1 ))
+    continue
+  fi
   fix_labels "$n" "閉じているのに ${stale[*]} が残っていたので、外しました" "${stale[@]}"
 done <<< "$closed_items"
 

@@ -227,6 +227,8 @@ merge_or_handle "$pr" "$HEAD_SHA" merge || exit 0
 park_issue_after_human_request_merge "$pr" || true
 # 一部だけ直したPR（Refs #N）なら、Issue を残りつきで順番待ちに戻す（『人間にお願いしたいこと』のPRと Closes のPRでは何もしない）
 requeue_issue_after_partial_merge "$pr" || true
+# Closes のPRなら、閉じる Issue から ai:implement などを外す（見張り役にコメント付きで外させない）
+release_issue_after_closes_merge "$pr" || true
 notify merged "マージしました" "PR #${pr} ${title}：CIもレビューもOKだったので自動でマージしました" 2
 # 使い終わったブランチを消す（リポジトリの「Automatically delete head branches」が先に消していても構わない）
 delete_branch_if_ai "$HEAD_BRANCH"

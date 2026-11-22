@@ -11,5 +11,7 @@ if [ "${GITHUB_EVENT_NAME:-}" = pull_request_target ] && [ -f "${GITHUB_EVENT_PA
   [ -z "$merged_pr" ] || park_issue_after_human_request_merge "$merged_pr" || true
   # 人間がマージした、一部だけ直したPR（Refs #N）：Issue を残りつきで順番待ちに戻す
   [ -z "$merged_pr" ] || requeue_issue_after_partial_merge "$merged_pr" || true
+  # 人間がマージした Closes のPR：閉じる Issue から ai:implement などを外す
+  [ -z "$merged_pr" ] || release_issue_after_closes_merge "$merged_pr" || true
 fi
 start_next_in_queue || { echo "::error::順番待ちを進められませんでした（トークンの権限を確認してください）"; exit 1; }
