@@ -377,6 +377,24 @@ park_issue_after_human_request_merge() {
   echo "PR #${pr}：マージされたので、#${issue} は人間が閉じるまで ai:skip で待たせます"
 }
 
+# Closes/Fixes/Resolves #N のPRがマージされたら、Issue #N から進行ラベル ai:implement（と残っていれば ai:retry・ai:review）を外す。
+# いつもの終わり方なので、コメントは付けない。外せなくても何も変えない（見張り役の 3.9 が取りこぼしを拾う）。
+# マージされていないPR・『人間にお願いしたいこと』のPR（park_issue_after_human_request_merge が扱う）・Closes の無いPRでは何もしない。何度呼んでも同じ。
+# 使い方：release_issue_after_closes_merge PR番号
+release_issue_after_closes_merge() {
+  local pr="$1" pr_json body issue l
+  pr_json=$(gh api "repos/$REPO/pulls/$pr") || return 0
+  [ -n "$(printf '%s' "$pr_json" | jq -r '.merged_at // empty')" ] || return 0
+  body=$(printf '%s' "$pr_json" | jq -r '.body // ""')
+  grep -qE "$HUMAN_REQUEST_HEADING_RE" <<< "$body" && return 0
+  for issue in $(printf '%s' "$body" | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' | grep -oE '[0-9]+' | sort -u || true); do
+    for l in ai:implement ai:retry ai:review; do
+      if has_label "$issue" "$l"; then remove_label "$issue" "$l"; fi
+    done
+  done
+  return 0
+}
+
 # Issue の一部だけを直したPR（本文に Refs #N があり、Closes/Fixes/Resolves #N が無い）がマージされたら、
 # Issue #N に「残り」を書いて、ai:implement・ai:retry を外し、ai:queue で順番待ちに戻す（同じ Issue の続きを次の実装AIがやる）。
 # 残りは、PRの説明の受け入れ条件のうち、チェックの付いていない行（- [ ]）。取れなければ「PR の説明を見て続ける」。

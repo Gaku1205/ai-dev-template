@@ -48,6 +48,16 @@ run_script watchdog.sh > /dev/null
 assert_eq "直近に閉じた物から外れる" "size:S" "$(labels_of 5)"
 assert_eq "7日より前に閉じた物は触らない" "ai:implement" "$(labels_of 6)"
 
+echo "== 閉じた理由が completed で ai:implement だけ残った Issue は、コメント無しで外す"
+init_state '{"labels":{"5":["ai:implement","size:S"],"6":["ai:implement","ai:stuck"],"7":["ai:implement"]},"issues_meta":{"5":{"state":"closed","closed_at":"'"$recent"'","state_reason":"completed"},"6":{"state":"closed","closed_at":"'"$recent"'","state_reason":"completed"},"7":{"state":"closed","closed_at":"'"$recent"'","state_reason":"not_planned"}}}'
+run_script watchdog.sh > /dev/null
+assert_eq "ai:implement が外れる" "size:S" "$(labels_of 5)"
+assert_eq "コメントしない" "" "$(comments_of 5)"
+assert_eq "ai:stuck も残っているときは両方外れる" "" "$(labels_of 6)"
+assert_contains "ほかのラベルが残っていたら今までどおりコメントする" "$(comments_of 6)" "閉じているのに"
+assert_eq "completed 以外の理由は今までどおり外れる" "" "$(labels_of 7)"
+assert_contains "completed 以外はコメントする" "$(comments_of 7)" "閉じているのに"
+
 echo "== 閉じた Issue に残った ai:plan・ai:question も外れる（古い物は触らない）"
 init_state '{"labels":{"5":["ai:plan","size:S"],"6":["ai:question"],"7":["ai:question"]},"issues_meta":{"5":{"state":"closed","closed_at":"'"$recent"'"},"6":{"state":"closed","closed_at":"'"$recent"'"},"7":{"state":"closed","closed_at":"'"$old"'"}}}'
 run_script watchdog.sh > /dev/null
