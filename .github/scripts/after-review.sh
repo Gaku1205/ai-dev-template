@@ -61,7 +61,7 @@ inline_json=$(gh api "repos/$REPO/pulls/$pr/comments?per_page=100" --paginate --
   | jq --arg sha "$HEAD_SHA" --arg cut "$cutoff" 'add // [] | map(select(.user.login == "claude[bot]" and .original_commit_id == $sha and .created_at > $cut))')
 inline=$(printf '%s' "$inline_json" | jq 'length')
 
-if [ "$inline" -gt 0 ] || { [ -n "$review" ] && ! printf '%s' "$review" | grep -q "No issues found"; }; then
+if [ "$inline" -gt 0 ] || { [ -n "$review" ] && ! grep -q "No issues found" <<< "$review"; }; then
   # CI と同時に動くので、CIが落ちて先に直すよう頼んであることがある（二重に頼まない。直した push のあとに、もう一度レビューされる）
   if fix_requested_for "$pr" "$HEAD_SHA"; then
     echo "PR #$pr：レビューに指摘がありましたが、このコミットにはもう直すよう頼んであるので、重ねて頼みません"
@@ -102,7 +102,7 @@ fi
 # 結果のコメントを書かずに終わる。そのときは、指摘なしとして進める。
 # 「文字で読めない」＝差分（patch）が無く、変更の行数も 0。大きすぎて patch が省かれた文字のファイルは、行数があるので含めない
 if [ -z "$review" ]; then
-  if kinds=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate     -q '.[] | if (.patch == null and (.changes // 0) == 0) then "binary" else "text" end')     && [ -n "$kinds" ] && ! printf '%s\n' "$kinds" | grep -q '^text$'; then
+  if kinds=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate     -q '.[] | if (.patch == null and (.changes // 0) == 0) then "binary" else "text" end')     && [ -n "$kinds" ] && ! grep -q '^text$' <<< "$kinds"; then
     comment "$pr" "画像など、文字で読めない変更だけなので、レビューする差分がありません。指摘なしとして進めます。" || true
     review="No issues found"
     status_desc="画像など文字で読めない変更だけなので、レビューする差分がありません"
@@ -113,7 +113,7 @@ fi
 # main と同じ内容でないと、何もせず成功で終わる）。やり直しても同じなので、やり直さず、すぐ人間のマージ待ち（ai:hold）にする
 # （今までは、30分おきに2回やり直してから「結果のコメントが見つかりません」で人間に回していた）
 pr_changes_review_wf=no
-if [ -z "$review" ] && gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null | grep -qx '.github/workflows/claude-review.yml'; then
+if [ -z "$review" ] && grep -qx '.github/workflows/claude-review.yml' <<< "$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null)"; then
   pr_changes_review_wf=yes
 fi
 # PRは claude-review.yml を変えていないのに、先頭の版が main と違う＝枝が古いだけ（main 側でワークフローが変わったあと、古い枝のまま残っている）。
@@ -182,7 +182,7 @@ fi
 # まだ終わっていないだけなら、少しだけ待つ（レビューのほうが先に終わった、など）
 ext=$(printf '%s' "$checks" | external_check_runs_not_ok)
 tries=0
-while [ -n "$ext" ] && ! printf '%s\n' "$ext" | cut -f3 | grep -qx failed && [ "$tries" -lt "${EXTERNAL_CHECK_WAIT_TRIES:-3}" ]; do
+while [ -n "$ext" ] && ! grep -qx failed <<< "$(cut -f3 <<< "$ext")" && [ "$tries" -lt "${EXTERNAL_CHECK_WAIT_TRIES:-3}" ]; do
   tries=$((tries + 1))
   sleep "${EXTERNAL_CHECK_WAIT_SEC:-20}"
   checks=$(read_api "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" -q '[.check_runs[] | select(.name != "review")]') || break
@@ -210,7 +210,7 @@ if grep -q 'pipeline-self-edit: auto' "${CLAUDE_MD:-$(dirname "$0")/../../CLAUDE
   # 2段の判定：CLAUDE.md が AI に触ってよいとする物（.github/scripts/・docs/pipeline.md・README.md）を除き、残りにパイプラインの物があれば人間に回す
   files=$(printf '%s\n' "$files" | grep -vE '^(\.github/scripts/|docs/pipeline\.md$|README\.md$)' || true)
 fi
-if printf '%s\n' "$files" | grep -qE "$hold_pattern"; then
+if grep -qE "$hold_pattern" <<< "$files"; then
   # ai:hold を付けておく（画面で「マージ待ち（人間）」と分かる。人間がマージするまで、自動ではマージされない）
   has_label "$pr" "ai:hold" || add_label "$pr" "ai:hold" || true
   notify hold "マージできます" "PR #${pr} ${title}：CIもレビューもOK。パイプライン自体を変えるPRなので、マージはあなたが押してください" 4

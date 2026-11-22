@@ -145,7 +145,7 @@ for pr in $prs; do
               fi
               stop_for_human "$pr" "PRと関係ない所（パイプライン側）のテスト（${others}）が落ちています。やり直しても同じで、AIは \`.github/\` を直せないので止めました。${issue_note}直ったら CI をやり直してから ai:stuck を外してください（見た目のテストは、そのあと自動で撮り直します）${denied_note}"
             # 2. 見た目以外の本当の失敗：見た目以外だけを直させる（直す回数に数える）。同じ依頼をしたのにまた変更なしなら、人間に回す
-            elif printf '%s' "$last" | jq -r .body | grep -qF "$VISUAL_OTHERS_MARK"; then
+            elif grep -qF "$VISUAL_OTHERS_MARK" <<< "$(jq -r .body <<< "$last")"; then
               stop_for_human "$pr" "見た目以外の失敗（${others}）だけを直すよう頼みましたが、変更が入りませんでした（AIのコメントを確認してください）${denied_note}"
             else
               request_fix_or_stop "$pr" "$head" "基準の画像の撮り直しは、あとでパイプラインが自動で行います。見た目のテストの画像の差は気にしなくていいです。見た目以外の失敗（${others}）だけを、失敗したチェックのログを読んで直してください。基準の画像は自分で撮り直さないでください。
@@ -179,11 +179,11 @@ ${VISUAL_MARK}"
             last_body=$(printf '%s' "$last" | jq -r .body)
             request=$(printf '%s' "$last_body" | sed -e '/^<!--/d' -e '/^（前回は/d')
             model_mark=""
-            if printf '%s' "$last_body" | grep -q 'auto-fix-model: opus'; then
+            if grep -q 'auto-fix-model: opus' <<< "$last_body"; then
               model_mark="
 <!-- auto-fix-model: opus -->"
             fi
-            if printf '%s' "$last_body" | grep -qF "$CONFLICT_KIND_MARK"; then
+            if grep -qF "$CONFLICT_KIND_MARK" <<< "$last_body"; then
               model_mark="${model_mark}
 ${CONFLICT_KIND_MARK}"
             fi

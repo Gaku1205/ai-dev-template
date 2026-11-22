@@ -7,5 +7,5 @@ PIPELINE_PATHS_RE='^(\.github/|\.claude/|docs/pipeline(-setup)?\.md$)'
 
 # 変わったファイルの一覧（1行1つ）が、全部パイプラインの物なら 0。空なら 1（何も変わっていない物は「パイプラインだけ」と言わない）
 pipeline_files_only() { # files
-  [ -n "$1" ] && ! printf '%s\n' "$1" | grep -vqE "$PIPELINE_PATHS_RE"
+  [ -n "$1" ] && ! grep -vqE "$PIPELINE_PATHS_RE" <<< "$1"
 }

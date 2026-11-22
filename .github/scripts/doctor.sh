@@ -45,7 +45,7 @@ is_template_repo()    { [ "$(gh api "repos/$REPO" --jq '.is_template' 2> /dev/nu
 # Fine-grained トークンの期限（GitHub が返事のヘッダーで教えてくれる。期限なしなら空）
 token_expiration()    { GH_TOKEN="${PIPELINE_TOKEN:-}" gh api -i "repos/$REPO" 2> /dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="github-authentication-token-expiration"{print $2; exit}'; }
 # App の鍵では、リポジトリの情報に permissions が付かない。App が入っているリポジトリの一覧に、このリポジトリがあるかで見る
-app_installed_here()  { GH_TOKEN="${PIPELINE_TOKEN:-}" gh api "installation/repositories?per_page=100" --paginate --jq '.repositories[].full_name' 2> /dev/null | grep -qixF "$REPO"; }
+app_installed_here()  { grep -qixF "$REPO" <<< "$(GH_TOKEN="${PIPELINE_TOKEN:-}" gh api "installation/repositories?per_page=100" --paginate --jq '.repositories[].full_name' 2> /dev/null)"; }
 token_can_push()      { GH_TOKEN="${PIPELINE_TOKEN:-}" gh api "repos/$REPO" --jq '.permissions.push' 2>/dev/null; }
 # リポジトリの持ち主の種類（User / Organization。読めなければ空）
 fetch_owner_type()    { gh api "repos/$REPO" --jq '.owner.type // empty' 2> /dev/null; }

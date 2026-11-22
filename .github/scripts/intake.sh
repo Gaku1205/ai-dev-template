@@ -18,7 +18,7 @@ if [ "${ACTION:-opened}" = "opened" ]; then
       *"[bot]")
         # パイプライン自身（App）が、ラベルを付けて作った Issue（使ってみる役・監査役の ai:found など）は、そのまま進める。
         # ボットは Issue の雛形を使わないので、ai: のラベルを付けて作れるのは、このリポジトリに書き込める仕組みだけ
-        if printf '%s\n' "$labels" | grep -q '^ai:'; then
+        if grep -q '^ai:' <<< "$labels"; then
           echo "#$NUMBER：仕組み（$author）がラベルを付けて作った Issue なので、そのまま進めます"
           exit 0
         fi
@@ -27,9 +27,9 @@ if [ "${ACTION:-opened}" = "opened" ]; then
     # 雛形（メモ）から作ると、誰が作っても ai:plan が付く。オーナー以外の Issue では、作業のラベルを外して止める
     # （残すと、AIのアクションが断ったあと、自動のやり直しがパイプラインの鍵で ai:plan を付け直し、他人の Issue を実装してしまう）
     # 先に ai:skip を付ける（ai:skip がある間は、企画のあとの処理も見張り役も動かさない）
-    printf '%s\n' "$labels" | grep -qx "ai:skip" || add_label "$NUMBER" "ai:skip"
+    grep -qx "ai:skip" <<< "$labels" || add_label "$NUMBER" "ai:skip"
     for l in ai:plan ai:implement ai:queue ai:mocks; do
-      if printf '%s\n' "$labels" | grep -qx "$l"; then remove_label "$NUMBER" "$l"; fi
+      if grep -qx "$l" <<< "$labels"; then remove_label "$NUMBER" "$l"; fi
     done
     echo "#$NUMBER：オーナー以外（$author）が作ったので、ai:skip で止めました"
     exit 0
@@ -45,11 +45,11 @@ if [ "${ACTION:-opened}" = "opened" ]; then
       if [ "$(gh api "repos/$REPO" -q .is_template 2> /dev/null)" != "true" ]; then
         labels=$(gh api "repos/$REPO/issues/$NUMBER/labels" -q '.[].name') || exit 1
         # すでに止まっている物には、二重に書かない
-        printf '%s\n' "$labels" | grep -qx "ai:skip" && exit 0
+        grep -qx "ai:skip" <<< "$labels" && exit 0
         # 先に ai:skip を付け、雛形で付いた作業のラベルを外す（残すと企画・実装が動く）
         add_label "$NUMBER" "ai:skip"
         for l in ai:plan ai:implement ai:queue ai:mocks; do
-          if printf '%s\n' "$labels" | grep -qx "$l"; then remove_label "$NUMBER" "$l"; fi
+          if grep -qx "$l" <<< "$labels"; then remove_label "$NUMBER" "$l"; fi
         done
         comment "$NUMBER" "⏸ 「新サービス：」は、このリポジトリの **Template repository** のチェックが入っているときだけ、工場が新しいサービスを作ります（Settings → General → Template repository）。いまはチェックが無いので、企画にも実装にも回さず止めました。
 
