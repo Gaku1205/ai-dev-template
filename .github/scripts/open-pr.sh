@@ -39,7 +39,7 @@ stop_or_retry_no_change() {
   # 「このブランチでは既に直っていた」と返したのに、人間待ちで止まった）。違っていれば、開き直すとまた企画から進む
   # 一部だけ直っている・直せなかった返事は閉じない。打ち消しが300字より後ろにあっても見えるよう、長いほうで見る
   full=$(ai_last_words "${EXECUTION_FILE:-}" 5000)
-  if [ -n "$words" ] && printf '%s' "$full" | grep -qiE "$ALREADY_FIXED_RE" && ! printf '%s' "$full" | grep -qiE "$NOT_FIXED_RE"; then
+  if [ -n "$words" ] && grep -qiE "$ALREADY_FIXED_RE" <<< "$full" && ! grep -qiE "$NOT_FIXED_RE" <<< "$full"; then
     comment "$ISSUE" "✅ 実装AIが確かめたところ、この Issue の不具合・作業は、すでに main に入っていました（ほかのPRで先に直った、など）。変更は要らないので、この Issue を閉じます。
 ${note}（${log}）
 
@@ -144,7 +144,7 @@ if m:
     q = urllib.parse.parse_qs(m.group(0))
     print(q.get("body", [""])[0])
 ')
-if ! printf '%s' "$body" | grep -qiE "(close[sd]?|fix(e[sd])?|resolve[sd]?) #${ISSUE}\b"; then
+if ! grep -qiE "(close[sd]?|fix(e[sd])?|resolve[sd]?) #${ISSUE}\b" <<< "$body"; then
   body="Closes #${ISSUE}
 
 ${body}"

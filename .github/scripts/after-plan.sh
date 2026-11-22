@@ -140,7 +140,7 @@ ${broad_list}
         mine=$(touches_from_body "$(GH_TOKEN="$pipeline_token" gh api "repos/$REPO/issues/$ISSUE" -q '.body // ""' 2> /dev/null || true)")
         if [ -n "$mine" ]; then
           inflight=$(GH_TOKEN="$pipeline_token" inflight_touches) || inflight=unknown
-          if ! printf '%s\n' "$inflight" | grep -qx unknown && paths_overlap "$mine" "$inflight"; then
+          if ! grep -qx unknown <<< "$inflight" && paths_overlap "$mine" "$inflight"; then
             overlap=yes
             echo "#$ISSUE：企画AIは並列でよいと判断しましたが、進行中の作業と触るファイルが重なるので、待ちます"
           fi

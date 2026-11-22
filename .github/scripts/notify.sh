@@ -22,7 +22,7 @@ DEFAULT_EVENTS="stuck,question,hold,manual,deployed,deploy_failed,limit,intake,r
 event="$1"
 shift
 events="${NOTIFY_EVENTS:-$DEFAULT_EVENTS}"
-if ! printf ',%s,' "$events" | tr -d ' ' | grep -q ",${event},"; then
+if ! grep -q ",${event}," <<< "$(printf ',%s,' "$events" | tr -d ' ')"; then
   echo "通知の種類「${event}」は NOTIFY_EVENTS（${events}）に無いので鳴らしません"
   exit 0
 fi

@@ -388,7 +388,7 @@ pushed=yes
 note "✅ CLAUDE.md・仕様書・README に説明を書いて push した（Bootstrap が動く）"
 # 公開先に github-pages があるときは、Pages を有効にする（Source を GitHub Actions に）。
 # ワークフローのトークンでは有効にできない（管理の権限が要る）ので、リポジトリを作った鍵（FACTORY_TOKEN）でここで行う
-if STACK_FILE="$work/app/pipeline.json" bash -c 'source "$1/stack.sh"; stack_deploy_kinds' _ "$HERE" | grep -qx github-pages; then
+if grep -qx github-pages <<< "$(STACK_FILE="$work/app/pipeline.json" bash -c 'source "$1/stack.sh"; stack_deploy_kinds' _ "$HERE")"; then
   if pages_out=$(gh api -X POST "repos/$NEW/pages" -f build_type=workflow 2>&1); then
     note "✅ GitHub Pages を有効にした（Source は GitHub Actions）"
   elif grep -qE '409|already' <<< "$pages_out"; then
@@ -471,7 +471,7 @@ fi
 # ---- 6. 最初のIssue ----
 labels=no
 for _ in $(seq 1 36); do
-  if gh api "repos/$NEW/labels?per_page=100" -q '.[].name' 2> /dev/null | grep -qx "ai:plan"; then labels=yes; break; fi
+  if grep -qx "ai:plan" <<< "$(gh api "repos/$NEW/labels?per_page=100" -q '.[].name' 2> /dev/null)"; then labels=yes; break; fi
   sleep "$WAIT"
 done
 [ "$labels" = yes ] || note "⚠️ Bootstrap のラベルがまだできていません（Actions の Bootstrap を見る）。Issue は先に作ります"

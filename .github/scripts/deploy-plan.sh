@@ -48,14 +48,14 @@ skip=""
 if [ "${GITHUB_EVENT_NAME:-}" != workflow_dispatch ] && pipeline_only "$changed"; then
   skip="パイプラインの更新だけのコミットなので公開しません"
   # ここで動かす公開先（Vercel 以外）があるときだけ調べる
-  if printf '%s\n' "$kinds" | grep -qxE 'aws-apprunner|github-release|expo|github-pages|supabase' &&
+  if grep -qxE 'aws-apprunner|github-release|expo|github-pages|supabase' <<< "$kinds" &&
     since=$(changed_since_last_deploy) && [ -n "$since" ] && ! pipeline_only "$since"; then
     skip=""
     echo "::notice::このコミットはパイプラインの更新だけですが、前のアプリの変更がまだ公開されていないので、ここで公開します"
   fi
 fi
 
-has() { [ -z "$skip" ] && printf '%s\n' "$kinds" | grep -qx "$1" && echo true || echo false; }
+has() { [ -z "$skip" ] && grep -qx "$1" <<< "$kinds" && echo true || echo false; }
 {
   echo "apprunner=$(has aws-apprunner)"
   echo "release=$(has github-release)"

@@ -36,7 +36,7 @@ clear_sync_targets() {
 
 is_template_repo() { [ "$(gh api "repos/$REPO" --jq '.is_template' 2> /dev/null)" = true ]; }
 
-has_label() { gh api "repos/$REPO/labels?per_page=100" --paginate --jq '.[].name' | grep -qxF "ai:plan"; }
+has_label() { grep -qxF "ai:plan" <<< "$(gh api "repos/$REPO/labels?per_page=100" --paginate --jq '.[].name')"; }
 
 main() {
   REPO="${REPO:?REPO を指定}"

@@ -410,12 +410,12 @@ ${MOCKS_RETRY_MARK}"
       last_request=$(all_comments "$n" | jq -r 'map(select(.body | test("<!-- auto-fix(-retry)? -->"))) | last | .body // ""')
       request=$(printf '%s' "$last_request" | sed -e '/^<!--/d' -e '/^（前回は応答がなかったので/d')
       model_mark=""
-      if printf '%s' "$last_request" | grep -q 'auto-fix-model: opus'; then
+      if grep -q 'auto-fix-model: opus' <<< "$last_request"; then
         model_mark="
 <!-- auto-fix-model: opus -->"
       fi
       # コンフリクトの解消の依頼なら、種類の印も残す（やり直しはどちらの回数にも数えないが、何の依頼かを残す）
-      if printf '%s' "$last_request" | grep -qF "$CONFLICT_KIND_MARK"; then
+      if grep -qF "$CONFLICT_KIND_MARK" <<< "$last_request"; then
         model_mark="${model_mark}
 ${CONFLICT_KIND_MARK}"
       fi

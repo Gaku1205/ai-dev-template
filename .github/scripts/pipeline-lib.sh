@@ -325,7 +325,7 @@ HUMAN_REQUEST_HEADING_RE='^###? 人間にお願いしたいこと'
 defer_close_for_human_request() {
   local pr="$1" body section issue new_body mark url
   body=$(gh api "repos/$REPO/pulls/$pr" -q '.body // ""') || return 0
-  printf '%s\n' "$body" | grep -qE "$HUMAN_REQUEST_HEADING_RE" || return 0
+  grep -qE "$HUMAN_REQUEST_HEADING_RE" <<< "$body" || return 0
   # 節：見出しから、次の見出しか区切り線（---）の手前まで
   section=$(printf '%s\n' "$body" | awk -v re="$HUMAN_REQUEST_HEADING_RE" '
     f && (/^#+ / || /^---[ \t]*$/) { exit }
@@ -334,7 +334,7 @@ defer_close_for_human_request() {
   issue=$(printf '%s' "$body" | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?|refs) #[0-9]+' | head -1 | grep -oE '[0-9]+' || true)
   [ -z "$issue" ] && issue=$(linked_issue "$pr")
   [ -z "$issue" ] && return 0
-  if printf '%s' "$body" | grep -qiE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+'; then
+  if grep -qiE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' <<< "$body"; then
     new_body=$(printf '%s' "$body" | sed -E 's/\b(close[sd]?|fix(e[sd])?|resolve[sd]?) #([0-9]+)/Refs #\3/gI') || return 0
     [ -n "$new_body" ] || return 0
     gh api -X PATCH "repos/$REPO/pulls/$pr" -f body="$new_body" > /dev/null || return 0
@@ -389,8 +389,8 @@ requeue_issue_after_partial_merge() {
   pr_json=$(gh api "repos/$REPO/pulls/$pr") || return 1
   [ -n "$(printf '%s' "$pr_json" | jq -r '.merged_at // empty')" ] || return 1
   body=$(printf '%s' "$pr_json" | jq -r '.body // ""')
-  printf '%s\n' "$body" | grep -qE "$HUMAN_REQUEST_HEADING_RE" && return 1
-  printf '%s' "$body" | grep -qiE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' && return 1
+  grep -qE "$HUMAN_REQUEST_HEADING_RE" <<< "$body" && return 1
+  grep -qiE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' <<< "$body" && return 1
   issue=$(printf '%s' "$body" | grep -oiE 'refs #[0-9]+' | head -1 | grep -oE '[0-9]+' || true)
   [ -n "$issue" ] || return 1
   state=$(gh api "repos/$REPO/issues/$issue" -q .state 2> /dev/null) || return 1
@@ -458,7 +458,7 @@ pr_head_is_repo() {
 needs_intake() {
   local labels title
   labels=$(gh api "repos/$REPO/issues/$1/labels" -q '.[].name') || return 1
-  printf '%s\n' "$labels" | grep -q '^ai:' && return 1
+  grep -q '^ai:' <<< "$labels" && return 1
   # テンプレート本体の「新サービス：〜」は、工場（factory.yml）が受け持つので企画に回さない
   title=$(gh api "repos/$REPO/issues/$1" -q '.title' 2> /dev/null)
   case "$title" in
@@ -740,7 +740,7 @@ defer_review_for_visual() { # PR番号
   info=$(gh api "repos/$REPO/pulls/$pr" 2> /dev/null) || return 1
   ref=$(printf '%s' "$info" | jq -r '.head.ref // ""') || return 1
   body=$(printf '%s' "$info" | jq -r '.body // ""') || return 1
-  printf '%s' "$body" | grep -q 'visual:update' || return 1
+  grep -q 'visual:update' <<< "$body" || return 1
   [ -n "$ref" ] || return 1
   pj=$(gh api "repos/$REPO/contents/package.json?ref=$ref" -H "Accept: application/vnd.github.raw" 2> /dev/null) || pj=""
   if [ -n "$pj" ] && [ "$(printf '%s' "$pj" | jq -r '.scripts["test:visual"] != null' 2> /dev/null)" = true ]; then
@@ -778,7 +778,7 @@ merge_pr() {
     if [ "$(gh api "repos/$REPO/pulls/$pr" -q '.merged // false' 2> /dev/null)" = true ]; then
       return 0
     fi
-    printf '%s' "$out" | grep -qiE 'HTTP 5[0-9][0-9]|server error|bad gateway|timeout|timed out|connection' || break
+    grep -qiE 'HTTP 5[0-9][0-9]|server error|bad gateway|timeout|timed out|connection' <<< "$out" || break
     [ "$i" -lt 3 ] && sleep "${MERGE_RETRY_WAIT_SEC:-10}"
   done
   printf '%s' "$out"
@@ -1138,13 +1138,13 @@ inflight_touches() {
   pulls=$(open_pulls_json 2> /dev/null | jq -r '.[] | "\(.number) \(.head.ref)"' 2> /dev/null) || { echo unknown; return 0; }
   for n in $impl; do
     # PRがもうあれば、PRの変えたファイルで数える（下）
-    if printf '%s\n' "$pulls" | grep -q " claude/issue-$n-"; then continue; fi
+    if grep -q " claude/issue-$n-" <<< "$pulls"; then continue; fi
     body=$(issue_body "$n" 2> /dev/null) || { echo unknown; continue; }
     t=$(touches_from_body "$body")
     if [ -z "$t" ]; then echo unknown; else printf '%s\n' "$t"; fi
   done
   for pr in $(printf '%s\n' "$pulls" | cut -d' ' -f1); do
-    if printf '%s\n' "$expired" | grep -qx "$pr"; then continue; fi
+    if grep -qx "$pr" <<< "$expired"; then continue; fi
     # 止まっている（ai:stuck）PRも数えない
     if has_label "$pr" "ai:stuck"; then continue; fi
     files=$(gh api "repos/$REPO/pulls/$pr/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null) || { echo unknown; continue; }
@@ -1215,7 +1215,7 @@ active_implementing_numbers() {
     [ "$rc" -eq 0 ] && continue
     pr=$(printf '%s\n' "$pulls" | awk -v p=" claude/issue-$n-" 'index($0, p) {print $1; exit}')
     if [ -n "$pr" ]; then
-      printf '%s\n' "$expired" | grep -qx "$pr" && continue
+      grep -qx "$pr" <<< "$expired" && continue
       rc=0
       has_label "$pr" "ai:stuck" || rc=$?
       [ "$rc" -eq 0 ] && continue
@@ -1266,7 +1266,7 @@ start_next_in_queue_repo() {
   else
     inflight=$(inflight_touches) || return 1
   fi
-  if printf '%s\n' "$inflight" | grep -qx unknown; then
+  if grep -qx unknown <<< "$inflight"; then
     echo "進行中の物に、触るファイルが分からない物があるので、順番待ちは進めません"
     return 0
   fi
@@ -1361,7 +1361,7 @@ yield_if_crowded() {
   active=$(active_implementing_numbers 2> /dev/null) || return 1
   for n in $others; do
     [ "$n" -lt "$issue" ] || continue
-    if printf '%s\n' "$active" | grep -qx "$n"; then older=$((older + 1)); fi
+    if grep -qx "$n" <<< "$active"; then older=$((older + 1)); fi
     # PRがもうある物は、同時に始めた物ではない（PRの変えたファイルでの重なりは、付ける前に確かめ済み）
     if [ -n "$mine" ] && [ "$overlap" = no ] && ! open_pulls_json 2> /dev/null | jq -e --arg p "claude/issue-$n-" 'any(.[]; .head.ref | startswith($p))' > /dev/null 2>&1; then
       body=$(issue_body "$n" 2> /dev/null) || continue
@@ -1541,7 +1541,7 @@ global_other_queued() {
 queue_try_start() {
   local n="$1" inflight body t why rc holds pr state files
   inflight=$(inflight_touches) || return 1
-  if printf '%s\n' "$inflight" | grep -qx unknown; then
+  if grep -qx unknown <<< "$inflight"; then
     echo "#$n：進行中の物に、触るファイルが分からない物があるので、待ちます"
     return 1
   fi
@@ -1730,7 +1730,7 @@ limit_signal() {
   local f="${1:-}" result epoch
   { [ -n "$f" ] && [ -s "$f" ]; } || return 0
   result=$(jq -r 'if type == "array" then . else [.] end | map(select(.type == "result")) | last // {} | .result // "" | tostring' "$f" 2> /dev/null) || return 0
-  printf '%s' "$result" | grep -qiE 'usage limit|rate limit|limit reached|hit your limit' || return 0
+  grep -qiE 'usage limit|rate limit|limit reached|hit your limit' <<< "$result" || return 0
   epoch=$(printf '%s' "$result" | sed -nE 's/.*[Ll]imit reached\|([0-9]{10}).*/\1/p' | head -1)
   echo "${epoch:-unknown}"
 }
@@ -1755,7 +1755,7 @@ classify_failure() {
     | "\(.subtype // "")|\($d | length)|\($first)|\(.result // "" | tostring | .[0:300] | gsub("\n"; " "))"' "$f" 2> /dev/null) || info=""
   # 区切りは | （空白の区切りだと、先頭の項目が空のときに詰められてずれる）。result は最後なので、中に | があってもよい
   IFS='|' read -r subtype denials first result <<< "$info"
-  if printf '%s' "$result" | grep -qiE 'usage limit|rate limit|limit reached|overloaded|429'; then
+  if grep -qiE 'usage limit|rate limit|limit reached|overloaded|429' <<< "$result"; then
     echo "使用量の上限"
   elif [ "$subtype" = "error_max_turns" ]; then
     # 手数で止まったのが本当の原因。途中で断られた操作は寄り道なので、添えるだけ
@@ -2227,7 +2227,7 @@ pipeline_steps_only() {
 network_failure_only() {
   local steps="$1" log="${2:-}"
   [ -n "$log" ] || { echo false; return 0; }
-  printf '%s' "$log" | grep -Eq "$NETWORK_FAILURE_RE" || { echo false; return 0; }
+  grep -Eq "$NETWORK_FAILURE_RE" <<< "$log" || { echo false; return 0; }
   printf '%s' "$steps" | jq --argjson names "$NETWORK_CHECK_STEPS" '
     length > 0 and all(.[]; . as $n | $names | index($n) != null)' 2> /dev/null || echo false
 }
@@ -2255,7 +2255,7 @@ ${NETWORK_RERUN_MARK}"
 pr_touches_github() {
   local files
   files=$(gh api "repos/$REPO/pulls/$1/files?per_page=100" --paginate -q '.[].filename' 2> /dev/null) || return 0
-  printf '%s\n' "$files" | grep -q '^\.github/'
+  grep -q '^\.github/' <<< "$files"
 }
 
 # このコミットで、パイプライン側のテストのやり直し（PIPELINE_TEST_MARK の印）をもう1回やったか（0 = やった）。
@@ -2386,13 +2386,13 @@ review_paths_kind() {
 classify_no_change() {
   local ai other="${1:-}" denied="${2:-}" wf="${3:-}"
   ai=$(cat)
-  if printf '%s\n%s\n' "$ai" "$other" | grep -qiE "$VISUAL_HINT_RE"; then
+  if grep -qiE "$VISUAL_HINT_RE" <<< "$ai"$'\n'"$other"; then
     echo visual
   elif [ "$wf" = 1 ]; then
     echo workflow
   elif [ -n "$(printf '%s\n' "$denied" | awk 'NF')" ] || [ -n "$(printf '%s' "$ai" | permission_hints_from_text)" ]; then
     echo permission
-  elif printf '%s\n' "$ai" | grep -qiE "$DISAGREE_HINT_RE"; then
+  elif grep -qiE "$DISAGREE_HINT_RE" <<< "$ai"; then
     echo disagree
   else
     echo unknown
@@ -2557,7 +2557,7 @@ reissue_stale_fix() { # PR番号 動かなかった依頼のコメント（JSON�
     echo "PR #$pr：修正AIは「PRが更新された」ため動きませんでしたが、いまの先頭コミットにはもう直すよう頼んであるので、出し直しません"
     return 0
   fi
-  if printf '%s' "$body" | grep -q '<!-- auto-fix-retry -->'; then
+  if grep -q '<!-- auto-fix-retry -->' <<< "$body"; then
     # やり直しの依頼（もともと直す回数に数えない依頼）は、同じ文のまま、先頭コミットとPRの説明の目印だけを今の物にして出し直す
     comment "$pr" "$(printf '%s\n' "$body" | sed -E -e "s/(auto-fix-sha: )[0-9a-f]+/\\1${head}/" -e "s/(auto-fix-body: )[0-9a-f]+/\\1$(pr_body_hash "$pr")/")"
     echo "PR #$pr：修正AIは「PRが更新された」ため動かなかったので、やり直しの依頼を最新のコミットで出し直しました"
@@ -2574,7 +2574,7 @@ reissue_stale_fix() { # PR番号 動かなかった依頼のコメント（JSON�
     *) reason="" ;;
   esac
   # コンフリクトの解消の依頼は、同じ種類のまま出し直す（直す回数ではなく、コンフリクトの回数で数える）
-  if printf '%s' "$body" | grep -qF "$CONFLICT_KIND_MARK"; then
+  if grep -qF "$CONFLICT_KIND_MARK" <<< "$body"; then
     request_conflict_fix_or_stop "$pr" "$head" "${message}${STALE_FIX_NOTE}" "main とのコンフリクトが解けませんでした"
   else
     # もとの依頼の指紋を引き継ぐ（理由の文から作り直すと指紋が変わり、同じ指摘の回数・強いモデルの回が数え直しになる）

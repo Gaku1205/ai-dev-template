@@ -166,7 +166,7 @@ case "$CONCLUSION" in
       only_visual=$(printf '%s' "$failed_steps" | jq 'length > 0 and all(.[]; . == "見た目のテスト")')
       pr_body=$(gh api "repos/$REPO/pulls/$pr" -q '.body // ""')
       updated=$(visual_update_count "$pr")
-      if [ "$only_visual" = "true" ] && printf '%s' "$pr_body" | grep -q 'visual:update' && [ "$updated" -lt 2 ]; then
+      if [ "$only_visual" = "true" ] && grep -q 'visual:update' <<< "$pr_body" && [ "$updated" -lt 2 ]; then
         # 撮り直しと修正AIは、同じブランチに push する。同時に動かさない（順番は、修正 → 撮り直し → レビュー）。
         # 同時に動くと、先に入った push のせいで、修正AIが「PRが更新されたので動かない」で終わる・撮り直しの push が弾かれる（agent-desk PR #478）
         if fix_requested_for "$pr" "$HEAD_SHA"; then
@@ -228,7 +228,7 @@ ${VISUAL_MARK}"
     fix_msg="CIが失敗しました。失敗したチェックのログを確認して、原因を直してください。"
     # 見た目のテストも落ちているとき：見た目以外の失敗だけを直させる（画像の差は、あとでパイプラインが撮り直す）
     if printf '%s' "${failed_steps:-[]}" | jq -e 'index("見た目のテスト") != null and length > 1' > /dev/null 2>&1 &&
-      printf '%s' "${pr_body:-}" | grep -q 'visual:update'; then
+      grep -q 'visual:update' <<< "${pr_body:-}"; then
       fix_msg="CIが失敗しました。見た目のテストのほかにも落ちているチェックがあります。見た目以外の失敗だけを直してください。画像の差は気にしなくていいです（あとで撮り直します。基準の画像は自分で撮り直さないでください）。"
     fi
     request_fix_or_stop "$pr" "$HEAD_SHA" "$fix_msg" "$ci_reason"
