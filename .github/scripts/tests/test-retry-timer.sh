@@ -95,6 +95,17 @@ init_state '{"labels":{"5":["ai:skip"],"6":["ai:stuck","ai:implement"]}}'
 run_script watchdog.sh > /dev/null
 assert_eq "ai:skip・ai:stuck" "" "$(dispatches)"
 
+echo "== テンプレートの工場の相談（「新サービス：〜」、ラベルは factory だけ）では、見回りの目覚ましをかけない"
+init_state '{"labels":{"5":["factory","factory:talk"]},"is_template":true,"issues_meta":{"5":{"title":"新サービス：美容室の予約サイト"}}}'
+run_script watchdog.sh > /dev/null
+assert_eq "テンプレートの工場の相談" "" "$(dispatches)"
+init_state '{"labels":{"5":["factory","factory:talk"]},"is_template":false,"issues_meta":{"5":{"title":"新サービス：美容室の予約サイト"}}}'
+run_script watchdog.sh > /dev/null
+assert_eq "アプリのリポジトリでは、同じ題名でも今まで通りかける" "ok" "$(near15 "$(dispatches | awk '{print $2}')")"
+init_state '{"labels":{"5":[]},"is_template":true,"issues_meta":{"5":{"title":"普通の Issue"}}}'
+run_script watchdog.sh > /dev/null
+assert_eq "テンプレートでも、普通のラベル無しの Issue はかける" "ok" "$(near15 "$(dispatches | awk '{print $2}')")"
+
 echo "== 開いているPR：進行中なら対象。ai:stuck・下書き・fork・人間のマージ待ちだけなら対象外"
 mkpr() { printf '{"number":%s,"state":"open","draft":%s,"mergeable_state":"clean","updated_at":"%s","head":{"ref":"claude/issue-9-x","sha":"abc","repo":{"full_name":"%s"}},"labels":[%s]}' "$1" "$2" "$(ago 1)" "$3" "$4"; }
 repo=$(run_lib 'echo "$REPO"')
