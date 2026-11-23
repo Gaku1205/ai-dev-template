@@ -204,10 +204,11 @@ def apply(state, reply):
         for later in STAGES[STAGES.index(back) + 1:]:
             state.pop(later, None)
             state.pop({"ideas": "idea", "looks": "look", "mocks": "mock"}.get(later, later), None)
-        # 選ばなかった方向（looks_other）を looks に戻す：3つの方向から選び直せる。looks_other は残さない
-        other = state.pop("looks_other", None)
-        if back == "looks" and other:
-            state["looks"] = sorted(state.get("looks", []) + other, key=lambda x: x.get("n", 0))
+        # 選ばなかった方向（looks_other）：案・方向へ戻るときだけ外す（方向へ戻るなら looks に戻して3つから選び直せる）。ざっくり画面へ戻るときは残す
+        if back in ("ideas", "looks"):
+            other = state.pop("looks_other", None)
+            if back == "looks" and other:
+                state["looks"] = sorted(state.get("looks", []) + other, key=lambda x: x.get("n", 0))
         state["stage"], stage, action = back, back, "pick"
         # 戻って選ぶ物が無い（「方向からやり直して」）：その段階を作り直す（選ぶ番号を聞き返さない。#88）
         if not choice:

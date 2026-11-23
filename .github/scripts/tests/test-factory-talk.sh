@@ -136,6 +136,13 @@ echo '{"action":"pick","choice":"2"}' > "$T/r.json"
 assert_eq "選び直せる" "2" "$(talk apply "$T/pbs.json" "$T/r.json" | jq -r '.state.looks[0].n')"
 echo '{"action":"back","stage":"looks","choice":"3"}' > "$T/r.json"
 assert_eq "戻って同時に選び直しても、選んだ方向だけが looks に残る" "3 2" "$(talk apply "$T/pc.json" "$T/r.json" | jq -r '"\(.state.look) \(.state.looks_other | length)"')"
+jq '.mocks = [{"key":"a"},{"key":"b"}] | .mock = "a"' "$T/pc.json" > "$T/pm.json"
+echo '{"action":"back","stage":"mocks","choice":"b"}' > "$T/r.json"
+talk apply "$T/pm.json" "$T/r.json" > "$T/pmb.json"
+assert_eq "ざっくり画面へ戻っても、選ばなかった方向は looks_other に残る" "2,3" "$(jq -r '[.state.looks_other[].n] | join(",")' "$T/pmb.json")"
+jq '.state | .stage = "confirm"' "$T/pmb.json" > "$T/pmc.json"
+echo '{"action":"back","stage":"looks","choice":"2"}' > "$T/r.json"
+assert_eq "ざっくり画面へ戻したあとでも、方向を選び直せる" "2 1,3" "$(talk apply "$T/pmc.json" "$T/r.json" | jq -r '"\(.state.look) \([.state.looks_other[].n] | join(","))"')"
 # ざっくり画面を通らない最終確認：絵は選んだ方向の最初の1画面、本番に渡すのは方向の HTML・スマホの画像・設計メモ
 jq '.stage = "confirm" | .look = 3 | .assets.looks = "issue-9/r2-looks" | .confirm = {"name":"tide","stack":"nextjs","description":"d","pages":["トップ"]} | .looks = [{"n":3,"title":"t","idea":"i","phone":true}] | .answers = [{"q":"明るさ","a":"両方","stage":"looks"},{"q":"お金","a":"無料","stage":"ideas"}]' "$T/s3.json" > "$T/c0.json"
 r=$(talk render "$T/c0.json" "https://x")
