@@ -39,6 +39,19 @@ assert_not_contains "進行ラベルを外す" "$(labels_of 7)" "ai:implement"
 assert_contains "ai:skip を付ける" "$(labels_of 7)" "ai:skip"
 assert_contains "ほかのラベルは残す" "$(labels_of 7)" "audit"
 
+echo "== 開いていた Issue：開き直しのコメントは増えない"
+assert_not_contains "開き直しのコメントなし" "$(comments_of 7)" "コミットの Closes で閉じた"
+
+echo "== コミットの Closes で閉じていた Issue：開き直して ai:skip（2回呼んでもコメントは1つ）"
+state_py "s.setdefault('issues_meta',{}).setdefault('7',{})['state']='closed'; s['labels']['7']=['ai:implement','audit']"
+run_lib "park_issue_after_human_request_merge 5" > /dev/null
+assert_eq "開き直す" "open" "$(python3 -c "import json,os;s=json.load(open(os.environ['MOCK_STATE']));print(s['issues_meta']['7']['state'])")"
+assert_contains "ai:skip を付ける" "$(labels_of 7)" "ai:skip"
+assert_not_contains "ai:implement を外す" "$(labels_of 7)" "ai:implement"
+assert_eq "開き直しのコメントは1つ" "1" "$(comments_of 7 | grep -c 'コミットの Closes で閉じたので、差分を当てるまで開けておきます')"
+run_lib "park_issue_after_human_request_merge 5" > /dev/null
+assert_eq "2回呼んでも1つ" "1" "$(comments_of 7 | grep -c 'コミットの Closes で閉じたので、差分を当てるまで開けておきます')"
+
 echo "== もう一度呼んでも（Refs のまま）、二重にコメントしない"
 run_lib "defer_close_for_human_request 5" > /dev/null
 assert_eq "コメントは1つ" "1" "$(comments_of 7 | grep -c 'human-request-pr')"

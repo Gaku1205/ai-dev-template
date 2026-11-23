@@ -367,6 +367,12 @@ park_issue_after_human_request_merge() {
   [ -z "$issue" ] && return 0
   mark="<!-- human-request-pr: #${pr} -->"
   all_comments "$issue" | jq -e --arg m "$mark" 'any(.[]; .body | contains($m))' > /dev/null || return 0
+  # コミットのメッセージの Closes で Issue が閉じていたら、差分を当てるまで開け直す（開いていれば何もしない・コメントもしない）
+  if [ "$(gh api "repos/$REPO/issues/$issue" -q '.state // ""' 2> /dev/null || true)" = "closed" ]; then
+    if gh api -X PATCH "repos/$REPO/issues/$issue" -f state=open > /dev/null; then
+      comment "$issue" "コミットの Closes で閉じたので、差分を当てるまで開けておきます" || true
+    fi
+  fi
   # ai: のラベルが1つも無いと、見張り役が企画に回し直すので、待ちの印 ai:skip を付ける
   # 通知は、まだ ai:skip が付いていないとき（初めて呼ばれたとき）だけ1回鳴らす。マージの通知は既定では鳴らないので、人間の番だと分かるように
   local first=""
