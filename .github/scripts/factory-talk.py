@@ -204,6 +204,11 @@ def apply(state, reply):
         for later in STAGES[STAGES.index(back) + 1:]:
             state.pop(later, None)
             state.pop({"ideas": "idea", "looks": "look", "mocks": "mock"}.get(later, later), None)
+        # 選ばなかった方向（looks_other）：案・方向へ戻るときだけ外す（方向へ戻るなら looks に戻して3つから選び直せる）。ざっくり画面へ戻るときは残す
+        if back in ("ideas", "looks"):
+            other = state.pop("looks_other", None)
+            if back == "looks" and other:
+                state["looks"] = sorted(state.get("looks", []) + other, key=lambda x: x.get("n", 0))
         state["stage"], stage, action = back, back, "pick"
         # 戻って選ぶ物が無い（「方向からやり直して」）：その段階を作り直す（選ぶ番号を聞き返さない。#88）
         if not choice:
@@ -251,6 +256,9 @@ def apply(state, reply):
         if n not in ns:
             return clarify(f"見た目の方向は {'・'.join(map(str, ns))} の番号で選んでください。")
         state["look"] = n
+        # 最終確認のAIが読む looks には、選んだ方向だけを残す（選ばなかった方向の説明が混ざらないように）。選び直し用に looks_other へ移す
+        state["looks_other"] = [l for l in state["looks"] if l["n"] != n]
+        state["looks"] = [l for l in state["looks"] if l["n"] == n]
         state["stage"] = "mocks" if state.get("want_mocks") else "confirm"
     elif stage == "mocks":
         keys = [m["key"] for m in state.get("mocks", [])]
