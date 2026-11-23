@@ -232,6 +232,23 @@ assert_contains "鍵が無いと知らせる（Supabase）" "$(cat "$T/comment.t
 assert_contains "鍵が無いと知らせる（Stripe）" "$(cat "$T/comment.txt")" "STRIPE_SECRET_KEY が無い"
 assert_contains "作るのは止めない" "$(cat "$T/comment.txt")" "新しいサービス **paid-notes** を作りました"
 
+echo "== データを残す（data）：Next.js のまま Vercel に出し、仕様書と最初の Issue に Supabase・RLS・見本データの決まりを書く。課金の土台は入れない"
+run_factory salon-book data "予約を受けるサイト" VERCEL_TOKEN=v S_VERCEL_TOKEN=vt > /dev/null
+r=o/salon-book
+assert_contains "data：Vercel は Next.js" "$(cat "$T/vercel-body.json")" '"framework":"nextjs"'
+assert_contains "data：Vercel の鍵を写す" "$(cat "$T/calls.log")" "secret VERCEL_TOKEN o/salon-book"
+assert_contains "data：Next.js のまま" "$(file_in $r package.json)" '"next"'
+assert_eq "data：課金の土台は入れない" "" "$(file_in $r src/app/api/stripe/webhook/route.ts)"
+assert_eq "data：ログイン画面は入れない" "" "$(file_in $r src/app/login/page.tsx)"
+spec=$(file_in $r docs/spec.md)
+assert_contains "data：仕様書に Supabase と RLS" "$spec" "データの保存：Supabase。表を作るときは RLS を必ず付ける"
+assert_contains "data：仕様書に見本データの決まり" "$spec" "見本のデータ：開発とテストだけで使い、本番には出さない"
+assert_contains "data：最初の Issue に Supabase と RLS" "$(cat "$T/calls.log")" "データの保存は Supabase。メモリ・ファイル・localStorage には"
+assert_contains "data：最初の Issue に見本データの決まり" "$(cat "$T/calls.log")" "見本のデータ（見本の予約など）は、開発とテストだけで使い"
+assert_contains "data：鍵が無いと知らせる（Supabase）" "$(cat "$T/comment.txt")" "SUPABASE_ACCESS_TOKEN が無い"
+assert_not_contains "data：Stripe のことは知らせない" "$(cat "$T/comment.txt")" "STRIPE_SECRET_KEY"
+assert_not_contains "nextjs の仕様書に data の決まりは入らない" "$(file_in o/judged-site docs/spec.md 2> /dev/null)" "RLS を必ず付ける"
+
 echo "== ゲーム：デザイン担当が選んだ遊び方のアイデアを、結果のコメントに畳んで載せる（@ は効かなくする）"
 printf '1. 影を踏む遊び（近い物：無し）\n選んだ：影踏み @someone\n' > "$T/idea.md"
 run_factory idea-game webgame "説明" IDEA_FILE="$T/idea.md" > /dev/null
@@ -270,7 +287,7 @@ run_factory "Bad_Name" nextjs "x" > /dev/null
 assert_not_contains "作らない" "$(cat "$T/calls.log" 2> /dev/null)" "generate"
 assert_contains "理由を書く" "$(cat "$T/comment.txt")" "名前「Bad_Name」"
 run_factory good-name ruby "x" > /dev/null
-assert_contains "知らない言語" "$(cat "$T/comment.txt")" "nextjs・saas・python・game・webgame のどれか"
+assert_contains "知らない言語" "$(cat "$T/comment.txt")" "nextjs・data・saas・python・game・webgame のどれか"
 run_factory good-name nextjs 'x $(id)' > /dev/null
 assert_contains "危ない記号" "$(cat "$T/comment.txt")" "記号"
 
@@ -527,6 +544,11 @@ run_factory half-saas saas "説明" FACTORY_GIT_URL="$T/nowhere/%s.git" > /dev/n
 assert_contains "saas：-2 になると書く" "$(cat "$T/comment.txt")" "名前の後ろに -2 が付いた別のリポジトリになります"
 out=$(again_factory half-saas saas "説明")
 assert_contains "saas：別の名前で作る" "$(cat "$T/calls.log")" '"name": "half-saas-2"'
+echo "== data も続きにしない（Supabase の物を二重に作らないため）"
+run_factory half-data data "説明" FACTORY_GIT_URL="$T/nowhere/%s.git" > /dev/null
+assert_contains "data：-2 になると書く" "$(cat "$T/comment.txt")" "名前の後ろに -2 が付いた別のリポジトリになります"
+out=$(again_factory half-data data "説明")
+assert_contains "data：別の名前で作る" "$(cat "$T/calls.log")" '"name": "half-data-2"'
 echo "== -9 まで全部あれば、作らずに止まる"
 out=$(run_factory full nextjs "説明" EXISTING="o/full o/full-2 o/full-3 o/full-4 o/full-5 o/full-6 o/full-7 o/full-8 o/full-9"); rc=$?
 assert_eq "失敗で終わる" "1" "$rc"

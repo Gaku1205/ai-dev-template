@@ -90,6 +90,34 @@ assert_contains "ログインの戻り先" "$calls" '"site_url":"https://paid-no
 prov -- url "https://x.vercel.app/a b" > /dev/null; code=$?
 assert_eq "形の違うアドレスは使わない" "1" "$code"
 
+echo "== data（データを残す・課金なし）：Supabase と Vercel の環境変数だけ。Stripe と課金の表は作らない（saas と見分ける）"
+rm -f "$T/calls.log" "$T/gh.log" "$T/notes.txt"
+prov MODE=data SUPABASE_ACCESS_TOKEN=sbp STRIPE_SECRET_KEY=sk_test_1 -- init > /dev/null; code=$?
+calls=$(cat "$T/calls.log")
+assert_eq "data：全部できたら 0（Stripe の鍵が無くても）" "0" "$code"
+assert_contains "data：Supabase のプロジェクトを作る" "$calls" '"organization_slug":"gaku-org"'
+assert_contains "data：表を足した印の表だけ流す" "$calls" "app_meta.migrations"
+assert_not_contains "data：課金の表は流さない" "$calls" "billing_customers"
+assert_not_contains "data：Stripe を呼ばない" "$calls" "api.stripe.com"
+assert_not_contains "data：Stripe の商品を作らない" "$calls" "/v1/products"
+env_call=$(grep '/env' "$T/calls.log")
+assert_contains "data：Vercel に Supabase のアドレス" "$env_call" "NEXT_PUBLIC_SUPABASE_URL"
+assert_contains "data：Vercel に公開してよい鍵" "$env_call" "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
+assert_contains "data：Vercel にサーバーの鍵" "$env_call" "SUPABASE_SECRET_KEY"
+assert_not_contains "data：Stripe の環境変数は入れない" "$env_call" "STRIPE_"
+assert_contains "data：接続先をリポジトリに入れる" "$(cat "$T/gh.log")" "SUPABASE_DB_URL"
+rm -f "$T/calls.log" "$T/notes.txt"
+prov MODE=data SUPABASE_ACCESS_TOKEN=sbp -- init > /dev/null; code=$?
+assert_eq "data：Stripe の鍵が無くても、Stripe のことは何も言わない" "0" "$code"
+assert_not_contains "data：Stripe の鍵が無い、と書かない" "$(cat "$T/notes.txt")" "STRIPE_SECRET_KEY"
+rm -f "$T/calls.log" "$T/notes.txt"
+prov MODE=data SUPABASE_ACCESS_TOKEN=sbp STRIPE_SECRET_KEY=sk_test_1 -- init > /dev/null
+rm -f "$T/calls.log"
+prov MODE=data SUPABASE_ACCESS_TOKEN=sbp STRIPE_SECRET_KEY=sk_test_1 -- url https://paid-notes.vercel.app > /dev/null; code=$?
+assert_eq "data：url も 0" "0" "$code"
+assert_not_contains "data：Stripe の通知は登録しない" "$(cat "$T/calls.log")" "webhook"
+assert_contains "data：ログインの戻り先は扱う" "$(cat "$T/calls.log")" '"site_url":"https://paid-notes.vercel.app"'
+
 echo "== 鍵が無い・本番の鍵・権限が足りない：その部分を飛ばして、理由を書く"
 rm -f "$T/calls.log" "$T/notes.txt"
 prov -- init > /dev/null; code=$?

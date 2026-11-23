@@ -124,6 +124,17 @@ jq '.state | .stage = "confirm" | .confirm = {"name":"tide","stack":"nextjs","de
 pr=$(talk render "$T/pc.json" "https://x")
 assert_contains "最終確認は選んだ方向の見た目と絵を出す" "$pr" "- **見た目**：方向1「木の台の予約帳」"
 assert_contains "最終確認の絵" "$pr" "look-1-1440.png"
+assert_not_contains "nextjs（データを残さない）の最終確認に「Supabase」を出さない" "$pr" "Supabase"
+assert_contains "nextjs の最終確認は作り始めると言う" "$pr" "リポジトリを作り始めます"
+for st in data saas; do
+  jq --arg s "$st" '.confirm.stack = $s | .confirm.free = ["a"] | .confirm.paid = ["b"] | .confirm.price = 500' "$T/pc.json" > "$T/pd.json"
+  prd=$(talk render "$T/pd.json" "https://x")
+  assert_contains "$st の最終確認は、データを保存する所も用意すると言う" "$prd" "予約などのデータを保存する所も用意します"
+  assert_not_contains "$st の最終確認に、頼む人に分からない「Supabase」を出さない" "$prd" "Supabase"
+done
+echo '{"ideas":[{"name":"salon-book","stack":"data","title":"予約","pitch":"p","paid":"有料の話"}, {"name":"b-two","stack":"nextjs","title":"b","pitch":"p"}, {"name":"c-three","stack":"nextjs","title":"c","pitch":"p"}]}' > "$T/data-ideas.json"
+mkdir -p "$T/dd"; cp "$T/data-ideas.json" "$T/dd/ideas.json"
+assert_eq "種類 data は案に通る" "data" "$(talk check ideas "$T/dd" | jq -r '.ideas[0].stack')"
 pb=$(talk brief "$T/pc.json")
 assert_contains "brief は選んだ方向の色・文字" "$(jq -r .detail <<< "$pb")" "木の台の予約帳。IDEA_ONE（色 #F2EDE3・文字 明朝）"
 assert_not_contains "brief に選ばなかった方向は入らない" "$(jq -r .detail <<< "$pb")" "IDEA_TWO"
