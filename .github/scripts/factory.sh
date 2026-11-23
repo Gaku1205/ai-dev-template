@@ -42,7 +42,10 @@ marked=no     # 作ったリポジトリに、この Issue の印（変数 FACTO
 pushed=no     # 最初の準備を main に push できたら yes（ここまで来ていれば、リポジトリは使える）
 said=no       # 結果のコメントを書いたら yes
 work=""
+tech=()       # 作る側向けの行（結果のコメントの折りたたみ「作る側の記録」に入る）
+techextra=""  # 同じ折りたたみに入れる、まとまった文章（ゲームのアイデア）
 note() { report+=("$1"); echo "$1"; }
+tnote() { tech+=("$1"); echo "$1"; }
 # 途中で止まったときに、何が残っているか・次にどうするかを書く（黙って半端なリポジトリを残さない）
 leftover() {
   [ -n "$NEW" ] || return 0
@@ -67,6 +70,16 @@ say_result() {
   body="$1
 
 $(printf -- '- %s\n' "${report[@]}")${gallery}"
+  # 作る側向けの記録（秘密や変数の名前・main の保護・道具・審査の点・ゲームのアイデア）は、折りたたみの中にまとめる
+  if [ "${#tech[@]}" -gt 0 ] || [ -n "$techextra" ]; then
+    body="${body}
+
+<details><summary>作る側の記録</summary>
+
+$([ "${#tech[@]}" -gt 0 ] && printf -- '- %s\n' "${tech[@]}")${techextra}
+
+</details>"
+  fi
   GH_TOKEN="${COMMENT_TOKEN:-$GH_TOKEN}" gh api "repos/$TEMPLATE/issues/$ISSUE/comments" -f body="$body" > /dev/null 2>&1 || true
 }
 # スマホに知らせる（テンプレートの NTFY_TOPIC。無ければ何もしない）
@@ -161,26 +174,26 @@ for n in $COPY_SECRETS; do
   # Vercel の鍵は、Vercel で公開する物（Next.js・Web のゲーム）にだけ入れる（公開をまとめて頼む deploy-vercel.yml が使う）
   [ "$n" = VERCEL_TOKEN ] && [ "$APP_STACK" != nextjs ] && [ "$APP_STACK" != data ] && [ "$APP_STACK" != saas ] && [ "$APP_STACK" != webgame ] && continue
   [ "$n" = VERCEL_TOKEN ] && [ "$DEPLOY" = github-pages ] && continue
-  if printf '%s' "$val" | gh secret set "$n" --repo "$NEW" > /dev/null 2>&1; then copied+=("$n"); else note "⚠️ 秘密 $n を写せませんでした（FACTORY_TOKEN に Secrets（Read and write）が要ります）"; fi
+  if printf '%s' "$val" | gh secret set "$n" --repo "$NEW" > /dev/null 2>&1; then copied+=("$n"); else tnote "⚠️ 秘密 $n を写せませんでした（FACTORY_TOKEN に Secrets（Read and write）が要ります）"; fi
 done
 for n in $COPY_VARS; do
   v="V_$n"; val="${!v:-}"
   [ -z "$val" ] && continue
-  if gh variable set "$n" --repo "$NEW" --body "$val" > /dev/null 2>&1; then copied+=("$n"); else note "⚠️ 変数 $n を写せませんでした（FACTORY_TOKEN に Variables（Read and write）が要ります）"; fi
+  if gh variable set "$n" --repo "$NEW" --body "$val" > /dev/null 2>&1; then copied+=("$n"); else tnote "⚠️ 変数 $n を写せませんでした（FACTORY_TOKEN に Variables（Read and write）が要ります）"; fi
 done
-[ "${#copied[@]}" -gt 0 ] && note "✅ 秘密と変数を写した：${copied[*]}"
+[ "${#copied[@]}" -gt 0 ] && tnote "✅ 秘密と変数を写した：${copied[*]}"
 
 # ---- 3. Vercel ----
 vercel_note=""
 if [ "$DEPLOY" = github-pages ]; then
-  note "✅ $(pick_deploy_reason github-pages)"
+  tnote "✅ $(pick_deploy_reason github-pages)"
 elif [ "$APP_STACK" = nextjs ]; then
-  note "✅ $(pick_deploy_reason vercel)"
+  tnote "✅ $(pick_deploy_reason vercel)"
 fi
 if [ "$DEPLOY" = vercel ] && { [ "$APP_STACK" = nextjs ] || [ "$APP_STACK" = data ] || [ "$APP_STACK" = saas ] || [ "$APP_STACK" = webgame ]; }; then
   framework=nextjs; [ "$APP_STACK" = webgame ] && framework=vite
   if vout=$(REPO_FULL="$NEW" PROJECT="$name" FRAMEWORK="$framework" "$HERE/factory-vercel.sh" 2>&1); then
-    note "✅ Vercel のプロジェクトを作ってつないだ"
+    tnote "✅ Vercel のプロジェクトを作ってつないだ"
     vercel_note="Vercel：$vout"
   else
     note "⚠️ $vout"
@@ -408,14 +421,14 @@ PY3
   git push -q origin HEAD:main
 ) || fail "最初の準備を push できませんでした"
 pushed=yes
-note "✅ CLAUDE.md・仕様書・README に説明を書いて push した（Bootstrap が動く）"
+tnote "✅ CLAUDE.md・仕様書・README に説明を書いて push した（Bootstrap が動く）"
 # 公開先に github-pages があるときは、Pages を有効にする（Source を GitHub Actions に）。
 # ワークフローのトークンでは有効にできない（管理の権限が要る）ので、リポジトリを作った鍵（FACTORY_TOKEN）でここで行う
 if grep -qx github-pages <<< "$(STACK_FILE="$work/app/pipeline.json" bash -c 'source "$1/stack.sh"; stack_deploy_kinds' _ "$HERE")"; then
   if pages_out=$(gh api -X POST "repos/$NEW/pages" -f build_type=workflow 2>&1); then
-    note "✅ GitHub Pages を有効にした（Source は GitHub Actions）"
+    tnote "✅ GitHub Pages を有効にした（Source は GitHub Actions）"
   elif grep -qE '409|already' <<< "$pages_out"; then
-    note "✅ GitHub Pages はもう有効になっている"
+    tnote "✅ GitHub Pages はもう有効になっている"
   else
     note "⚠️ GitHub Pages を有効にできませんでした（https://github.com/$NEW/settings/pages を開いて、Source を GitHub Actions にする）"
   fi
@@ -423,7 +436,7 @@ fi
 # Vercel が自分で公開しない形（上の deploymentEnabled: false）にしたので、最初の公開はここで頼む（あとは deploy-vercel.yml）
 if [ -n "$vercel_note" ] && [ -n "${S_VERCEL_TOKEN:-}" ]; then
   if dout=$(GITHUB_REPOSITORY="$NEW" VERCEL_TOKEN="$S_VERCEL_TOKEN" VERCEL_TEAM_ID="${VERCEL_TEAM_ID:-}" "$HERE/deploy-vercel.sh" 2>&1); then
-    note "✅ 最初の公開を頼んだ（このあとは、マージが落ち着いてから最新の main を1回だけ公開する）"
+    tnote "✅ 最初の公開を頼んだ（このあとは、マージが落ち着いてから最新の main を1回だけ公開する）"
   else
     note "⚠️ 最初の公開を頼めませんでした（$(printf '%s' "$dout" | tail -1 | sed 's/^::error:://' | cut -c1-160)）。次のマージのあとに公開されます"
   fi
@@ -431,15 +444,15 @@ fi
 site_flag=$(cat "$work/site.flag" 2> /dev/null)
 [ "$APP_STACK" = game ] && note "🎮 ゲームは Windows の exe（1ファイル）にして、公開のたびに GitHub Releases に置く：https://github.com/$NEW/releases/latest（最初の公開が終わると出る）"
 case "$(cat "$work/design.flag" 2> /dev/null)" in
-  DESIGN=yes) note "✅ デザイン担当：実例を集めて撮り、方向を決めて、デザイン仕様（docs/design.md）を書いた" ;;
+  DESIGN=yes) tnote "✅ デザイン担当：実例を集めて撮り、方向を決めて、デザイン仕様（docs/design.md）を書いた" ;;
   DESIGN=bad) note "⚠️ デザイン担当が書いたデザイン仕様の形が違ったので、雛形のままにした" ;;
 esac
 case "$site_flag" in
-  "SITE=yes "*) note "✅ デザイン担当が本物の画面を作り、撮って実例と見比べて直した。確認コマンドも通った（${site_flag#SITE=yes }）" ;;
+  "SITE=yes "*) tnote "✅ デザイン担当が本物の画面を作り、撮って実例と見比べて直した。確認コマンドも通った（${site_flag#SITE=yes }）" ;;
   "SITE=bad "*) note "⚠️ デザイン担当が作った画面の形が正しくなかったので入れなかった（${site_flag#SITE=bad }）。最初のIssueで作り直す" ;;
 esac
 ref_line=$(grep '^REF=' "$work/ref.flag" 2> /dev/null | head -1)
-[ -n "$ref_line" ] && note "✅ 最後に撮った画面の画像 ${ref_line#REF=} 枚を、目標の絵として docs/design-ref/ に入れた"
+[ -n "$ref_line" ] && tnote "✅ 最後に撮った画面の画像 ${ref_line#REF=} 枚を、目標の絵として docs/design-ref/ に入れた"
 # 結果のコメントに画面の画像を貼る（公開を待たずに、どんな画面かを見られるように）。PC の最初の1画面とスクロールした所、スマホの最初の1画面
 if [ -n "$ref_line" ]; then
   shots=""
@@ -457,7 +470,7 @@ fi
 # ゲームの遊び方のアイデア（ありきたりにしないために、デザイン担当が案を出して選んだ物）。AIが書いた物なので、畳んで載せ、人への呼びかけ（@）は効かなくする
 if [ -n "${IDEA_FILE:-}" ] && [ -f "$IDEA_FILE" ] && [ ! -L "$IDEA_FILE" ] && [ "$(wc -c < "$IDEA_FILE")" -le 12000 ]; then
   idea=$(head -c 6000 "$IDEA_FILE" | sed 's/@/@\&#8203;/g; s#</details>##g')
-  [ -n "$idea" ] && gallery="${gallery}
+  [ -n "$idea" ] && techextra="${techextra}
 
 <details><summary>遊び方のアイデア（デザイン担当が 10 個出して、ありきたりな物を捨てて選んだ物）</summary>
 
@@ -468,12 +481,12 @@ fi
 # 審査役の点（作ったAIとは別のAIが、できた画面の画像だけを見て採点した行。design-judge.py summary が作る。人への呼びかけ（@）は効かなくする）
 if [ -n "${JUDGE_FILE:-}" ] && [ -f "$JUDGE_FILE" ] && [ ! -L "$JUDGE_FILE" ] && [ "$(wc -c < "$JUDGE_FILE")" -le 4000 ]; then
   judged=$(head -c 1500 "$JUDGE_FILE" | tr -d '\r`<>' | tr '\n' ' ' | sed 's/@/＠/g')
-  [ -n "$judged" ] && note "🧐 ${judged}"
+  [ -n "$judged" ] && tnote "🧐 ${judged}"
 fi
 libs_line=$(grep '^LIBS=' "$work/libs.flag" 2> /dev/null | head -1)
-[ -n "$libs_line" ] && note "✅ デザイン担当が使った道具を入れた：${libs_line#LIBS=}"
-grep -q '^LIBS_FAILED=' "$work/libs.flag" 2> /dev/null && note "⚠️ 動き・3D の道具を入れられませんでした（npm install が失敗。入れずに進めた）"
-grep -q '^LIBS_SKIPPED=' "$work/libs.flag" 2> /dev/null && note "⚠️ デザイン担当が、決まった物（${FACTORY_LIB_NAMES// /・}）以外の道具を書いていたので、それは入れなかった"
+[ -n "$libs_line" ] && tnote "✅ デザイン担当が使った道具を入れた：${libs_line#LIBS=}"
+grep -q '^LIBS_FAILED=' "$work/libs.flag" 2> /dev/null && tnote "⚠️ 動き・3D の道具を入れられませんでした（npm install が失敗。入れずに進めた）"
+grep -q '^LIBS_SKIPPED=' "$work/libs.flag" 2> /dev/null && tnote "⚠️ デザイン担当が、決まった物（${FACTORY_LIB_NAMES// /・}）以外の道具を書いていたので、それは入れなかった"
 
 # ---- 5. main を守る ----
 ruleset=$(jq -nc '{
@@ -486,9 +499,9 @@ ruleset=$(jq -nc '{
   bypass_actors: [{actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always"}]
 }')
 if printf '%s' "$ruleset" | gh api -X POST "repos/$NEW/rulesets" --input - > /dev/null 2>&1; then
-  note "✅ main を守った（PRと CI の check が必須。管理者は通れる）"
+  tnote "✅ main を守った（PRと CI の check が必須。管理者は通れる）"
 else
-  note "⚠️ main を守る設定を作れませんでした（Settings → Rules → Rulesets で作る。README の手順6）"
+  tnote "⚠️ main を守る設定を作れませんでした（Settings → Rules → Rulesets で作る。README の手順6）"
 fi
 
 # ---- 6. 最初のIssue ----

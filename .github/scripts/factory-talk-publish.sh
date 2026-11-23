@@ -11,9 +11,19 @@ repo="$GITHUB_REPOSITORY"
 state=talk/state.json
 out="${OUT_DIR:-out}"
 
-comment() { gh api "repos/$repo/issues/$ISSUE/comments" -f body="$1" > /dev/null; }
+comment() { clear_ack; gh api "repos/$repo/issues/$ISSUE/comments" -f body="$1" > /dev/null; }
 waiting() { gh api "repos/$repo/issues/$ISSUE/labels" -f "labels[]=factory:wait" > /dev/null || echo "::warning::factory:wait を付けられませんでした"; }
 notify() { "$here/notify.sh" question "$1" "$2" 4 || true; }
+# 作り始めた知らせ（factory-talk-ack.sh。印付き）を消す。結果・失敗・clarify のコメントを出す前に呼ぶ（消せなくても止めない）
+clear_ack() {
+  local ids id
+  ids=$(gh api --paginate "repos/$repo/issues/$ISSUE/comments?per_page=100" \
+    --jq '.[] | select(.user.login == "github-actions[bot]" and ((.body // "") | contains("<!-- factory-talk-ack -->"))) | .id' 2> /dev/null) || ids=""
+  for id in $ids; do
+    gh api -X DELETE "repos/$repo/issues/comments/$id" > /dev/null 2>&1 || echo "::warning::作り始めた知らせを消せませんでした（$id）"
+  done
+  return 0
+}
 title=$(gh api "repos/$repo/issues/$ISSUE" --jq .title 2> /dev/null || echo "新サービス")
 
 # 画像とざっくり画面の HTML を factory-talk ブランチの DIR に置く（コメントの画像と、作り始めたときのデザイン担当が使う）

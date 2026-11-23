@@ -11,7 +11,8 @@ AIは talk/ にファイルを書くだけ。形を確かめる・コメント�
   factory-talk.py check STAGE DIR                      AIが書いた物（DIR/ideas.json など）の形を確かめ、整えた JSON を出す（だめなら終了コード 1）
   factory-talk.py merge STATE.json STAGE OUT.json PATH 段階の結果を state に入れる（オーナーに聞く選択肢と質問 ask も）。PATH はその段階の画像の置き場（factory-talk ブランチの中）
   factory-talk.py render STATE.json ROOT               オーナーに見せるコメント（印つき）。ROOT は factory-talk ブランチの中身の URL（末尾の / なし）
-  factory-talk.py mark STATE.json                      印だけ（作れなかったときのコメントに付けて、次の返事で同じ段階をやり直せるようにする）
+  factory-talk.py ack STAGE                            返事を受け取って作り始めた知らせの文（ideas・looks・mocks・confirm。clarify・go は空）
+  factory-talk.py mark STATE.json                     印だけ（作れなかったときのコメントに付けて、次の返事で同じ段階をやり直せるようにする）
   factory-talk.py brief STATE.json                     作り始めるときに工場へ渡す物（name・stack・description・detail・mock）
 """
 import base64
@@ -288,9 +289,44 @@ def merge(state, stage, out, path):
 
 # ---- オーナーに見せるコメント ----
 
+ID_RE = re.compile(r"(?<![A-Za-z0-9-])[a-z0-9]+(?:-[a-z0-9]+)+(?![A-Za-z0-9-])")
+COLOR_RE = re.compile(r"#[0-9A-Fa-f]{6}(?![0-9A-Za-z])")
+ACK_TEXT = {
+    "ideas": "受け取りました。作る物の案を5つ考えています。10分くらいかかります。",
+    "looks": "受け取りました。見た目の案を3つ作っています。15分くらいかかります。",
+    "mocks": "受け取りました。ざっくり画面を2案作っています。15分くらいかかります。",
+    "confirm": "受け取りました。最終確認を作っています。5分くらいかかります。",
+}
+
+
+def ack(stage):
+    """返事を受け取って作り始めた知らせの文（段階ごと）。clarify・go など知らせない段階は空"""
+    return ACK_TEXT.get(stage, "")
+
+
+def plain(v):
+    """頼む人が読む文から、英数字をハイフンでつないだ id（page-is-the-object 型）と色コード（#c39461）を取り除く"""
+    if not isinstance(v, str):
+        return ""
+    v = COLOR_RE.sub("", ID_RE.sub("", v))
+    v = re.sub(r"[（(]\s*[・、,，/／ ]*\s*[）)]", "", v)
+    v = re.sub(r"[「『]\s*[」』]", "", v)
+    v = re.sub(r"\s{2,}", " ", v)
+    return v.strip(" 　・、,，")
+
+
+def details(lines):
+    """作る側の記録（折りたたみ）。頼む人に見せない物はここへ"""
+    lines = [x for x in lines if x]
+    if not lines:
+        return ""
+    return "<details><summary>作る側の記録</summary>\n\n" + "\n".join(lines) + "\n\n</details>\n"
+
+
 def render(state, root):
     stage = state.get("stage")
     assets = state.get("assets") or {}
+    tech = []
     # 最終確認の絵は、ざっくり画面を選んだならその画面、選んでいなければ（ふだん）選んだ見た目の方向の最初の1画面
     shown = ("mocks" if state.get("mock") else "looks") if stage == "confirm" else stage
     imgbase = f"{root}/{assets.get(shown, '')}"
@@ -299,33 +335,39 @@ def render(state, root):
     if stage == "ideas":
         L.append("## 🧭 作る物の案を5つ考えました\n")
         for n, i in enumerate(state.get("ideas", []), 1):
-            L.append(f"### {n}. {i['title']}（`{i['name']}`・{i['stack']}）")
-            L.append(i["pitch"] + "\n")
+            L.append(f"### {n}. {plain(i['title']) or f'案{n}'}")
+            L.append(plain(i["pitch"]) + "\n")
             for label, k in (("使う人", "who"), ("新しい所", "novel"), ("有料", "paid"), ("画面", "screen")):
-                if i.get(k):
-                    L.append(f"- **{label}**：{i[k]}")
+                if plain(i.get(k)):
+                    L.append(f"- **{label}**：{plain(i[k])}")
             L.append("")
+            tech.append(f"- 案{n}：`{i.get('name') or '（まとめた案）'}`・{i.get('stack')}")
         how = "番号で1つ選んでください（例：`2`・`2。名前はもっと短く`）。いくつかを1つのサービスにまとめるなら `1,3` のように。どれも違えば「全部ちがう。もっと〇〇」と書くと出し直します。"
     elif stage == "looks":
         idea = state["ideas"][state["idea"]]
-        L.append(f"## 🎨 「{idea['title']}」の見た目の方向を3つ作りました（左が PC、右がスマホの最初の1画面）\n")
+        L.append(f"## 🎨 「{plain(idea.get('title')) or '選んだ案'}」の見た目の方向を3つ作りました（左が PC、右がスマホの最初の1画面）\n")
         for l in state.get("looks", []):
-            L.append(f"### {l['n']}. {l['title']}")
-            L.append(l["idea"] + "\n")
+            L.append(f"### {l['n']}. {plain(l['title']) or '方向' + str(l['n'])}")
+            L.append(plain(l["idea"]) + "\n")
+            tech.append(f"- 方向{l['n']}：{l['title']}")
+            if plain(l["idea"]) != l["idea"]:
+                tech.append(f"  - 原文：{l['idea']}")
             if l.get("colors"):
-                L.append("- **色**：" + " ".join(f"`{c}`" for c in l["colors"]))
+                tech.append("  - 色：" + " ".join(f"`{c}`" for c in l["colors"]))
             if l.get("fonts"):
-                L.append(f"- **文字**：{l['fonts']}")
+                tech.append(f"  - 文字：{l['fonts']}")
             if l.get("refs"):
-                L.append("- **参考**：" + "・".join(l["refs"]))
+                tech.append("  - 参考：" + "・".join(l["refs"]))
             phone = f" <img src=\"{imgbase}/look-{l['n']}-390.png\" width=\"150\" alt=\"方向{l['n']} スマホ\">" if l.get("phone") else ""
             L.append(f"\n<img src=\"{imgbase}/look-{l['n']}-1440.png\" width=\"560\" alt=\"方向{l['n']}\">{phone}\n")
         how = "番号で1つ選んでください（例：`1`・`1。でも色は2の方が好き`）。どれも違えば「全部ちがう。もっと〇〇」。"
     elif stage == "mocks":
         L.append("## 🖼 ざっくり画面を2案作りました（左が PC、右がスマホ）\n")
         for m in state.get("mocks", []):
-            L.append(f"### {m['key'].upper()}. {m['title']}")
-            L.append(m["note"] + "\n")
+            L.append(f"### {m['key'].upper()}. {plain(m['title']) or m['key'].upper()}")
+            L.append(plain(m["note"]) + "\n")
+            if plain(m["note"]) != m["note"] or plain(m["title"]) != m["title"]:
+                tech.append(f"- {m['key'].upper()} の原文：{m['title']}。{m['note']}")
             L.append(f"<img src=\"{imgbase}/mock-{m['key']}-1440.png\" width=\"560\" alt=\"{m['key'].upper()} PC\"> "
                      f"<img src=\"{imgbase}/mock-{m['key']}-390.png\" width=\"150\" alt=\"{m['key'].upper()} スマホ\">\n")
             if m.get("more"):
@@ -335,17 +377,19 @@ def render(state, root):
     elif stage == "confirm":
         c = state.get("confirm", {})
         L.append("## ✅ これで作り始めます（最終確認）\n")
-        L.append(f"- **名前**：`{c.get('name')}`（{c.get('stack')}）")
-        L.append(f"- **何のサービス**：{c.get('description')}")
+        tech.append(f"- 名前：`{c.get('name')}`・種類：{c.get('stack')}")
+        if plain(c.get("description")) != c.get("description"):
+            tech.append(f"- 説明の原文：{c.get('description')}")
+        L.append(f"- **何のサービス**：{plain(c.get('description'))}")
         # 選んだ見た目を名前で書く（説明の文が別の方向の言葉を混ぜても、オーナーが見比べて気づける）
         chosen = next((x for x in state.get("looks", []) if x.get("n") == state.get("look")), None)
         if chosen:
-            L.append(f"- **見た目**：方向{chosen['n']}「{chosen.get('title', '')}」")
+            L.append(f"- **見た目**：方向{chosen['n']}「{plain(chosen.get('title', ''))}」")
         if c.get("stack") == "saas":
-            L.append(f"- **無料**：{'・'.join(c.get('free', []))}")
-            L.append(f"- **有料（月 {c.get('price')} 円）**：{'・'.join(c.get('paid', []))}")
+            L.append(f"- **無料**：{'・'.join(plain(x) for x in c.get('free', []))}")
+            L.append(f"- **有料（月 {c.get('price')} 円）**：{'・'.join(plain(x) for x in c.get('paid', []))}")
         if c.get("pages"):
-            L.append(f"- **最初に作る画面**：{'・'.join(c['pages'])}")
+            L.append(f"- **最初に作る画面**：{'・'.join(plain(x) for x in c['pages'])}")
         if state.get("answers"):
             # 1つの長い文にすると読めないので、質問ごとに1行
             L.append("- **決まった事**：")
@@ -359,10 +403,10 @@ def render(state, root):
             l = next((x for x in state.get("looks", []) if x.get("n") == n), {})
             phone = f" <img src=\"{imgbase}/look-{n}-390.png\" width=\"150\" alt=\"選んだ画面 スマホ\">" if l.get("phone") else ""
             L.append(f"\n<img src=\"{imgbase}/look-{n}-1440.png\" width=\"560\" alt=\"選んだ画面\">{phone}\n")
-        made = "リポジトリを作り始めます"
-        if c.get("stack") in DB_STACKS:
-            made = "リポジトリを作り、予約などのデータを保存する所も用意します"
-        how = f"よければ「**作る**」と返事してください。{made}。直したい所があれば、その内容を書いてください（確認を作り直します）。"
+        # 頼む人向けの言い方（「リポジトリ」「Supabase」「公開」は使わない）
+        made = {"nextjs": "サイト", "data": "サイトと、データを保存する所",
+                "saas": "サイトと、データを保存する所と、会員登録と有料プランの仕組み"}.get(c.get("stack"), "サービス")
+        how = f"よければ「**作る**」と返事してください。{made}を用意して、作り始めます。直したい所があれば、その内容を書いてください（確認を作り直します）。"
     else:
         die(f"見せる物の無い段階：{stage}")
     qs = state.get("ask", {}).get("questions", [])
@@ -375,8 +419,9 @@ def render(state, root):
             L.append("")
         how += " 質問は `Q1はA、Q2はB` のように（選択肢に無い答えもOK）。"
     if state.get("ask", {}).get("judge") and stage in ("looks", "mocks"):
-        L.append(f"<sub>{state['ask']['judge']}</sub>\n")
+        tech.append(f"- 審査役の点：{state['ask']['judge']}")
     L.append("---\n" + how + f"\n\n<sub>工場の相談・{r} 回目。返事を書くと続きを始めます（答えるまで待ちます）</sub>\n")
+    L.append(details(tech))
     L.append(encode(state))
     return "\n".join(L)
 
@@ -461,6 +506,8 @@ def main():
         print(json.dumps(merge(load(a[1]), a[2], load(a[3]), a[4]), ensure_ascii=False))
     elif cmd == "render":
         print(render(load(a[1]), a[2].rstrip("/")))
+    elif cmd == "ack":
+        print(ack(a[1] if len(a) > 1 else ""))
     elif cmd == "mark":
         print(encode(load(a[1])))
     elif cmd == "brief":
