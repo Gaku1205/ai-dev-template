@@ -107,6 +107,35 @@ assert_eq "FACTORY_TALK_MOCKS=1 なら出す" "true" "$(FACTORY_TALK_MOCKS=1 tal
 jq '.want_mocks = true' "$T/s3.json" > "$T/s3m.json"
 talk apply "$T/s3m.json" "$T/r.json" | jq '.state' > "$T/s4.json"
 assert_eq "FACTORY_TALK_MOCKS=1 なら、方向を選ぶとざっくり画面へ" "mocks" "$(jq -r .stage "$T/s4.json")"
+echo "== 選んだ方向だけを最終確認へ渡す（選ばなかった方向は looks_other へ）"
+cat > "$T/out/looks3.json" <<'EOF'
+{"looks":[{"title":"木の台の予約帳","idea":"IDEA_ONE","colors":["#F2EDE3"],"fonts":"明朝"},{"title":"椅子の写真","idea":"IDEA_TWO"},{"title":"夜の札","idea":"IDEA_THREE"}],"questions":[]}
+EOF
+mkdir -p "$T/out3"; cp "$T/out/looks3.json" "$T/out3/looks.json"
+for n in 1 2 3; do png "$T/out3/look-$n-1440.png"; done; png "$T/out3/look-1-390.png"
+talk check looks "$T/out3" > "$T/o3.json"
+talk merge "$T/s2.json" looks "$T/o3.json" "issue-7/r2-looks" > "$T/l3.json"
+echo '{"action":"pick","choice":"1"}' > "$T/r.json"
+talk apply "$T/l3.json" "$T/r.json" > "$T/p1.json"
+assert_eq "選んだ方向だけが looks に残る" "1" "$(jq -r '[.state.looks[].n] | join(",")' "$T/p1.json")"
+assert_eq "選ばなかった方向の idea・title は looks に残らない" "0" "$(jq -r '.state.looks | tostring' "$T/p1.json" | grep -c -e IDEA_TWO -e IDEA_THREE -e 椅子の写真 -e 夜の札)"
+assert_eq "選ばなかった方向は looks_other に移す" "2,3" "$(jq -r '[.state.looks_other[].n] | join(",")' "$T/p1.json")"
+jq '.state | .stage = "confirm" | .confirm = {"name":"tide","stack":"nextjs","description":"d"}' "$T/p1.json" > "$T/pc.json"
+pr=$(talk render "$T/pc.json" "https://x")
+assert_contains "最終確認は選んだ方向の見た目と絵を出す" "$pr" "- **見た目**：方向1「木の台の予約帳」"
+assert_contains "最終確認の絵" "$pr" "look-1-1440.png"
+pb=$(talk brief "$T/pc.json")
+assert_contains "brief は選んだ方向の色・文字" "$(jq -r .detail <<< "$pb")" "木の台の予約帳。IDEA_ONE（色 #F2EDE3・文字 明朝）"
+assert_not_contains "brief に選ばなかった方向は入らない" "$(jq -r .detail <<< "$pb")" "IDEA_TWO"
+echo '{"action":"back","stage":"looks","choice":""}' > "$T/r.json"
+talk apply "$T/pc.json" "$T/r.json" > "$T/pb.json"
+assert_eq "最終確認から方向へ戻ると、3つの方向が元どおり looks に入る" "looks 1,2,3" "$(jq -r '"\(.next) \([.state.looks[].n] | join(","))"' "$T/pb.json")"
+assert_eq "戻ったら looks_other は残らない" "null" "$(jq -r '.state.looks_other' "$T/pb.json")"
+jq '.state' "$T/pb.json" > "$T/pbs.json"
+echo '{"action":"pick","choice":"2"}' > "$T/r.json"
+assert_eq "選び直せる" "2" "$(talk apply "$T/pbs.json" "$T/r.json" | jq -r '.state.looks[0].n')"
+echo '{"action":"back","stage":"looks","choice":"3"}' > "$T/r.json"
+assert_eq "戻って同時に選び直しても、選んだ方向だけが looks に残る" "3 2" "$(talk apply "$T/pc.json" "$T/r.json" | jq -r '"\(.state.look) \(.state.looks_other | length)"')"
 # ざっくり画面を通らない最終確認：絵は選んだ方向の最初の1画面、本番に渡すのは方向の HTML・スマホの画像・設計メモ
 jq '.stage = "confirm" | .look = 3 | .assets.looks = "issue-9/r2-looks" | .confirm = {"name":"tide","stack":"nextjs","description":"d","pages":["トップ"]} | .looks = [{"n":3,"title":"t","idea":"i","phone":true}] | .answers = [{"q":"明るさ","a":"両方","stage":"looks"},{"q":"お金","a":"無料","stage":"ideas"}]' "$T/s3.json" > "$T/c0.json"
 r=$(talk render "$T/c0.json" "https://x")
