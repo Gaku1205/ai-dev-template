@@ -126,6 +126,14 @@ jobs:
           name: talk-route
           path: talk/
           retention-days: 3
+      # 返事を受け取って作り始めたことを、すぐ知らせる（次の選択肢が出るまで十数分かかるので、止まったように見えないため。#318）
+      - name: 作り始めた知らせ
+        if: ${{ github.event_name == 'issue_comment' && (steps.next.outputs.next == 'ideas' || steps.next.outputs.next == 'looks' || steps.next.outputs.next == 'mocks' || steps.next.outputs.next == 'confirm') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          NEXT: ${{ steps.next.outputs.next }}
+        run: .github/scripts/factory-talk-ack.sh
 
   # AIが段階の物を作る（案・見た目の方向の板・ざっくり画面・最終確認）。talk/ にファイルを書くだけで、鍵は持たない
   work:
