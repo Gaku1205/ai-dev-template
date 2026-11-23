@@ -557,7 +557,7 @@ ${MEMO_DETAIL}"
   note "✅ 最初のIssue：https://github.com/$NEW/issues/$first（自動で企画に回る）"
 fi
 # 相談で決めたが最初の作りに入らない物（LATER_JSON：文の配列）を、1つずつ続きの Issue にする
-if [ -n "$(printf '%s' "${LATER_JSON:-}" | tr -d '[:space:]')" ]; then
+if [ "$(jq 'if type=="array" then length else 0 end' <<< "${LATER_JSON:-[]}" 2> /dev/null || echo 0)" -gt 0 ]; then
   later_file=$(mktemp)
   printf '%s' "$LATER_JSON" > "$later_file"
   later_made=()

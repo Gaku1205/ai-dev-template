@@ -192,6 +192,12 @@ li=$(talk later-issues "$T/later.json" "予約サイト")
 assert_eq "later の1つずつが Issue の入力になる" "2" "$(jq 'length' <<< "$li")"
 assert_eq "Issue のタイトルは later の文" "新しい予約を LINE に届ける" "$(jq -r '.[0].title' <<< "$li")"
 assert_contains "Issue の本文に元のメモ" "$(jq -r '.[0].body' <<< "$li")" "元のメモ：予約サイト"
+# factory.sh の判定（LATER_JSON の配列の長さ）：[]・空・壊れた値では Issue を作らず、1つ以上あるときだけ作る
+later_len() { jq 'if type=="array" then length else 0 end' <<< "${1:-[]}" 2> /dev/null || echo 0; }
+assert_eq "LATER_JSON=[] は0件" "0" "$(later_len '[]')"
+assert_eq "LATER_JSON が空は0件" "0" "$(later_len '')"
+assert_eq "LATER_JSON が壊れていたら0件" "0" "$(later_len 'x{')"
+assert_eq "LATER_JSON が1件以上ならその数" "2" "$(later_len '["a","b"]')"
 
 echo "== ざっくり画面 → 最終確認 → 作る"
 echo '{"mocks":[{"title":"曲線","note":"n"},{"title":"表","note":"m"}]}' > "$T/out/mocks.json"
