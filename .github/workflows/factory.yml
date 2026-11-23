@@ -38,6 +38,8 @@ jobs:
       detail: ${{ steps.memo.outputs.detail || steps.talk.outputs.detail }}
       body: ${{ github.event.issue.body || steps.talk.outputs.body }}
       files: ${{ steps.talk.outputs.files }}
+      # 相談で決まったが最初の作りに入れない物（JSON の配列）。作り始めたあとに続きの Issue にする（#320）
+      later: ${{ steps.talk.outputs.later }}
       # デザインの案の番号（JSON の配列）。案ごとに別のジョブで同時に作り、審査で一番いい物を選ぶ（#118・#121）
       variants: ${{ steps.variants.outputs.list }}
       variant_count: ${{ steps.variants.outputs.count }}
@@ -72,7 +74,8 @@ jobs:
           { echo 'memo<<MEMO_END'; printf '%s\n' "$memo"; echo 'MEMO_END'
             echo 'detail<<DETAIL_END'; jq -r '.detail' "$RUNNER_TEMP/brief.json" | grep -v '^DETAIL_END$'; echo 'DETAIL_END'
             echo 'body<<BODY_END'; jq -r '.body // ""' "$RUNNER_TEMP/issue.json" | tr -d '\r' | head -c 3000 | grep -v '^BODY_END$'; echo; echo 'BODY_END'
-            echo "files=$(jq -c '.files' "$RUNNER_TEMP/brief.json")"; } >> "$GITHUB_OUTPUT"
+            echo "files=$(jq -c '.files' "$RUNNER_TEMP/brief.json")"
+            echo "later=$(jq -c '.later // []' "$RUNNER_TEMP/brief.json")"; } >> "$GITHUB_OUTPUT"
       - name: メモを取り出す
         id: memo
         if: github.event_name == 'issues'
@@ -101,8 +104,9 @@ jobs:
             このサービスのリポジトリを作るために、次の3つを決め、`factory-plan.json` に JSON で書いてください（ほかのファイルは作らない）。
             {"name": "...", "stack": "...", "description": "..."}
             - name：リポジトリの名前。中身が分かる短い英語を、小文字の英数字と - でつなぐ（3〜39文字、先頭は英字。例：morning-board、receipt-sorter）
-            - stack：nextjs・saas・python・game・webgame のどれか
+            - stack：nextjs・data・saas・python・game・webgame のどれか
               - 人が画面で使うWebのサービス（ページ・ダッシュボード・ツール）なら nextjs
+              - 予約・申し込み・問い合わせ・名簿など、利用者が入れたデータを残して後で見る・数えるが、課金はしないWebのサービスなら data（データの保存は Supabase）。課金もあるなら saas
               - 会員登録・ログインがあり、月額の有料プラン（サブスク）でお金を取るWebのサービスなら saas（ログインは Supabase、課金は Stripe の土台が入る）。メモに「サブスク」「月額」「課金」「有料プラン」「会員」とあれば saas
               - 画面よりも処理が中心の物（API・データ処理・機械学習・定期的に動く処理）なら python
               - ゲーム（遊ぶ物）で、Windows の exe で配る物なら game
@@ -124,7 +128,7 @@ jobs:
           fi
           name=$(jq -r '.name // ""' "$f"); stack=$(jq -r '.stack // ""' "$f"); desc=$(jq -r '.description // ""' "$f" | tr -d '\n`')
           [[ "$name" =~ ^[a-z][a-z0-9-]{2,38}$ ]] || { echo "::error::名前「$name」の形が違います"; exit 1; }
-          case "$stack" in nextjs | saas | python | game | webgame) ;; *) echo "::error::言語「$stack」は nextjs・saas・python・game・webgame のどれか"; exit 1 ;; esac
+          case "$stack" in nextjs | data | saas | python | game | webgame) ;; *) echo "::error::言語「$stack」は nextjs・data・saas・python・game・webgame のどれか"; exit 1 ;; esac
           [ -n "$desc" ] || { echo "::error::説明がありません"; exit 1; }
           desc="${desc:0:120}"
           echo "名前：$name／言語：$stack／説明：$desc"
@@ -156,7 +160,7 @@ jobs:
   # AIはファイルを書くことと、決まったコマンドを動かすことだけ（鍵は持たない）
   design:
     needs: plan
-    if: needs.plan.outputs.stack == 'nextjs' || needs.plan.outputs.stack == 'saas' || needs.plan.outputs.stack == 'game' || needs.plan.outputs.stack == 'webgame'
+    if: needs.plan.outputs.stack == 'nextjs' || needs.plan.outputs.stack == 'data' || needs.plan.outputs.stack == 'saas' || needs.plan.outputs.stack == 'game' || needs.plan.outputs.stack == 'webgame'
     # 方向の違う案を、案ごとに別のジョブで同時に作る（時間は1案ぶん）。1つが落ちても、ほかの案は続ける。選ぶのは design-pick
     strategy:
       fail-fast: false
@@ -609,6 +613,7 @@ jobs:
           ISSUE: ${{ github.event.issue.number || inputs.issue }}
           MEMO: ${{ needs.plan.outputs.memo }}
           MEMO_DETAIL: ${{ needs.plan.outputs.detail }}
+          LATER_JSON: ${{ needs.plan.outputs.later }}
           APP_NAME: ${{ needs.plan.outputs.name }}
           APP_STACK: ${{ needs.plan.outputs.stack }}
           APP_DESC: ${{ needs.plan.outputs.desc }}
