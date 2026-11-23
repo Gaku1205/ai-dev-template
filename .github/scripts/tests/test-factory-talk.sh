@@ -230,6 +230,9 @@ talk check looks "$T/out3" > "$T/o3j.json"
 talk merge "$T/s2.json" looks "$T/o3j.json" "issue-7/r2-looks" > "$T/h2.json"
 hb=$(talk render "$T/h2.json" "https://raw.example/o/r/factory-talk")
 assert_eq "方向：折りたたみの外に id・色コード・点が出ない" "0" "$(leak "$(strip_tech "$hb")")"
+jq '.ideas[.idea].title = "潮汐暦（tide-almanac）"' "$T/h2.json" > "$T/h2t.json"
+hbt=$(talk render "$T/h2t.json" "https://raw.example/o/r/factory-talk")
+assert_eq "方向：見出しに案のid が出ない" "0" "$(leak "$(strip_tech "$hbt")")"
 assert_not_contains "方向：書体名が外に出ない" "$(strip_tech "$hb")" "Shippori"
 assert_not_contains "方向：参考 URL が外に出ない" "$(strip_tech "$hb")" "a.example"
 assert_contains "方向：色コードが記録の中に残る" "$hb" "色：\`#c39461\`"

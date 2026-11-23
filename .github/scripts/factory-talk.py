@@ -345,7 +345,7 @@ def render(state, root):
         how = "番号で1つ選んでください（例：`2`・`2。名前はもっと短く`）。いくつかを1つのサービスにまとめるなら `1,3` のように。どれも違えば「全部ちがう。もっと〇〇」と書くと出し直します。"
     elif stage == "looks":
         idea = state["ideas"][state["idea"]]
-        L.append(f"## 🎨 「{idea['title']}」の見た目の方向を3つ作りました（左が PC、右がスマホの最初の1画面）\n")
+        L.append(f"## 🎨 「{plain(idea.get('title')) or '選んだ案'}」の見た目の方向を3つ作りました（左が PC、右がスマホの最初の1画面）\n")
         for l in state.get("looks", []):
             L.append(f"### {l['n']}. {plain(l['title']) or '方向' + str(l['n'])}")
             L.append(plain(l["idea"]) + "\n")
