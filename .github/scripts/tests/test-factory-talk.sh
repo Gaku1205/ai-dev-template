@@ -175,6 +175,29 @@ assert_contains "決まった事は1問ずつの行" "$r" "  - お金 → **無�
 b=$(talk brief "$T/c0.json")
 assert_contains "本番に方向の HTML を渡す" "$(jq -r '.files | join(" ")' <<< "$b")" "issue-9/r2-looks/look-3.html"
 assert_contains "中身の決まりの印" "$(jq -r .detail <<< "$b")" "お金 → 無料（中身の決まり）"
+assert_not_contains "later が無ければ「あとで作ります」の行は出ない" "$r" "あとで作ります"
+# 最初の作りに入らない物（later）：最終確認で見せ、brief に「あとで作る物」として入れ、続きの Issue の入力にする
+echo '{"name":"tide","stack":"nextjs","description":"d","later":["新しい予約を LINE に届ける","<b>CSV 出力</b>"]}' > "$T/out/confirm.json"
+talk check confirm "$T/out" > "$T/lo.json"
+assert_eq "check は later を整えて残す" "2" "$(jq '.later | length' "$T/lo.json")"
+jq --slurpfile c "$T/lo.json" '.confirm = $c[0]' "$T/c0.json" > "$T/c1.json"
+r=$(talk render "$T/c1.json" "https://x")
+assert_contains "最終確認に「あとで作ります」の行" "$r" "- **あとで作ります**：新しい予約を LINE に届ける"
+b=$(talk brief "$T/c1.json")
+assert_contains "detail に「あとで作る物」として later が入る" "$(jq -r .detail <<< "$b")" "あとで作る物"
+assert_contains "detail に later の中身" "$(jq -r .detail <<< "$b")" "- 新しい予約を LINE に届ける"
+assert_not_contains "detail に later を「やらない」とは書かない" "$(jq -r .detail <<< "$b")" "やらない物"
+jq '.later' <<< "$b" > "$T/later.json"
+li=$(talk later-issues "$T/later.json" "予約サイト")
+assert_eq "later の1つずつが Issue の入力になる" "2" "$(jq 'length' <<< "$li")"
+assert_eq "Issue のタイトルは later の文" "新しい予約を LINE に届ける" "$(jq -r '.[0].title' <<< "$li")"
+assert_contains "Issue の本文に元のメモ" "$(jq -r '.[0].body' <<< "$li")" "元のメモ：予約サイト"
+# factory.sh の判定（LATER_JSON の配列の長さ）：[]・空・壊れた値では Issue を作らず、1つ以上あるときだけ作る
+later_len() { jq 'if type=="array" then length else 0 end' <<< "${1:-[]}" 2> /dev/null || echo 0; }
+assert_eq "LATER_JSON=[] は0件" "0" "$(later_len '[]')"
+assert_eq "LATER_JSON が空は0件" "0" "$(later_len '')"
+assert_eq "LATER_JSON が壊れていたら0件" "0" "$(later_len 'x{')"
+assert_eq "LATER_JSON が1件以上ならその数" "2" "$(later_len '["a","b"]')"
 
 echo "== ざっくり画面 → 最終確認 → 作る"
 echo '{"mocks":[{"title":"曲線","note":"n"},{"title":"表","note":"m"}]}' > "$T/out/mocks.json"

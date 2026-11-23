@@ -13,7 +13,8 @@ AIは talk/ にファイルを書くだけ。形を確かめる・コメント�
   factory-talk.py render STATE.json ROOT               オーナーに見せるコメント（印つき）。ROOT は factory-talk ブランチの中身の URL（末尾の / なし）
   factory-talk.py ack STAGE                            返事を受け取って作り始めた知らせの文（ideas・looks・mocks・confirm。clarify・go は空）
   factory-talk.py mark STATE.json                     印だけ（作れなかったときのコメントに付けて、次の返事で同じ段階をやり直せるようにする）
-  factory-talk.py brief STATE.json                     作り始めるときに工場へ渡す物（name・stack・description・detail・mock）
+  factory-talk.py brief STATE.json                     作り始めるときに工場へ渡す物（name・stack・description・detail・files・later）
+  factory-talk.py later-issues LATER.json MEMO         あとで作る物（文の配列）から、続きの Issue の入力 [{title, body}] を作る
 """
 import base64
 import json
@@ -148,7 +149,9 @@ def check(stage, d):
             die("saas の値段（100〜3000 の整数）が無い")
         lst = lambda k: [text(x, 80) for x in (data.get(k) or []) if text(x, 80)][:8]
         out.update({"name": name, "stack": stack, "description": desc, "free": lst("free") if saas else [],
-                    "paid": lst("paid") if saas else [], "price": price if saas else None, "pages": lst("pages")})
+                    "paid": lst("paid") if saas else [], "price": price if saas else None, "pages": lst("pages"),
+                    # 相談で決めたが、最初の作りに入らない物（最終確認で見せ、工場が続きの Issue にする）
+                    "later": [text(x, 120) for x in (data.get("later") or []) if text(x, 120)][:5]})
     else:
         die(f"知らない段階：{stage}")
     # 審査役の点の行（design-judge.py summary が作った1行。あれば、選択肢の下に小さく見せる）
@@ -390,6 +393,9 @@ def render(state, root):
             L.append(f"- **有料（月 {c.get('price')} 円）**：{'・'.join(plain(x) for x in c.get('paid', []))}")
         if c.get("pages"):
             L.append(f"- **最初に作る画面**：{'・'.join(plain(x) for x in c['pages'])}")
+        later = [plain(x) for x in (c.get("later") or []) if plain(x)]
+        if later:
+            L.append(f"- **あとで作ります**：{'・'.join(later)}（最初の作りには入れず、続きとして作ります）")
         if state.get("answers"):
             # 1つの長い文にすると読めないので、質問ごとに1行
             L.append("- **決まった事**：")
@@ -450,6 +456,10 @@ def brief(state):
         lines.append(f"- {a['q']} → {a['a']}{tag}")
     for n in state.get("notes", []):
         lines.append(f"- オーナーの注文（{n['stage']}）：{n['note']}")
+    later = [x for x in (c.get("later") or []) if isinstance(x, str) and x]
+    if later:
+        lines.append("\n最初の作りに入らず、あとで作る物（続きの Issue として工場が作る。最初の Issue・仕様書の「やらないこと」に回さず、「あとで作る」と書く）：")
+        lines += [f"- {x}" for x in later]
     detail = "\n".join(lines)
     assets = state.get("assets") or {}
     files = []
@@ -466,7 +476,20 @@ def brief(state):
             files += [f"{assets['looks']}/look-{n}.html", f"{assets['looks']}/look-{n}-390.png",
                       f"{assets['looks']}/concept.md", f"{assets['looks']}/credits.json"]
     return {"name": c.get("name") or idea.get("name", ""), "stack": c.get("stack") or idea.get("stack", ""),
-            "description": c.get("description", ""), "detail": detail[:6000], "files": files}
+            "description": c.get("description", ""), "detail": detail[:6000], "files": files, "later": later}
+
+
+def later_issues(later, memo):
+    """あとで作る物の1つずつを、続きの Issue を作る入力（タイトルと本文）にする"""
+    out = []
+    for x in later if isinstance(later, list) else []:
+        t = text(x, 200)
+        if not t:
+            continue
+        body = (f"相談で決めたが、最初の作りには入らなかった物です（あとで作る）。\n\n- {t}\n\n"
+                f"元のメモ：{text(memo, 300)}")
+        out.append({"title": t[:80], "body": body})
+    return out
 
 
 def main():
@@ -512,6 +535,8 @@ def main():
         print(encode(load(a[1])))
     elif cmd == "brief":
         print(json.dumps(brief(load(a[1])), ensure_ascii=False))
+    elif cmd == "later-issues":
+        print(json.dumps(later_issues(load(a[1]), a[2] if len(a) > 2 else ""), ensure_ascii=False))
     else:
         die(__doc__)
 

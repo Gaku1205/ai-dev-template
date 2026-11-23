@@ -556,6 +556,24 @@ ${MEMO_DETAIL}"
     || fail "最初のIssueを作れませんでした"
   note "✅ 最初のIssue：https://github.com/$NEW/issues/$first（自動で企画に回る）"
 fi
+# 相談で決めたが最初の作りに入らない物（LATER_JSON：文の配列）を、1つずつ続きの Issue にする
+if [ "$(jq 'if type=="array" then length else 0 end' <<< "${LATER_JSON:-[]}" 2> /dev/null || echo 0)" -gt 0 ]; then
+  later_file=$(mktemp)
+  printf '%s' "$LATER_JSON" > "$later_file"
+  later_made=()
+  if later_items=$(python3 "$HERE/factory-talk.py" later-issues "$later_file" "$MEMO" 2> /dev/null); then
+    while IFS= read -r li; do
+      [ -n "$li" ] || continue
+      if n=$(gh api "repos/$NEW/issues" -f title="$(jq -r .title <<< "$li")" -f body="$(jq -r .body <<< "$li")" -q .number 2>&1); then later_made+=("#$n"); fi
+    done < <(jq -c '.[]' <<< "$later_items")
+  fi
+  rm -f "$later_file"
+  if [ "${#later_made[@]}" -gt 0 ]; then
+    note "✅ あとで作る物を続きの Issue にした：${later_made[*]}（自動で企画に回る）"
+  else
+    note "⚠️ あとで作る物を Issue にできませんでした（最終確認の「あとで作ります」を、そのリポジトリにIssueとして書く）"
+  fi
+fi
 if [ "$DEPLOY" = github-pages ]; then
   note "🌐 公開アドレス：https://${OWNER,,}.github.io/$name/（GitHub Pages。最初の公開が終わると見られる）"
 fi
