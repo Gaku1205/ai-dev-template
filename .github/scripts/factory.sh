@@ -50,7 +50,7 @@ leftover() {
     note "🧹 リポジトリ https://github.com/$NEW は、中身まで入っています。作り直さなくて大丈夫です。上の ❌ の所だけ、手で続きをしてください（最初のIssueが無ければ、そのリポジトリにIssueを1つ書くと、そこから進みます）"
   else
     local again="消さずにもう一度作ると、名前の後ろに -2 が付いた別のリポジトリになります"
-    [ "$marked" = yes ] && [ "$APP_STACK" != saas ] && again="消さずに、この Issue でもう一度作る（Actions の Factory の実行を Re-run する）と、このリポジトリの続きから作ります（別の Issue から作ると、名前の後ろに -2 が付いた別のリポジトリになります）"
+    [ "$marked" = yes ] && [ "$APP_STACK" != saas ] && [ "$APP_STACK" != data ] && again="消さずに、この Issue でもう一度作る（Actions の Factory の実行を Re-run する）と、このリポジトリの続きから作ります（別の Issue から作ると、名前の後ろに -2 が付いた別のリポジトリになります）"
     note "🧹 作りかけのリポジトリが残っています：https://github.com/$NEW（中身はテンプレートのまま。秘密と変数は写してある）。要らなければ消してください（そのリポジトリの Settings → 一番下の Delete this repository。Vercel や Supabase のプロジェクトを作っていれば、それも）。${again}"
   fi
 }
@@ -92,11 +92,16 @@ trap 'exit 143' TERM INT
 # ---- 0. AIが決めた物の形を確かめる（ここで使う値は、この形の物だけ） ----
 valid_plan() {
   [[ "$APP_NAME" =~ ^[a-z][a-z0-9-]{2,38}$ ]] || { echo "名前「$APP_NAME」は小文字の英数字と - で3〜39文字にする"; return 1; }
-  case "$APP_STACK" in nextjs | saas | python | game | webgame) ;; *) echo "言語「$APP_STACK」は nextjs・saas・python・game・webgame のどれか"; return 1 ;; esac
+  case "$APP_STACK" in nextjs | data | saas | python | game | webgame) ;; *) echo "言語「$APP_STACK」は nextjs・data・saas・python・game・webgame のどれか"; return 1 ;; esac
   [ -n "$APP_DESC" ] && [ "${#APP_DESC}" -le 120 ] || { echo "説明は1〜120文字"; return 1; }
   case "$APP_DESC" in *$'\n'* | *'`'* | *'$('*) echo "説明に改行・記号（\` \$( ）は使わない"; return 1 ;; esac
 }
 why=$(valid_plan) || fail "AIが決めた名前・言語・説明の形が正しくありません：$why"
+# data（データを残す・課金なし）の決まり。最初の Issue にも、仕様書の「技術」にも書く
+DATA_RULES="## データの保存（このサービスは、利用者が入れたデータを残す）
+- データの保存は Supabase。メモリ・ファイル・localStorage には、残すデータを置かない（Vercel では入れ替わり・再起動で消える）
+- 表を作るときは RLS を必ず付ける（\`supabase/migrations/*.sql\` に、新しい番号で足す。サーバーの鍵 SUPABASE_SECRET_KEY はサーバー側だけで使う）
+- 見本のデータ（見本の予約など）は、開発とテストだけで使い、本番には出さない（本番で見本の時間が埋まって見えてはいけない）"
 # 公開先：サーバーの要らない Next.js は GitHub Pages、サーバーが要る物は Vercel（pick-deploy.sh。迷ったら Vercel）。
 # 課金・ログインの有無（APP_PAID・APP_LOGIN。yes のとき）と、説明・メモから決める
 # shellcheck source=pick-deploy.sh
@@ -110,10 +115,10 @@ ${MEMO_DETAIL:-}" "${APP_PAID:-no}" "${APP_LOGIN:-no}")
 # 続きから作るのは、次の全部が確かなときだけ（1つでも違えば、今までどおり別の名前で作る。人のリポジトリ・もう中身のある物には触らない）：
 #   - この工場が、この Issue のために作った印（変数 FACTORY_ISSUE＝テンプレート#Issueの番号。作った直後に付ける。変数はリポジトリの管理者しか書けない）
 #   - main の CLAUDE.md が、まだテンプレートのまま（説明の置き場が残っている＝最初の準備を push していない）
-#   - saas ではない（Supabase・Stripe の物を二重に作らないため）
+#   - saas・data ではない（Supabase・Stripe の物を二重に作らないため）
 is_my_leftover() { # リポジトリの名前（owner/repo）
   local mark claude
-  [ "$APP_STACK" != saas ] || return 1
+  [ "$APP_STACK" != saas ] && [ "$APP_STACK" != data ] || return 1
   mark=$(gh api "repos/$1/actions/variables/FACTORY_ISSUE" -q '.value // empty' 2> /dev/null) || return 1
   [ "$mark" = "$TEMPLATE#$ISSUE" ] || return 1
   claude=$(gh api "repos/$1/contents/CLAUDE.md" -H "Accept: application/vnd.github.raw" 2> /dev/null) || return 1
@@ -154,7 +159,7 @@ for n in $COPY_SECRETS; do
   v="S_$n"; val="${!v:-}"
   [ -z "$val" ] && continue
   # Vercel の鍵は、Vercel で公開する物（Next.js・Web のゲーム）にだけ入れる（公開をまとめて頼む deploy-vercel.yml が使う）
-  [ "$n" = VERCEL_TOKEN ] && [ "$APP_STACK" != nextjs ] && [ "$APP_STACK" != saas ] && [ "$APP_STACK" != webgame ] && continue
+  [ "$n" = VERCEL_TOKEN ] && [ "$APP_STACK" != nextjs ] && [ "$APP_STACK" != data ] && [ "$APP_STACK" != saas ] && [ "$APP_STACK" != webgame ] && continue
   [ "$n" = VERCEL_TOKEN ] && [ "$DEPLOY" = github-pages ] && continue
   if printf '%s' "$val" | gh secret set "$n" --repo "$NEW" > /dev/null 2>&1; then copied+=("$n"); else note "⚠️ 秘密 $n を写せませんでした（FACTORY_TOKEN に Secrets（Read and write）が要ります）"; fi
 done
@@ -172,7 +177,7 @@ if [ "$DEPLOY" = github-pages ]; then
 elif [ "$APP_STACK" = nextjs ]; then
   note "✅ $(pick_deploy_reason vercel)"
 fi
-if [ "$DEPLOY" = vercel ] && { [ "$APP_STACK" = nextjs ] || [ "$APP_STACK" = saas ] || [ "$APP_STACK" = webgame ]; }; then
+if [ "$DEPLOY" = vercel ] && { [ "$APP_STACK" = nextjs ] || [ "$APP_STACK" = data ] || [ "$APP_STACK" = saas ] || [ "$APP_STACK" = webgame ]; }; then
   framework=nextjs; [ "$APP_STACK" = webgame ] && framework=vite
   if vout=$(REPO_FULL="$NEW" PROJECT="$name" FRAMEWORK="$framework" "$HERE/factory-vercel.sh" 2>&1); then
     note "✅ Vercel のプロジェクトを作ってつないだ"
@@ -191,6 +196,12 @@ if [ "$APP_STACK" = saas ]; then
     p=$(head -c 20 "$PRICE_FILE" | tr -dc '0-9'); [ -n "$p" ] && [ "$p" -ge 100 ] && [ "$p" -le 10000 ] && price="$p"
   fi
   STATE_FILE="$saas_state" NOTES_FILE="$saas_notes" PROJECT="$vproject" REPO_FULL="$NEW" PRICE_YEN="$price" APP_TITLE="$name" \
+    "$HERE/factory-saas-provision.sh" init || true
+  while IFS= read -r line; do [ -n "$line" ] && note "$line"; done < "$saas_notes"
+  : > "$saas_notes"
+elif [ "$APP_STACK" = data ]; then
+  # データを残す・課金なし：Supabase と Vercel の環境変数だけ（Stripe は作らない）
+  MODE=data STATE_FILE="$saas_state" NOTES_FILE="$saas_notes" PROJECT="$vproject" REPO_FULL="$NEW" APP_TITLE="$name" \
     "$HERE/factory-saas-provision.sh" init || true
   while IFS= read -r line; do [ -n "$line" ] && note "$line"; done < "$saas_notes"
   : > "$saas_notes"
@@ -257,6 +268,18 @@ line = "- 技術：Next.js（App Router）＋TypeScript、テストはVitest\n"
 s = s.replace(line, line + "- 公開先：" + os.environ["REASON"] + "\n", 1)
 open("docs/spec.md", "w", encoding="utf-8").write(s)
 PY5
+  fi
+  # データを残す（課金なし）：仕様書の「技術」に、Supabase・RLS・見本データの決まりを書く（Next.js の土台のまま。ログインの土台は入れない）
+  if [ "$APP_STACK" = data ]; then
+    python3 - <<'PY6'
+import os
+s = open("docs/spec.md", encoding="utf-8").read()
+line = "- 技術：Next.js（App Router）＋TypeScript、テストはVitest\n"
+add = ("- データの保存：Supabase。表を作るときは RLS を必ず付ける（`saas` と同じ決まり）\n"
+       "- 見本のデータ：開発とテストだけで使い、本番には出さない（見本の予約などで、本番の時間が埋まって見えてはいけない）\n")
+s = s.replace(line, line + add, 1)
+open("docs/spec.md", "w", encoding="utf-8").write(s)
+PY6
   fi
   # 会員と月額課金：Next.js に、ログイン（Supabase）と有料プラン（Stripe）の土台を入れる（examples/saas）
   if [ "$APP_STACK" = saas ]; then
@@ -367,7 +390,7 @@ PY3
   fi
   # Vercel の鍵を入れたら、Vercel がマージのたびに自分で公開するのを止め、deploy-vercel.yml が落ち着いてから1回だけ公開する
   # （無料プランの「1日100回まで」に当たらないように）。鍵が無いときは今までどおり Vercel が自分で公開する
-  if [ "$DEPLOY" = vercel ] && { [ "$APP_STACK" = nextjs ] || [ "$APP_STACK" = saas ] || [ "$APP_STACK" = webgame ]; } && [ -n "${S_VERCEL_TOKEN:-}" ] && [ -f vercel.json ]; then
+  if [ "$DEPLOY" = vercel ] && { [ "$APP_STACK" = nextjs ] || [ "$APP_STACK" = data ] || [ "$APP_STACK" = saas ] || [ "$APP_STACK" = webgame ]; } && [ -n "${S_VERCEL_TOKEN:-}" ] && [ -f vercel.json ]; then
     # ignoreCommand（直前のコミットとの差だけを見る）は消す。まとめて公開すると、間のコミットの変更を見落として公開が飛ばされるため。
     # パイプラインの物しか変わっていない時に公開しないのは、deploy-vercel.sh が決める
     jq '.git.deploymentEnabled = false | del(.ignoreCommand)' vercel.json > vercel.json.new && mv vercel.json.new vercel.json
@@ -489,6 +512,9 @@ if [ "${site_flag%% *}" = SITE=yes ]; then
     body="工場（${TEMPLATE}#${ISSUE}）のデザイン担当が最初の画面を作ったときに、時間が足りず残った作業です。見た目は docs/design.md と docs/design-ref/ の画像に合わせてください（作った画面を撮って見比べる）。
 
 元のメモ：${MEMO}"
+    [ "$APP_STACK" = data ] && body="${body}
+
+${DATA_RULES}"
     if n=$(gh api "repos/$NEW/issues" -f title="$(printf '%s' "$item" | cut -c1-80)" -f body="$body" -q .number 2>&1); then made+=("#$n"); fi
   done
   if [ "${#made[@]}" -gt 0 ]; then
@@ -500,6 +526,11 @@ else
   look="見た目は docs/design.md のとおりに作ってください。"
   [ -n "$ref_line" ] && look="見た目は docs/design.md のとおりに作り、docs/design-ref/ の画像を目標の絵にしてください（作った画面を撮って、見比べて直す）。"
   body="工場（${TEMPLATE}#${ISSUE}）で作ったサービスの、最初のメモです。企画AIが清書して、そのまま実装まで進めます。最初の画面を一から作る大きい作業なので size:L（強いモデル）にしています。${look}"
+  if [ "$APP_STACK" = data ]; then
+    body="${body}
+
+${DATA_RULES}"
+  fi
   if [ -n "$(printf '%s' "${MEMO_DETAIL:-}" | tr -d '[:space:]')" ]; then
     body="${body}
 
@@ -524,8 +555,8 @@ if [ -n "$vercel_note" ]; then
       note "🌐 公開アドレス：$site（リポジトリの Website 欄にも入れた。最初の画面は、最初のIssueがマージされると出る）"
     fi
     # 会員と課金：公開アドレスが決まったので、Stripe の通知の受け口とログインの戻り先を入れ、環境変数を効かせるため公開をやり直す
-    if [ "$APP_STACK" = saas ] && [ -s "$saas_state" ]; then
-      STATE_FILE="$saas_state" NOTES_FILE="$saas_notes" PROJECT="$vproject" REPO_FULL="$NEW" \
+    if { [ "$APP_STACK" = saas ] || [ "$APP_STACK" = data ]; } && [ -s "$saas_state" ]; then
+      MODE=$([ "$APP_STACK" = data ] && echo data || echo saas) STATE_FILE="$saas_state" NOTES_FILE="$saas_notes" PROJECT="$vproject" REPO_FULL="$NEW" \
         "$HERE/factory-saas-provision.sh" url "$site" || true
       while IFS= read -r line; do [ -n "$line" ] && note "$line"; done < "$saas_notes"
       if [ -n "${S_VERCEL_TOKEN:-}" ] && GITHUB_REPOSITORY="$NEW" VERCEL_TOKEN="$S_VERCEL_TOKEN" VERCEL_TEAM_ID="${VERCEL_TEAM_ID:-}" VERCEL_FORCE=1 "$HERE/deploy-vercel.sh" > /dev/null 2>&1; then

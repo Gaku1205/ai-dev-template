@@ -14,6 +14,8 @@
 #           VERCEL_TOKEN・VERCEL_TEAM_ID（任意）、PROJECT（Vercel のプロジェクト名＝リポジトリ名）、REPO_FULL（owner/repo）、GH_TOKEN、
 #           PRICE_YEN（月額。既定 500）、STATE_FILE（init と url の間で、プロジェクトの番号などを渡すファイル）、
 #           NOTES_FILE（結果の行を足すファイル。呼び出し側が報告に使う）、SAAS_WAIT_TRIES（既定 60）・FACTORY_WAIT_SEC（既定 5）、テスト用：SUPABASE_API・STRIPE_API・VERCEL_API
+#           MODE=data（init・url に付ける。データを残すだけで課金しないサービス）：Stripe と課金の表を飛ばし、Supabase の
+#           プロジェクト・鍵・SUPABASE_DB_URL・Vercel の環境変数（NEXT_PUBLIC_SUPABASE_URL・…_PUBLISHABLE_KEY・SUPABASE_SECRET_KEY）だけ用意する
 # 出力：1行ずつ「✅ 〜」「⚠️ 〜」。全部できたら 0、どこかで止まったら 1（できた所までは残る。サービスは鍵が無くても画面は動く）
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -92,15 +94,24 @@ init_supabase() {
   done
   [ "$up" = yes ] || { bad "Supabase のプロジェクトが立ち上がりきりませんでした（数分後に、工場の Issue を見ながら手で続きをやる）"; return 1; }
   # 最初の表。流した印を app_meta.migrations に残す（あとの表の追加は、公開の supabase が番号の順に流す）
-  local sql; sql="create schema if not exists app_meta;
+  local sql mname="0001_billing"
+  if [ "${MODE:-saas}" = data ]; then
+    # data：課金の表は流さない。表を足した印を残す表（app_meta.migrations）だけ作る
+    mname="0000_init"
+    sql="create schema if not exists app_meta;
+create table if not exists app_meta.migrations (name text primary key, applied_at timestamptz not null default now());"
+  else
+    sql="create schema if not exists app_meta;
 create table if not exists app_meta.migrations (name text primary key, applied_at timestamptz not null default now());
 $(cat "$HERE/../../examples/saas/supabase/migrations/0001_billing.sql")
 insert into app_meta.migrations (name) values ('0001_billing.sql') on conflict do nothing;"
-  if sb POST "/v1/projects/$ref/database/migrations" --data-binary "$(jq -nc --arg q "$sql" '{name: "0001_billing", query: $q}')" ||
+  fi
+  if sb POST "/v1/projects/$ref/database/migrations" --data-binary "$(jq -nc --arg q "$sql" --arg n "$mname" '{name: $n, query: $q}')" ||
     sb POST "/v1/projects/$ref/database/query" --data-binary "$(jq -nc --arg q "$sql" '{query: $q}')"; then
-    say "✅ 会員と課金の表を作った（billing_customers・subscriptions。自分の行だけ読める）"
+    if [ "${MODE:-saas}" = data ]; then say "✅ データベースの下ごしらえをした（表を足した印を残す表。アプリの表は、あとの Issue で RLS 付きで足す）"
+    else say "✅ 会員と課金の表を作った（billing_customers・subscriptions。自分の行だけ読める）"; fi
   else
-    bad "会員と課金の表を作れませんでした（$(why)。トークンの Database と Migrations の Read and write が要る）"
+    bad "データベースの最初の表を作れませんでした（$(why)。トークンの Database と Migrations の Read and write が要る）"
   fi
   # 鍵：新しい形（publishable・secret）を使う。無ければ作る。どうしても無ければ古い形（anon・service_role）
   local pub="" sec=""
@@ -161,7 +172,8 @@ case "${1:-}" in
     : > "$STATE_FILE"
     SUPA_URL="" SUPA_PUB="" SUPA_SEC="" STRIPE_PRICE="" STRIPE_PORTAL=""
     init_supabase
-    init_stripe
+    # data（データを残す・課金なし）は Stripe を作らない
+    [ "${MODE:-saas}" = data ] || init_stripe
     stripe_key=""; [ -n "$STRIPE_PRICE" ] && stripe_key="$STRIPE_SECRET_KEY"
     vercel_env NEXT_PUBLIC_SUPABASE_URL "$SUPA_URL" NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY "$SUPA_PUB" SUPABASE_SECRET_KEY "$SUPA_SEC" \
       STRIPE_SECRET_KEY "$stripe_key" STRIPE_PRICE_ID "$STRIPE_PRICE" STRIPE_PORTAL_CONFIG "$STRIPE_PORTAL"
@@ -171,7 +183,7 @@ case "${1:-}" in
   url)
     site="${2:?公開アドレスを指定}"
     [[ "$site" =~ ^https://[A-Za-z0-9.-]+$ ]] || { bad "公開アドレスの形が違います：$site"; exit 1; }
-    if [ "$(state_get stripe)" = yes ]; then
+    if [ "${MODE:-saas}" != data ] && [ "$(state_get stripe)" = yes ]; then
       if IDEM=webhook st /v1/webhook_endpoints --data-urlencode "url=$site/api/stripe/webhook" -d "description=${PROJECT} の会員の状態" -d "metadata[repo]=${REPO_FULL:-}" \
         -d "enabled_events[]=checkout.session.completed" -d "enabled_events[]=customer.subscription.created" \
         -d "enabled_events[]=customer.subscription.updated" -d "enabled_events[]=customer.subscription.deleted"; then

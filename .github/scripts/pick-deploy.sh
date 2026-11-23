@@ -9,7 +9,7 @@
 # 直接動かすと pick_deploy を呼ぶ：pick-deploy.sh nextjs "説明" no no
 #
 # 決め方（迷ったら vercel。サーバーが要るのに Pages に出すと壊れるため）：
-#   - 言語が nextjs 以外（saas・python・game・webgame）は vercel（game・python は公開先が別に決まっている）
+#   - 言語が nextjs 以外（data・saas・python・game・webgame）は vercel（game・python は公開先が別に決まっている）
 #   - 課金・ログインが yes なら vercel
 #   - 説明に、サーバーで動く物（API・ログイン・会員・課金・AI・メール・共有・データベースなど）を思わせる言葉があれば vercel
 #   - 説明に、サーバーの要らない印（データは端末・静的・ポートフォリオ・ゲームなど）があるときだけ github-pages

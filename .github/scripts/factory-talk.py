@@ -22,7 +22,9 @@ import sys
 
 MARK = "factory-talk:v1:"
 STAGES = ["ideas", "looks", "mocks", "confirm"]
-STACKS = ["nextjs", "saas", "python", "game", "webgame"]
+STACKS = ["nextjs", "data", "saas", "python", "game", "webgame"]
+# データを保存する所（Supabase）を用意する作り方
+DB_STACKS = ("data", "saas")
 NAME_RE = re.compile(r"^[a-z][a-z0-9-]{2,38}$")
 BOT = "github-actions[bot]"
 
@@ -357,7 +359,10 @@ def render(state, root):
             l = next((x for x in state.get("looks", []) if x.get("n") == n), {})
             phone = f" <img src=\"{imgbase}/look-{n}-390.png\" width=\"150\" alt=\"選んだ画面 スマホ\">" if l.get("phone") else ""
             L.append(f"\n<img src=\"{imgbase}/look-{n}-1440.png\" width=\"560\" alt=\"選んだ画面\">{phone}\n")
-        how = "よければ「**作る**」と返事してください。リポジトリや Supabase を作り始めます。直したい所があれば、その内容を書いてください（確認を作り直します）。"
+        made = "リポジトリを作り始めます"
+        if c.get("stack") in DB_STACKS:
+            made = "リポジトリを作り、予約などのデータを保存する所も用意します"
+        how = f"よければ「**作る**」と返事してください。{made}。直したい所があれば、その内容を書いてください（確認を作り直します）。"
     else:
         die(f"見せる物の無い段階：{stage}")
     qs = state.get("ask", {}).get("questions", [])

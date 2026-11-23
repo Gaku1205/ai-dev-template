@@ -48,9 +48,25 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 
 - 印 `FACTORY_ISSUE` が、この Issue の物（変数はリポジトリの管理者しか書けないので、外の人は作れない）
 - main の `CLAUDE.md` が、まだテンプレートのまま（最初の準備を push していない）
-- saas ではない（Supabase・Stripe の物を二重に作らないため。saas は今までどおり `-2`）
+- saas・data ではない（Supabase・Stripe の物を二重に作らないため。saas・data は今までどおり `-2`）
 
 テンプレートの受付（intake）は、`新サービス：` のIssueを企画に回さない。工場は最初にIssueへ `factory` の印を付け、企画AI・実装AIは、題が `新サービス：` で始まるか、この印があるIssueを、テンプレート自身では受けない（題が書き換えられても止まる）。
+
+## 作り方の決め方（nextjs・data・saas）
+
+- **利用者が入れたデータを、あとで見る・数える**サービス（予約・申し込み・問い合わせ・名簿・在庫など）は `data`。課金もあるなら `saas`
+- データを残さない（見るだけ・計算するだけ・端末の中だけで済む）なら `nextjs`
+- 迷ったら、「サーバーが再起動しても残っていないと困るデータがあるか」で決める。ある → `data`（か `saas`）。メモリやファイルに置くと、Vercel では入れ替わり・再起動で消える
+- 最終確認の文は作り方に合わせる。`data`・`saas` は「予約などのデータを保存する所も用意します」、`nextjs` などは Supabase の言葉を出さない
+
+## データを残す（data。課金なし）
+
+予約・申し込みなど、データを残すが課金はしないサービス。Next.js の土台のまま、Supabase のデータベースだけを足す（Stripe・課金の表・ログイン画面の土台は入れない。予約などの利用者に会員登録を求めないため）。
+
+- 準備は Environment「factory」の Secret `SUPABASE_ACCESS_TOKEN` だけ（作り方は下の「会員と課金」と同じ。**Stripe は不要**）。公開に `VERCEL_TOKEN` も要る
+- 工場が作る物：Supabase のプロジェクト（東京。表を足した印を残す `app_meta.migrations` の表だけ）、Vercel の環境変数（`NEXT_PUBLIC_SUPABASE_URL`・`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`・`SUPABASE_SECRET_KEY`）、新しいリポジトリの Secret `SUPABASE_DB_URL`。公開アドレスが決まったら、Supabase のログインの戻り先を公開アドレスにする。Stripe は作らない
+- 仕様書の「技術」と最初のIssueに、「データの保存は Supabase。表を作るときは RLS を必ず付ける」「見本のデータは開発とテストだけで使い、本番には出さない」を書く
+- 公開先は Vercel。続きから作る（作りかけの再利用）は、`saas` と同じく `data` ではしない
 
 ## 会員と課金（saas）
 
