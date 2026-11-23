@@ -5,6 +5,14 @@ source "$(dirname "$0")/lib.sh"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 talk() { python3 "$SCRIPTS_DIR/factory-talk.py" "$@"; }
 png() { printf '\x89PNG\r\n\x1a\n0000' > "$1"; }
+# 頼む人が読む所だけにする：折りたたみ（<details>）・画像の印（URL に id が入る）・状態の印を取り除く
+strip_tech() { printf '%s' "$1" | python3 -c "
+import re, sys
+s = sys.stdin.read()
+s = re.sub(r'<details>.*?</details>', '', s, flags=re.S)
+s = re.sub(r'<img[^>]*>', '', s)
+s = re.sub(r'<!--.*?-->', '', s, flags=re.S)
+print(s)"; }
 mkdir -p "$T/out"
 
 echo "== 始める：段階は案から"
@@ -36,7 +44,8 @@ talk check ideas "$T/bad" > /dev/null 2>&1; assert_eq "案が足りなければ�
 echo "== 案を見せる：番号・質問・返し方・印"
 talk merge "$T/s0.json" ideas "$T/o.json" "issue-7/r1-ideas" > "$T/s1.json"
 body=$(talk render "$T/s1.json" "https://raw.example/o/r/factory-talk")
-assert_contains "1つ目の案" "$body" "### 1. 潮汐暦（\`tide-almanac\`・saas）"
+assert_contains "1つ目の案（見出しはタイトルだけ。名前・種類は出さない）" "$body" "### 1. 潮汐暦"
+assert_not_contains "案の見出しに名前・種類を出さない" "$body" "（\`tide-almanac\`"
 assert_contains "質問とおすすめ" "$body" "- A. スマホ（おすすめ）"
 assert_contains "返し方" "$body" "Q1はA"
 assert_contains "印" "$body" "<!-- factory-talk:v1:"
@@ -125,11 +134,13 @@ pr=$(talk render "$T/pc.json" "https://x")
 assert_contains "最終確認は選んだ方向の見た目と絵を出す" "$pr" "- **見た目**：方向1「木の台の予約帳」"
 assert_contains "最終確認の絵" "$pr" "look-1-1440.png"
 assert_not_contains "nextjs（データを残さない）の最終確認に「Supabase」を出さない" "$pr" "Supabase"
-assert_contains "nextjs の最終確認は作り始めると言う" "$pr" "リポジトリを作り始めます"
+assert_contains "nextjs の最終確認は、頼む人向けに作り始めると言う" "$pr" "サイトを用意して、作り始めます"
+assert_not_contains "最終確認に「リポジトリ」を出さない" "$pr" "リポジトリ"
 for st in data saas; do
   jq --arg s "$st" '.confirm.stack = $s | .confirm.free = ["a"] | .confirm.paid = ["b"] | .confirm.price = 500' "$T/pc.json" > "$T/pd.json"
   prd=$(talk render "$T/pd.json" "https://x")
-  assert_contains "$st の最終確認は、データを保存する所も用意すると言う" "$prd" "予約などのデータを保存する所も用意します"
+  assert_contains "$st の最終確認は、データを保存する所も用意すると言う" "$prd" "データを保存する所"
+  assert_not_contains "$st の最終確認に「リポジトリ」を出さない" "$prd" "リポジトリ"
   assert_not_contains "$st の最終確認に、頼む人に分からない「Supabase」を出さない" "$prd" "Supabase"
 done
 echo '{"ideas":[{"name":"salon-book","stack":"data","title":"予約","pitch":"p","paid":"有料の話"}, {"name":"b-two","stack":"nextjs","title":"b","pitch":"p"}, {"name":"c-three","stack":"nextjs","title":"c","pitch":"p"}]}' > "$T/data-ideas.json"
@@ -174,7 +185,8 @@ talk merge "$T/s4.json" mocks "$T/o.json" "issue-7/r3-mocks" > "$T/s5.json"
 mbody=$(talk render "$T/s5.json" https://raw.example/x)
 assert_contains "下の欄の絵（あれば畳んで見せる）" "$mbody" "issue-7/r3-mocks/mock-a-1440-s2.png"
 assert_not_contains "下の欄の絵が無い案には出さない" "$mbody" "mock-b-1440-s2.png"
-assert_contains "審査役の点の行（HTML の印は効かなくする）" "$mbody" "<sub>審査役：✅ mock-a 7.8 点 ／ ⚠️ mock-b 6.5 点 ＜b＞</sub>"
+assert_contains "審査役の点の行は、作る側の記録の中に（HTML の印は効かなくする）" "$mbody" "- 審査役の点：審査役：✅ mock-a 7.8 点 ／ ⚠️ mock-b 6.5 点 ＜b＞"
+assert_not_contains "審査役の点は、折りたたみの外に出さない" "$(strip_tech "$mbody")" "7.8 点"
 rm -f "$T/out/judge.md" "$T/out/mock-a-1440-s2.png"
 echo '{"action":"pick","choice":"B","note":"A の色で"}' > "$T/r.json"
 talk apply "$T/s5.json" "$T/r.json" | jq '.state' > "$T/s6.json"
@@ -200,6 +212,51 @@ assert_contains "設計メモと絵の出どころも渡す" "$(jq -r '.files | 
 assert_contains "答えと注文を詳しいメモに" "$(jq -r .detail "$T/b.json")" "オーナーの注文（mocks）：A の色で"
 assert_contains "値段を書く指示" "$(jq -r .detail "$T/b.json")" "factory-price.txt にこの数字を書く"
 
+echo "== 頼む人が読む所に、内部の言葉・点・色コードを出さない（作る側の記録に残す）"
+leak() { grep -cE -e '[a-z0-9]+(-[a-z0-9]+)+' -e '#[0-9A-Fa-f]{6}' -e 'nextjs|saas|Supabase|リポジトリ|[0-9]\.[0-9] 点' <<< "$1" || true; }
+# 案（AIが title・pitch に id を混ぜても本文には出ない）
+jq '.ideas[0].pitch = "page-is-the-object の考え（色 #c39461）で作る暦" | .ideas[0].title = "潮汐暦（tide-almanac）"' "$T/s1.json" > "$T/h1.json"
+hb=$(talk render "$T/h1.json" "https://raw.example/o/r/factory-talk")
+assert_eq "案：折りたたみの外に id・色コード・種類が出ない" "0" "$(leak "$(strip_tech "$hb")")"
+assert_contains "案：本文に残る説明" "$(strip_tech "$hb")" "の考え（色"
+assert_contains "案：作る側の記録に名前と種類" "$hb" "<summary>作る側の記録</summary>"
+assert_contains "案：名前と種類は記録の中" "$hb" "案1：\`tide-almanac\`・saas"
+# 見た目の方向
+cat > "$T/out3/looks.json" <<'EOF'
+{"looks":[{"title":"木の台","idea":"page-is-the-object と accent-ladder の考え。差し色は #c39461","colors":["#c39461"],"fonts":"Shippori Mincho","refs":["https://a.example/x"]},{"title":"椅子","idea":"写真が主役"},{"title":"夜","idea":"暗い"}],"questions":[]}
+EOF
+echo "審査役：✅ look-2 6.4 点（残った指摘：余白）" > "$T/out3/judge.md"
+talk check looks "$T/out3" > "$T/o3j.json"
+talk merge "$T/s2.json" looks "$T/o3j.json" "issue-7/r2-looks" > "$T/h2.json"
+hb=$(talk render "$T/h2.json" "https://raw.example/o/r/factory-talk")
+assert_eq "方向：折りたたみの外に id・色コード・点が出ない" "0" "$(leak "$(strip_tech "$hb")")"
+assert_not_contains "方向：書体名が外に出ない" "$(strip_tech "$hb")" "Shippori"
+assert_not_contains "方向：参考 URL が外に出ない" "$(strip_tech "$hb")" "a.example"
+assert_contains "方向：色コードが記録の中に残る" "$hb" "色：\`#c39461\`"
+assert_contains "方向：書体が記録の中に残る" "$hb" "文字：Shippori Mincho"
+assert_contains "方向：審査の行が記録の中に残る" "$hb" "審査役の点：審査役：✅ look-2 6.4 点"
+assert_contains "方向：AIが書いた原文が記録の中に残る" "$hb" "原文：page-is-the-object と accent-ladder"
+# 最終確認
+jq '.stage = "confirm" | .look = 1 | .assets.looks = "issue-7/r2-looks" | .confirm = {"name":"salon-seat-book","stack":"data","description":"席を予約できる（salon-seat-book）","pages":["予約"]}' "$T/h2.json" > "$T/h3.json"
+hb=$(talk render "$T/h3.json" "https://raw.example/o/r/factory-talk")
+assert_eq "最終確認：折りたたみの外に名前・種類・id が出ない" "0" "$(leak "$(strip_tech "$hb")")"
+assert_contains "最終確認：名前と種類は記録の中" "$hb" "名前：\`salon-seat-book\`・種類：data"
+assert_contains "最終確認：何のサービス" "$(strip_tech "$hb")" "**何のサービス**：席を予約できる"
+assert_contains "最終確認：data の言い方" "$(strip_tech "$hb")" "サイトと、データを保存する所を用意して、作り始めます"
+jq '.confirm.stack = "saas" | .confirm.free = ["a"] | .confirm.paid = ["b"] | .confirm.price = 500' "$T/h3.json" > "$T/h4.json"
+assert_contains "最終確認：saas は会員登録と有料プランの仕組み" "$(talk render "$T/h4.json" https://x)" "会員登録と有料プランの仕組みを用意して、作り始めます"
+jq '.confirm.stack = "python"' "$T/h3.json" > "$T/h5.json"
+assert_contains "最終確認：python は「サービス」とだけ" "$(talk render "$T/h5.json" https://x)" "サービスを用意して、作り始めます"
+
+echo "== 作り始めた知らせ（ack）"
+assert_eq "ideas の知らせ" "受け取りました。作る物の案を5つ考えています。10分くらいかかります。" "$(talk ack ideas)"
+assert_contains "looks の知らせ" "$(talk ack looks)" "見た目の案を3つ作っています。15分くらい"
+assert_contains "mocks の知らせ" "$(talk ack mocks)" "ざっくり画面"
+assert_contains "confirm の知らせ（短め）" "$(talk ack confirm)" "5分くらい"
+assert_eq "clarify では空" "" "$(talk ack clarify)"
+assert_eq "go では空" "" "$(talk ack go)"
+assert_eq "段階が無ければ空" "" "$(talk ack)"
+
 echo "== 見せる・待つ（publish）"
 mkdir -p "$T/bin" "$T/w"
 cat > "$T/bin/gh" <<'SH'
@@ -208,6 +265,7 @@ args="$*"
 echo "gh $args" >> "$FT/gh.log"
 case "$args" in
   *"issues/7 --jq .title"*) echo "新サービス：潮" ;;
+  *"issues/7/comments?per_page"*) echo 55 ;;
 esac
 SH
 chmod +x "$T/bin/gh"
@@ -231,5 +289,47 @@ cp "$T/s8.json" "$T/w/talk/state.json"; rm -f "$T/gh.log"; pub go > /dev/null 2>
 assert_contains "作るなら Factory を動かす" "$(cat "$T/gh.log")" "actions/workflows/factory.yml/dispatches"
 assert_contains "Issue の番号を渡す" "$(cat "$T/gh.log")" "inputs[issue]=7"
 assert_not_contains "作り始めたら待たない" "$(cat "$T/gh.log")" "factory:wait"
+
+echo "== 作り始めた知らせは、結果を出す前に消す"
+cp "$T/s2.json" "$T/w/talk/state.json"; echo '{"next":"looks","message":""}' > "$T/w/talk/route.json"
+cp "$T/out/looks.json" "$T/out/look-1-1440.png" "$T/out/look-3-1440.png" "$T/w/out/"
+rm -f "$T/gh.log"; pub looks > /dev/null 2>&1
+del=$(grep -n 'DELETE repos/o/r/issues/comments/55' "$T/gh.log" | head -1 | cut -d: -f1)
+post=$(grep -n 'issues/7/comments -f body=' "$T/gh.log" | head -1 | cut -d: -f1)
+assert_contains "印付きのコメントを消す" "$(cat "$T/gh.log")" "-X DELETE repos/o/r/issues/comments/55"
+assert_eq "消してから結果を出す" "yes" "$([ -n "$del" ] && [ -n "$post" ] && [ "$del" -lt "$post" ] && echo yes || echo no)"
+assert_contains "探すのは印と自分のコメントだけ" "$(cat "$T/gh.log")" "factory-talk-ack"
+echo '{"next":"clarify","message":"番号で書いてね"}' > "$T/w/talk/route.json"; rm -f "$T/gh.log"; pub clarify > /dev/null 2>&1
+assert_contains "clarify の前にも消す" "$(cat "$T/gh.log")" "-X DELETE repos/o/r/issues/comments/55"
+rm -f "$T/w/out/"* "$T/gh.log"; pub looks > /dev/null 2>&1
+assert_contains "失敗のコメントの前にも消す" "$(cat "$T/gh.log")" "-X DELETE repos/o/r/issues/comments/55"
+# 消せなくても止めない
+cat > "$T/bin/gh2" <<'SH'
+#!/usr/bin/env bash
+echo "gh $*" >> "$FT/gh.log"
+case "$*" in
+  *"issues/7 --jq .title"*) echo "新サービス：潮" ;;
+  *"issues/7/comments?per_page"*) echo 55 ;;
+  *"-X DELETE"*) exit 1 ;;
+esac
+SH
+cp "$T/bin/gh" "$T/bin/gh.ok"; cp "$T/bin/gh2" "$T/bin/gh"; chmod +x "$T/bin/gh"
+rm -f "$T/gh.log"; pub clarify > /dev/null 2>&1; code=$?
+assert_eq "消せなくても止めない" "0" "$code"
+assert_contains "消せなくても結果は出す" "$(cat "$T/gh.log")" "番号で書いてね"
+cp "$T/bin/gh.ok" "$T/bin/gh"
+
+echo "== 作り始めた知らせ（factory-talk-ack.sh）"
+ack() { (env PATH="$T/bin:$PATH" FT="$T" GITHUB_REPOSITORY=o/r ISSUE=7 GH_TOKEN=x NEXT="$1" bash "$SCRIPTS_DIR/factory-talk-ack.sh"); }
+for st in ideas looks mocks confirm; do
+  rm -f "$T/gh.log"; ack "$st" > /dev/null 2>&1
+  assert_eq "$st：印付きのコメントを1回だけ出す" "1" "$(grep -c 'issues/7/comments -f body=' "$T/gh.log")"
+  assert_contains "$st：印" "$(cat "$T/gh.log")" "<!-- factory-talk-ack -->"
+  assert_contains "$st：文" "$(cat "$T/gh.log")" "受け取りました"
+done
+for st in clarify go ""; do
+  rm -f "$T/gh.log"; ack "$st" > /dev/null 2>&1; code=$?
+  assert_eq "「$st」では出さない（成功で終わる）" "0 no" "$code $([ -s "$T/gh.log" ] && echo yes || echo no)"
+done
 
 finish

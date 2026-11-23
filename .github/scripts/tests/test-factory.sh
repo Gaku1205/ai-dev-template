@@ -142,6 +142,29 @@ assert_contains "Next.js のまま" "$(file_in o/morning-board package.json)" '"
 assert_contains "元のIssueに結果を書く" "$(cat "$T/comment.txt")" "新しいサービス **morning-board** を作りました"
 assert_contains "元のIssueを閉じる" "$calls" "PATCH repos/o/ai-dev-template/issues/7"
 
+echo "== 結果のコメント：頼む人が読む所に作る側の言葉を出さず、折りたたみ「作る側の記録」に残す"
+printf '審査役：1回目 ⚠️ site 6.5 点 → 直した後 ✅ site 7.8 点\n' > "$T/judge-split.md"
+run_factory split-app nextjs "説明" VERCEL_TOKEN=v JUDGE_FILE="$T/judge-split.md" > /dev/null
+all=$(cat "$T/comment.txt")
+outside=$(python3 -c "
+import re, sys
+print(re.sub(r'<details>.*?</details>', '', sys.stdin.read(), flags=re.S))" <<< "$all")
+inside=$(python3 -c "
+import re, sys
+print('\n'.join(re.findall(r'<details><summary>作る側の記録</summary>(.*?)</details>', sys.stdin.read(), flags=re.S)))" <<< "$all")
+assert_not_contains "外に秘密の名前を出さない" "$outside" "CLAUDE_CODE_OAUTH_TOKEN"
+assert_not_contains "外に「main を守った」を出さない" "$outside" "main を守った"
+assert_not_contains "外に審査の点を出さない" "$outside" "7.8 点"
+assert_contains "中に秘密の名前が残る" "$inside" "秘密と変数を写した：CLAUDE_CODE_OAUTH_TOKEN"
+assert_contains "中に「main を守った」が残る" "$inside" "main を守った"
+assert_contains "中に審査の点が残る" "$inside" "🧐 審査役：1回目 ⚠️ site 6.5 点 → 直した後 ✅ site 7.8 点"
+assert_contains "作ったリポジトリの場所は外に出る" "$outside" "リポジトリを作った：https://github.com/o/split-app"
+assert_contains "最初のIssueは外に出る" "$outside" "最初のIssue：https://github.com/o/split-app/issues/"
+assert_eq "折りたたみは1つ" "1" "$(grep -c '<summary>作る側の記録</summary>' <<< "$all")"
+echo "-- 途中で止まったとき（fail の経路）も同じ形"
+run_factory Bad_Name nextjs "説明" > /dev/null
+assert_contains "失敗は外に書く" "$(cat "$T/comment.txt")" "名前「Bad_Name」"
+
 echo "== Vercel が断ったら、理由を書いて先へ進む"
 run_factory vercel-ng nextjs "説明" VERCEL_TOKEN=v VERCEL_FAIL=1 > /dev/null
 assert_contains "理由を書く" "$(cat "$T/comment.txt")" "repo not found"
@@ -254,6 +277,7 @@ printf '1. 影を踏む遊び（近い物：無し）\n選んだ：影踏み @so
 run_factory idea-game webgame "説明" IDEA_FILE="$T/idea.md" > /dev/null
 assert_contains "畳んで載せる" "$(cat "$T/comment.txt")" "<details><summary>遊び方のアイデア"
 assert_contains "中身" "$(cat "$T/comment.txt")" "選んだ：影踏み"
+assert_contains "作る側の記録の中に入れる" "$(cat "$T/comment.txt")" "<summary>作る側の記録</summary>"
 assert_not_contains "@ で人を呼ばない" "$(cat "$T/comment.txt")" "@someone"
 
 echo "== 審査役の点の行を、結果のコメントに載せる（@ は効かなくする）"
