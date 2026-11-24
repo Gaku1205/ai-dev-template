@@ -207,6 +207,7 @@ claude=$(file_in $r CLAUDE.md)
 assert_contains "CLAUDE.md：ゲーム" "$claude" "Electron で Windows の exe にして配るゲーム。"
 assert_not_contains "CLAUDE.md：Next.js の注意の行は消す" "$claude" "Next.js固有の注意"
 assert_contains "AGENTS.md：撮り方" "$(file_in $r AGENTS.md)" "/?scene=play"
+assert_contains "AGENTS.md：exe の決まりは残る（canvas を1枚置くだけ）" "$(file_in $r AGENTS.md)" "canvas を1枚置くだけ"
 assert_contains "仕様書の技術の欄" "$(file_in $r docs/spec.md)" "Electron で Windows の exe にして GitHub Releases で配る"
 assert_not_contains "Vercel を呼ばない" "$(cat "$T/calls.log")" "curl"
 assert_not_contains "Vercel の鍵も写さない" "$(cat "$T/calls.log")" "secret VERCEL_TOKEN"
@@ -227,6 +228,7 @@ claude=$(file_in $r CLAUDE.md)
 assert_contains "CLAUDE.md：Web のゲーム" "$claude" "Vercel で公開して、スマホでも PC でもブラウザで遊ぶ Web のゲーム。"
 assert_contains "CLAUDE.md：注意は公開のしかた" "$claude" "AGENTS.md（公開のしかた・画面の撮り方）"
 assert_contains "AGENTS.md：スマホ" "$(file_in $r AGENTS.md)" "スマホ（縦の画面・タッチ）"
+assert_not_contains "AGENTS.md：exe の決まりは入れない（canvas を1枚置くだけ）" "$(file_in $r AGENTS.md)" "canvas を1枚置くだけ"
 assert_contains "仕様書の技術の欄" "$(file_in $r docs/spec.md)" "Vercel で公開する（スマホ・PC のブラウザで遊ぶ）"
 assert_contains "Vercel につないだと書く" "$(cat "$T/comment.txt")" "Vercel のプロジェクトを作ってつないだ"
 run_factory tap-rush webgame "説明" VERCEL_TOKEN=v S_VERCEL_TOKEN=vt > /dev/null
