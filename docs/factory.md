@@ -9,13 +9,13 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
 いきなり作らず、オーナーに選んでもらいながら、作る物と見た目を最初に大まかに決める（あとの作り直しを減らすため）。AIの決まりは `.github/factory/talk.md`、形の確かめとコメントは `.github/scripts/factory-talk.py`・`factory-talk-publish.sh`。
 
 1. **案**：AIが、作る物の案を5つ（名前・種類・使う人・新しい所・有料の分け方・画面）と、選択式の質問を Issue のコメントに書く
-2. **見た目の方向**：選んだ案の方向を3つ。色違いではなく、題材の持ち物から作った考えが3つ。それぞれ、本物の素材で組んだ「最初の1画面」を、色・文字の見本と実例と一緒に1枚の板の画像にする（審査あり。`docs/pipeline.md`「デザインの仕組み」）
-3. **ざっくり画面**：選んだ方向で、トップの画面を下の欄まで全部、2案（1枚の HTML。PC とスマホを撮る。審査あり）
-4. **最終確認**：名前・説明・無料と有料・値段・最初に作る画面・決まった事を1枚にまとめる。「作る」と返事すると、`factory.yml` を動かす（相談で決めた事をそのまま使い、名前をAIに決め直させない。デザイン担当は、選んだざっくり画面と方向の板を土台に本物を作る）
+2. **見た目の方向**：選んだ案の方向を3つ。色違いではなく、題材の持ち物から作った考えが3つ。それぞれ、本物の素材で組んだ本物の最初の1画面（PC とスマホ）を作る（審査あり。`docs/pipeline.md`「デザインの仕組み」）
+3. **ざっくり画面**（`FACTORY_TALK_MOCKS=1` のときだけ）：選んだ方向で、トップの画面を下の欄まで全部、2案（1枚の HTML。PC とスマホを撮る。審査あり）
+4. **最終確認**：名前・説明・無料と有料・値段・最初に作る画面・決まった事を1枚にまとめる。「作る」と返事すると、`factory.yml` を動かす（相談で決めた事をそのまま使い、名前をAIに決め直させない。デザイン担当は、選んだ最初の1画面と設計メモを土台に本物を作る）
 
 - 各段階で、コメントの最後に選択式の質問を付ける。オーナーの返事（番号・「全部ちがう。もっと〇〇」・注文）は、AIが「選んだ物・質問の答え・注文」に読み替える（agent-desk のボタンからの返事は、印 `<!-- factory-answer:… -->` の形が決まっているので、AIを通さない）
 - 返事を待つ間は `factory:wait` が付く（答えるまで待つ。スマホに通知 `question`）。今までに決まった事はコメントの印 `<!-- factory-talk:v1:… -->` に入れて、毎回そこから読む
-- 板とざっくり画面の画像・HTML は、テンプレートの `factory-talk` ブランチの `issue-<番号>/r<回>-<段階>/` に置く（コメントの画像と、作り始めたときのデザイン担当が使う）
+- 見た目の方向の最初の1画面と、ざっくり画面（使ったときだけ）の画像・HTML は、テンプレートの `factory-talk` ブランチの `issue-<番号>/r<回>-<段階>/` に置く（コメントの画像と、作り始めたときのデザイン担当が使う）
 - 作れなかったときは、そう書いて待つ。「もう一回」と返事すると、同じ段階をやり直す
 - 案はいくつかを1つのサービスにまとめて選べる（`1,3`・`1〜4`）。前の段階の選び直し（「やっぱり案は 1,2」）もでき、その段階から先を作り直す
 - AIが作っている途中に書いた返事も捨てない（同じ Issue の実行は順番待ちになり、出る前の選択肢への返事として読む）。作り始めた後（`factory.yml` を動かした後）のコメントは、相談の返事として読まない
@@ -36,10 +36,10 @@ ai-dev-template に、タイトルが **`新サービス：`** で始まるIssue
    - **ゲームのとき**：design ジョブは最初に `.github/scripts/factory-game.sh` で見本（`examples/game`。TypeScript・Vite・Canvas／WebGL・Vitest・Electron）に切り替えてから、デザイン担当に渡す。デザイン担当はタイトル → 遊ぶ → 終わりまで作り、`/?scene=play` のように途中の場面を URL で開けるようにして、1280・1920 の幅で撮る。確認コマンドは `pipeline.json` にある物だけ（lint は無い）。exe は、新しいリポジトリの公開（`github-release`、Windows のランナーで `npm run dist`）が作って Releases に置く
    - **ゲームはありきたりにしない**：作る前に遊び方の案を 10 個出し、有名なゲームの遊び方そのまま（積み上げ・Flappy・ランナー・2048・マッチ3 など）や、見た目を変えただけの物は捨てて、見たことのない一ひねりがある物を選ぶ（`board.md` の「## アイデア」。結果のコメントに畳んで載せる）
    - **会員と課金（saas）のとき**：design ジョブは最初に `.github/scripts/factory-saas.sh . install` で、ログイン（Supabase）と有料プラン（Stripe）の土台（`examples/saas`）を入れてから、デザイン担当に渡す。デザイン担当は無料と有料の違いを決め、トップ・料金（`/pricing`）・ログイン・アカウントの画面を作り、月額の値段を `factory-price.txt` に書く（課金の土台のファイルは変えない。下の「会員と課金」）
-   - **Web のゲーム（webgame）のとき**：見本は `examples/webgame`（Electron を入れない）。スマホの縦画面をいちばん大事にして、タッチで遊べ、結果を共有できるように作る（`design-department.md`「Web のゲームのとき」）。390・1440 の幅で撮る。公開は Next.js と同じく Vercel（プロジェクトの種類は Vite）
+   - **Web のゲーム（webgame）のとき**：見本は `examples/webgame`（Electron を入れない）。スマホの縦画面をいちばん大事にして、タッチで遊べ、結果を共有できるように作る（`design-department.md`「Web のゲームのとき」）。390・1440 の幅で撮る。公開は Vercel（プロジェクトの種類は Vite）
    - **ゲームの日本語の書体**（game・webgame とも）：`factory-game.sh` が M PLUS 1 の可変フォント（`examples/game-fonts/`。OFL）を `assets/fonts/` に入れる。`npm run build`・`npm run dev` の前に `npm run fonts`（`scripts/subset-fonts.mjs`、開発用の依存 `subset-font`）が、`src/` と `index.html` に出る文字と、かな・記号・英数字だけを抜き出して `public/fonts/mplus1.woff2` を作る（300KB を超えたら失敗。`public/fonts/` は git に入れない）。見本の `index.html` に `@font-face`（"GameJP"、太さ 100〜900）、`src/main.ts` に `JP_FONT` と読み込み待ちがある。実装AIは `curl`・`python3` を使えず書体を作れないので、最初から入れておく（文言を変えても作り直し不要。どの PC・ブラウザでも同じ見た目になる）
 3. `factory.sh` が、テンプレートからリポジトリを作る（同じ名前があれば `-2` …）。作った直後に、どの Issue のために作ったかの印（新しいリポジトリの変数 `FACTORY_ISSUE`＝`テンプレート#Issueの番号`）を付ける
-4. パイプラインの秘密（`CLAUDE_CODE_OAUTH_TOKEN`・`PIPELINE_APP_PRIVATE_KEY`・`PIPELINE_TOKEN`・`NTFY_TOPIC`）と変数（`PIPELINE_APP_ID`・`NOTIFY_EVENTS`・`AGENT_DESK_URL`）を、テンプレートの物から写す。Vercel の秘密 `VERCEL_TOKEN` は、Next.js・saas・Web のゲームのときだけ写す（`factory.sh` の149行目。ほかのアプリには入らない）。変数 `VERCEL_TEAM_ID` は、値があればどのアプリにも写る。`VERCEL_TOKEN` は Vercel のアカウント全体に効く鍵なので、写された先は作ったリポジトリの Actions の Secrets（そのリポジトリのワークフローだけが読む）。ほかのリポジトリには配られない
+4. パイプラインの秘密（`CLAUDE_CODE_OAUTH_TOKEN`・`PIPELINE_APP_PRIVATE_KEY`・`PIPELINE_TOKEN`・`NTFY_TOPIC`）と変数（`PIPELINE_APP_ID`・`NOTIFY_EVENTS`・`AGENT_DESK_URL`）を、テンプレートの物から写す。Vercel の秘密 `VERCEL_TOKEN` は、Next.js・data・saas・Web のゲームのときだけ写す（GitHub Pages に出すときは写さない。`factory.sh:175-176`）。変数 `VERCEL_TEAM_ID` は、値があればどのアプリにも写る。`VERCEL_TOKEN` は Vercel のアカウント全体に効く鍵なので、写された先は作ったリポジトリの Actions の Secrets（そのリポジトリのワークフローだけが読む）。
 5. Next.js・saas・Web のゲームで `VERCEL_TOKEN` があれば、Vercel のプロジェクトを作ってつなぐ。saas なら続けて、Supabase のプロジェクト・Stripe の商品と値段を作り、鍵を Vercel の環境変数に入れる（`factory-saas-provision.sh init`。最初の公開より前）
 6. `CLAUDE.md` の1行目・仕様書の「目的」・README に説明を書き、デザイン担当が作った画面とデザイン仕様と道具を入れ、種類に合う見本に切り替えて（Python：`examples/python`・公開先は none／ゲーム：`examples/game`・GitHub Releases の exe／Web のゲーム：`examples/webgame`・Vercel／saas：会員と課金の土台・Vercel と、表の変更の supabase）、main に push する。この push で Bootstrap が動く。そのあと、新しいリポジトリの `pipeline.json` の公開先に `github-pages` があれば、`FACTORY_TOKEN` で GitHub Pages を有効にする（`POST repos/<新しいリポジトリ>/pages`、`build_type=workflow`。もう有効（409）なら成功として扱い、失敗したら結果のコメントに設定のページの URL 付きで直し方を書く。ワークフローのトークンでは有効にできないため、ここで行う）。`github-pages` が無ければ呼ばない
 7. main を守る（PRと CI の `check` を必須にする。管理者は通れる）

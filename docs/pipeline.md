@@ -11,7 +11,7 @@ Issueを作る（メモ）。ラベルが無ければ自動で ai:plan が付く
                                                     ci.yml・claude-review.yml（PRを作った・直して push した時点で）
   → main が進んでいたら取り込んでCIをやり直す         pipeline.yml
   → CIとレビューの両方が通ったら（後に終わった方が判断する）
-  → 指摘なし：自動でマージ → 公開（Vercel／App Runner／GitHub Releases／Expo）   pipeline.yml → deploy.yml
+  → 指摘なし：自動でマージ → 公開（Vercel／GitHub Pages／App Runner／GitHub Releases／Expo）   pipeline.yml → deploy.yml
      指摘あり／CI失敗：AIが直す（@claude、3回目は opus）→ CIから   pipeline.yml → claude-mention.yml
   → 公開されたらスマホに通知                        deploy-notify.yml
   → 順番待ち（ai:queue）があれば次を始める           queue.yml
@@ -522,7 +522,7 @@ Vercel の Hobby は、30日の使用量が上限に届くとアカウントご�
 - 結果：404 は黙って飛ばす（入口がまだ本番に入っていない）。2xx は結果を1行出す。401・5xx・30秒の時間切れ・つながらない時は `::warning::` を1行出す
 - 失敗しても見張り役を止めない（段は `continue-on-error: true`・1分の枠で、スクリプトの終了コードは常に 0）。鍵は curl の引数に出さず、標準入力のヘッダで渡す
 - CPU の予算（agent-desk#698）：答えの `budget` が `warn`（1日の予算の50%以上）か `over`（100%以上）なら、スマホに知らせる（`notify.sh` の種類 `usage`。warn は優先度4・over は5。本文に今日の量・予算の割合・7日平均）。`ok`・`unknown`・無いときは知らせない
-  - 同じ日（日本時間）・同じ段では1回だけ（見張り役は30分ごとに呼ぶため）。warn の後に over に上がったら、もう一度知らせる。記録は閉じた Issue（`SELFCHECK_LOG_ISSUE`、既定 212）のコメントで、1行目が `<!-- selfcheck-budget {"date":…,"budget":…} -->`。bot（ログイン名が `[bot]` で終わる）が書いた物だけを数える。先に記録を残してから知らせる
+  - 同じ日（日本時間）・同じ段では1回だけ。warn の後に over に上がったら、もう一度知らせる。記録は閉じた Issue（`SELFCHECK_LOG_ISSUE`、既定 212）のコメントで、1行目が `<!-- selfcheck-budget {"date":…,"budget":…} -->`。bot（ログイン名が `[bot]` で終わる）が書いた物だけを数える。先に記録を残してから知らせる
   - 記録が読めないときは、知らせずに `::warning::` を出す（読めないまま30分ごとに鳴らさないため）。通知に使う `NTFY_TOPIC`・`NOTIFY_EVENTS` は、この段にだけ渡す
 
 ## 公開先の決め方：サーバーの要らないアプリは GitHub Pages（`pick-deploy.sh`・`move-to-pages.sh`）
