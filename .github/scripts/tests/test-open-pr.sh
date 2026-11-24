@@ -117,4 +117,24 @@ assert_contains "一覧が読めなかったと書く" "$out" "ブランチの�
 assert_not_contains "人間に回さない" "$(labels_of 7)" "ai:stuck"
 assert_eq "Issueを閉じない" "open" "$(python3 -c "import json,os;print(json.load(open(os.environ['MOCK_STATE']))['issues_meta']['7']['state'])")"
 
+echo "== 信頼できない人の書き込みがあって実装AIを動かさなかった：やり直さず人間に回す（PRも作らない）"
+init_state '{"labels":{"7":["ai:implement"]},"branches":["claude/issue-7-x"]}'
+printf '[]' > "$exec_file"
+n0=$(notify_count)
+UNTRUSTED_COUNT=2 run_open skipped > /dev/null
+c=$(comments_of 7)
+assert_contains "ai:stuck" "$(labels_of 7)" "ai:stuck"
+assert_contains "件数を書く" "$c" "2 件ある"
+assert_not_contains "やり直さない" "$c" "auto-perm-retry"
+assert_eq "PRを作らない" "0" "$(python3 -c "import json,os;print(len(json.load(open(os.environ['MOCK_STATE']))['pulls']))")"
+assert_eq "通知する" "$((n0 + 1))" "$(notify_count)"
+
+echo "== 数が 0・空・数字でない：今までどおり"
+for v in 0 "" "x"; do
+  init_state '{"labels":{"7":["ai:implement"]}}'
+  printf '%s' "$clean" > "$exec_file"
+  UNTRUSTED_COUNT="$v" run_open > /dev/null
+  assert_not_contains "[$v] 書き込みの理由で止めない" "$(comments_of 7)" "書き込みが"
+done
+
 finish

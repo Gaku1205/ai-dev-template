@@ -206,6 +206,14 @@ m=re.match(r'pulls/(\d+)/comments$',base)
 if m:
     rc=st.get('review_comments',[])
     paged(rc); sys.exit(0)
+m=re.match(r'apps/([^/]+)$',base)
+if m:
+    _a=st.get('apps',{}).get(m.group(1))
+    if _a is None: sys.stderr.write('HTTP 404: Not Found\n'); sys.exit(1)
+    out({'id':_a,'slug':m.group(1)}); sys.exit(0)
+m=re.match(r'pulls/(\d+)/reviews$',base)
+if m and method=='GET':
+    paged(st.get('reviews',{}).get(m.group(1),[])); sys.exit(0)
 m=re.match(r'pulls/(\d+)/commits$',base)
 if m:
     pc=st.get('pr_commits',{}).get(m.group(1),[])

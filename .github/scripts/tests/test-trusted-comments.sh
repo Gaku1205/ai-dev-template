@@ -93,4 +93,48 @@ assert_eq "失敗" "1" "$rc"
 out=$(run_tc ""); rc=$?
 assert_eq "番号が無い：失敗" "1" "$rc"
 
+echo "== 数える（--count-untrusted）：Issue"
+init_state '{"issues_meta":{"10":{"title":"t","body":"b"}},"issue_extra":{"10":{"author_association":"OWNER"}}}'
+add_comment 10 o OWNER
+add_comment 10 pipeline-app[bot] NONE 777
+APP=777 out=$(run_tc --count-untrusted 10); rc=$?
+assert_eq "信頼できる物だけ：0" "0" "$out"
+assert_eq "信頼できる物だけ：成功" "0" "$rc"
+add_comment 10 stranger NONE
+add_comment 10 other-app[bot] NONE 888
+APP=777 out=$(run_tc --count-untrusted 10)
+assert_eq "他人と番号違いの App：2" "2" "$out"
+APP='' out=$(run_tc --count-untrusted 10)
+assert_eq "PIPELINE_APP_ID が空なら App も数える：3" "3" "$out"
+
+echo "== 数える：本文が他人の物は 1 を足す"
+init_state '{"issues_meta":{"11":{"title":"t","body":"指示"}},"authors":{"11":"stranger"},"issue_extra":{"11":{"author_association":"NONE"}}}'
+APP=777 out=$(run_tc --count-untrusted 11)
+assert_eq "他人の本文：1" "1" "$out"
+
+echo "== 数える：PR は行へのコメントとレビューの文も数える（中身の無いレビューは数えない）"
+init_state '{"issues_meta":{"12":{"title":"t","body":"b"}},"authors":{"12":"pipeline-app[bot]"},"apps":{"pipeline-app":777,"other-app":888},"issue_extra":{"12":{"author_association":"CONTRIBUTOR","pull_request":{}}},"review_comments":[{"id":1,"body":"行の指示","user":{"login":"stranger"},"author_association":"NONE"},{"id":2,"body":"オーナーの行","user":{"login":"o"},"author_association":"OWNER"}],"reviews":{"12":[{"id":3,"body":"","user":{"login":"stranger"},"author_association":"NONE","state":"COMMENTED"},{"id":4,"body":"レビューの指示","user":{"login":"stranger2"},"author_association":"CONTRIBUTOR"},{"id":5,"body":"No issues found","user":{"login":"claude[bot]"},"author_association":"NONE"},{"id":6,"body":"App のレビュー","user":{"login":"pipeline-app[bot]"},"author_association":"CONTRIBUTOR"}]}}'
+APP=777 out=$(run_tc --count-untrusted 12); rc=$?
+assert_eq "PR：成功" "0" "$rc"
+assert_eq "PR：行へのコメント1・レビュー1（App が作った本文・App のレビューは番号を引いて信頼する）" "2" "$out"
+APP='' out=$(run_tc --count-untrusted 12)
+assert_eq "PIPELINE_APP_ID が空なら App の本文・レビューも数える" "4" "$out"
+
+echo "== 数える：番号違いの App・引けない App が作った PR の本文は数える"
+init_state '{"issues_meta":{"14":{"title":"t","body":"b"}},"authors":{"14":"other-app[bot]"},"apps":{"other-app":888},"issue_extra":{"14":{"author_association":"CONTRIBUTOR","pull_request":{}}}}'
+APP=777 out=$(run_tc --count-untrusted 14)
+assert_eq "番号違い：1" "1" "$out"
+init_state '{"issues_meta":{"15":{"title":"t","body":"b"}},"authors":{"15":"dependabot[bot]"},"issue_extra":{"15":{"author_association":"CONTRIBUTOR","pull_request":{}}}}'
+APP=777 out=$(run_tc --count-untrusted 15)
+assert_eq "引けない（dependabot など）：1" "1" "$out"
+
+echo "== 数える：読めないときは何も出さず失敗"
+init_state '{"read_fail_comments":["13"],"issues_meta":{"13":{"title":"t","body":"b"}},"issue_extra":{"13":{"author_association":"OWNER"}}}'
+APP=777 out=$(run_tc --count-untrusted 13); rc=$?
+assert_eq "失敗" "1" "$rc"
+num=no; grep -qxE '[0-9]+' <<< "$out" && num=yes
+assert_eq "数は出ない" "no" "$num"
+out=$(run_tc --count-untrusted "x"); rc=$?
+assert_eq "番号が数字でない：失敗" "1" "$rc"
+
 finish

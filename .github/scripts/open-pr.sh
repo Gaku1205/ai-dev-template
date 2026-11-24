@@ -3,7 +3,8 @@
 # PRの本文は、実装AIがIssueに書いた「Create PR」リンクの中身を使う（無ければ Closes #番号 だけ）。
 #
 # 環境変数：ISSUE（番号）、ISSUE_TITLE、AI_OUTCOME（実装AIの結果 success/failure）、EXECUTION_FILE（AIの実行記録。失敗の原因の分類に使う）、
-#   CRITIQUE_FILE（任意：審査役が画面の画像だけを見て書いた採点。PRの本文に添える）
+#   CRITIQUE_FILE（任意：審査役が画面の画像だけを見て書いた採点。PRの本文に添える）、
+#   UNTRUSTED_COUNT（任意：信頼できない人の本文・コメントの数。1以上なら実装AIは動いていないので、人間に回す。trusted-comments.sh --count-untrusted）
 source "$(dirname "$0")/pipeline-lib.sh"
 set -e
 
@@ -21,6 +22,13 @@ if ! has_pipeline_token; then
   else
     notify manual "AIが止まりました" "#${ISSUE} ${ISSUE_TITLE}：結果を確認してPRを作ってください" 4
   fi
+  exit 0
+fi
+
+# 信頼できない人の本文・コメントがあったので、実装AIを動かさなかった（claude-implement.yml）。やり直さず人間に回す。
+# 中身を確かめて消し（または問題ないと判断して）、ai:stuck を外すと、もう一度数えてから実装が始まる
+if [[ "${UNTRUSTED_COUNT:-0}" =~ ^[0-9]+$ ]] && [ "${UNTRUSTED_COUNT:-0}" -gt 0 ]; then
+  stop_issue_for_human "$ISSUE" "オーナー・共同作業者・このパイプライン以外の人の書き込みが ${UNTRUSTED_COUNT} 件あるので、実装AIを動かしませんでした（AIは Issue の本文とコメントを全部読むので、他人の指示がAIに届くのを防ぐため）。中身を確かめて、要らなければそのコメントを消してください。残したまま外すと、また止まります"
   exit 0
 fi
 
