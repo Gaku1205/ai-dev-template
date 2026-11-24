@@ -76,14 +76,26 @@ count_main() {
   all=$( { printf '%s\n' "$issue"; printf '%s\n' "$comments"; printf '%s\n' "$extra"; } \
     | jq -s '{issue: .[0], comments: ((.[1] | if (.[0] | type) == "array" then add else . end // []) + .[2])}') || { echo "#$n を数えられなかった" >&2; return 1; }
   # PR の本文・レビューなどには performed_via_github_app が付かない（App が作った PR でも null）。
-  # そこで、名前が「〜[bot]」で App の番号が無い書き手は、App の番号を公開の API（apps/<slug>）で引いて付ける（名前ではなく番号で見分ける決まりのまま）。
-  # 引けなければ付けない（信頼しない側に倒す）
-  local app="${PIPELINE_APP_ID:-}" login id
+  # そこで、App の番号が付いた書き込み（コメントには付く）から「この App のボットの名前」を知り、同じ名前で番号の無い物に番号を付ける。
+  # 「〜[bot]」の名前は App にしか付けられず、App ごとに1つなので、番号の付いた書き込みと同じ名前なら同じ App（名前ではなく番号で見分ける決まりのまま）。
+  # 名前は、この Issue・PR のコメント → リポジトリの最近のコメント100件 → 公開の API（apps/<slug>。非公開の App は github.token では引けない）の順で探す。
+  # 見つからなければ付けない（信頼しない側に倒す）
+  local app="${PIPELINE_APP_ID:-}" login id bots recent
   if [ -n "$app" ]; then
+    bots=$(jq -c --arg app "$app" '[.comments[] | select(((.performed_via_github_app.id // "") | tostring) == $app) | .user.login // "" | select(endswith("[bot]"))] | unique' <<< "$all") || return 1
+    if [ "$(jq -r --argjson b "$bots" '[.issue, .comments[]] | map(select(.performed_via_github_app == null) | .user.login // "" | select(endswith("[bot]")) | select(IN("github-actions[bot]", "claude[bot]") | not) | select(IN($b[]) | not)) | length' <<< "$all")" != 0 ]; then
+      if recent=$(gh api "repos/$repo/issues/comments?sort=created&direction=desc&per_page=100" 2> /dev/null); then
+        bots=$(jq -c --arg app "$app" --argjson b "$bots" '$b + [.[] | select(((.performed_via_github_app.id // "") | tostring) == $app) | .user.login // "" | select(endswith("[bot]"))] | unique' <<< "$recent" 2> /dev/null || printf '%s' "$bots")
+      fi
+    fi
     while IFS= read -r login; do
       [ -n "$login" ] || continue
-      id=$(gh api "apps/${login%\[bot\]}" --jq .id 2> /dev/null) || continue
-      [[ "$id" =~ ^[0-9]+$ ]] || continue
+      if jq -e --arg l "$login" 'index($l) != null' <<< "$bots" > /dev/null; then
+        id=$app
+      else
+        id=$(gh api "apps/${login%\[bot\]}" --jq .id 2> /dev/null) || continue
+        [[ "$id" =~ ^[0-9]+$ ]] || continue
+      fi
       all=$(jq --arg l "$login" --argjson id "$id" '
         def fix: if (.user.login // "") == $l and .performed_via_github_app == null then .performed_via_github_app = {id: $id} else . end;
         .issue |= fix | .comments |= map(fix)' <<< "$all") || return 1
