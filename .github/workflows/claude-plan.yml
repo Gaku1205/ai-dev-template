@@ -109,6 +109,22 @@ jobs:
           fi
           cp "$RUNNER_TEMP/thread.md" thread.md
           if [ -d .git ]; then echo "thread.md" >> .git/info/exclude; fi
+      # 他人の PR のタイトル・差分を AI に渡さない（2026-11-24 のセキュリティ監査）：進行中の作業は、信頼できる人の物だけ中身を、
+      # 他人の物は番号と変えたファイルの名前だけを inflight.md にする。AI には gh pr list・gh pr diff・gh issue list を使わせない。
+      # スクリプトは main の版を API で取って動かす。読めなかったら、その旨だけを書いて続ける（AI は迷ったら待つ）
+      - name: 進行中の作業を集める
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PIPELINE_APP_ID: ${{ vars.PIPELINE_APP_ID }}
+          NUMBER: ${{ github.event.issue.number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          gh api -H "Accept: application/vnd.github.raw" "repos/$GITHUB_REPOSITORY/contents/.github/scripts/inflight.sh?ref=$DEFAULT_BRANCH" > "$RUNNER_TEMP/inflight.sh"
+          if ! bash "$RUNNER_TEMP/inflight.sh" "$NUMBER" > "$RUNNER_TEMP/inflight.md"; then
+            echo "（進行中の作業を読めなかった。同時に作業してよいか分からないので WAIT にする）" > "$RUNNER_TEMP/inflight.md"
+          fi
+          cp "$RUNNER_TEMP/inflight.md" inflight.md
+          if [ -d .git ]; then echo "inflight.md" >> .git/info/exclude; fi
       - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: claude
         continue-on-error: true
@@ -127,8 +143,8 @@ jobs:
             2. CLAUDE.md と、あれば docs/ 以下の仕様書を読み、関係するコードを確認する
             3. タイトルと本文を書き直す。本文は、作業フォルダ直下のファイル `plan-body.md` に Write で書き（`/tmp` など、ほかの場所には書かない）、`gh issue edit ${{ github.event.issue.number }} --title "..." --body-file plan-body.md` で更新する。
                あとから本文を直すとき（分けた Issue の番号を入れる、など）は、`plan-body.md` を Edit で直して、同じコマンドでもう一度更新する
-            4. `gh issue list --state open --label ai:implement` と `gh pr list --state open` で、いま進行中の作業を見る。
-               それぞれのIssue・PRの中身（`gh issue view`（`--comments` なし） / `gh pr diff`）と見比べて、このIssueと同時に作業してよいかを決める
+            4. 作業フォルダ直下の `inflight.md` を Read で読み、いま進行中の作業（ai:implement の Issue と開いている PR）を見る（信頼できる人の物はタイトル・本文・変えたファイル、他人の物は番号と変えたファイルだけが入っている。`gh pr diff`・`gh pr list`・`gh issue list` は使えない）。
+               それぞれの触る場所（Issue の本文の `ai-touches` の印・PR の変えたファイル）と見比べて、このIssueと同時に作業してよいかを決める
                - 同じファイルを書き換えそう、同じ機能や画面の同じ場所を触る、前の作業の結果を使う → 待つ（WAIT）
                - 触る場所がはっきり別で、どちらが先にマージされても困らない → 並列（PARALLEL）
                - 迷ったら待つ
@@ -183,7 +199,7 @@ jobs:
             - コードは変更しない。Issueの更新とコメントだけをする
             - コマンドは1つずつ、許された形のまま動かす（`gh issue view 番号` のように。`; && |`・改行・`cd`・`-q` の長い式を付けると拒否されて手数だけ減る）。ファイルを読むのは Read、探すのは Grep・Glob
             - ファイルを書くのは Write、直すのは Edit（使ってよいコマンドは上の `gh` だけ。`sed`・`rm`・`cat`・`echo`・`mv` などは拒否される）。書いてよいのは、作業フォルダ直下の `plan-body.md`・`plan-new-issue.md`・`plan-comment.md`・`plan-result.txt` だけ。書いたファイルは消さない（片付けは要らない。終わると作業フォルダごと消える）。長いコメントは `plan-comment.md` に書いて `gh issue comment 番号 --body-file plan-comment.md`
-          claude_args: '--model sonnet --max-turns 30 --allowedTools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh pr list:*),Bash(gh pr diff:*),Read,Glob,Grep,Write,Edit"'
+          claude_args: '--model sonnet --max-turns 30 --allowedTools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh issue create:*),Bash(gh issue list --state open --author app/github-actions:*),Read,Glob,Grep,Write,Edit"'
       # 企画AIが、作業回数の上限（--max-turns 30）に届いて、結果（plan-result.txt）を書く前に終わったか。
       # コードの多いリポジトリでは、読むだけで上限に届くことがある。同じ上限でやり直しても同じ所で止まるので、
       # そのときだけ、この場で1回だけ、上限を増やして（50回）やり直す（いつもの上限は増やさない。使う量を増やしすぎないため）。
@@ -221,8 +237,8 @@ jobs:
             2. CLAUDE.md と、あれば docs/ 以下の仕様書を読み、関係するコードを確認する
             3. タイトルと本文を書き直す。本文は、作業フォルダ直下のファイル `plan-body.md` に Write で書き（`/tmp` など、ほかの場所には書かない）、`gh issue edit ${{ github.event.issue.number }} --title "..." --body-file plan-body.md` で更新する。
                あとから本文を直すとき（分けた Issue の番号を入れる、など）は、`plan-body.md` を Edit で直して、同じコマンドでもう一度更新する
-            4. `gh issue list --state open --label ai:implement` と `gh pr list --state open` で、いま進行中の作業を見る。
-               それぞれのIssue・PRの中身（`gh issue view`（`--comments` なし） / `gh pr diff`）と見比べて、このIssueと同時に作業してよいかを決める
+            4. 作業フォルダ直下の `inflight.md` を Read で読み、いま進行中の作業（ai:implement の Issue と開いている PR）を見る（信頼できる人の物はタイトル・本文・変えたファイル、他人の物は番号と変えたファイルだけが入っている。`gh pr diff`・`gh pr list`・`gh issue list` は使えない）。
+               それぞれの触る場所（Issue の本文の `ai-touches` の印・PR の変えたファイル）と見比べて、このIssueと同時に作業してよいかを決める
                - 同じファイルを書き換えそう、同じ機能や画面の同じ場所を触る、前の作業の結果を使う → 待つ（WAIT）
                - 触る場所がはっきり別で、どちらが先にマージされても困らない → 並列（PARALLEL）
                - 迷ったら待つ
@@ -278,8 +294,8 @@ jobs:
             - コマンドは1つずつ、許された形のまま動かす（`gh issue view 番号` のように。`; && |`・改行・`cd`・`-q` の長い式を付けると拒否されて手数だけ減る）。ファイルを読むのは Read、探すのは Grep・Glob
             - ファイルを書くのは Write、直すのは Edit（使ってよいコマンドは上の `gh` だけ。`sed`・`rm`・`cat`・`echo`・`mv` などは拒否される）。書いてよいのは、作業フォルダ直下の `plan-body.md`・`plan-new-issue.md`・`plan-comment.md`・`plan-result.txt` だけ。書いたファイルは消さない（片付けは要らない。終わると作業フォルダごと消える）。長いコメントは `plan-comment.md` に書いて `gh issue comment 番号 --body-file plan-comment.md`
             - これは2回目です。前回は、作業回数の上限（30回）に届いて、`plan-result.txt` を書く前に終わりました。今回は50回まで使えますが、次はありません。読む量を絞ってください：仕様書（`docs/spec.md`・`docs/design.md`）は最初から全部は読まず、Grep で見出しを探して、関係する節だけを Read で読む。コードも、関係するファイルだけを読む。清書が書けたら、ほかを調べる前に `plan-result.txt` まで書き切る
-            - 前回の途中の結果が残っているかもしれません。Issue の本文がもう清書の形（「### 背景」「### やること」…）なら、最初から書き直さず、足りない所だけ直す。残りの作業の Issue をもう作っていないか、`gh issue list --state open` で確かめ、同じ物をもう一度作らない。質問や順番待ちの理由のコメントがもう書いてあれば、同じコメントをもう一度書かない
-          claude_args: '--model sonnet --max-turns 50 --allowedTools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh pr list:*),Bash(gh pr diff:*),Read,Glob,Grep,Write,Edit"'
+            - 前回の途中の結果が残っているかもしれません。Issue の本文がもう清書の形（「### 背景」「### やること」…）なら、最初から書き直さず、足りない所だけ直す。残りの作業の Issue をもう作っていないか、`gh issue list --state open --author app/github-actions`（この形のまま。あなたが作った Issue だけが出る）で確かめ、同じ物をもう一度作らない。質問や順番待ちの理由のコメントがもう書いてあれば、同じコメントをもう一度書かない
+          claude_args: '--model sonnet --max-turns 50 --allowedTools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh issue create:*),Bash(gh issue list --state open --author app/github-actions:*),Read,Glob,Grep,Write,Edit"'
       # AIの結果（実行記録・plan-result.txt）を、データとして次のジョブに渡す。ここでは Secret を使わない
       - name: AIの結果を取っておく
         if: ${{ !cancelled() }}
