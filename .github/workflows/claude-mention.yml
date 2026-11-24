@@ -62,7 +62,7 @@ jobs:
           BASE: ${{ github.event.repository.default_branch }}
         run: |
           mkdir -p "$RUNNER_TEMP/pipeline-tools"
-          for f in pipeline-lib ai-report denials step-log pr-trust notify fetch-visual-diff; do
+          for f in pipeline-lib ai-report denials step-log pr-trust notify fetch-visual-diff trusted-comments; do
             gh api -H "Accept: application/vnd.github.raw" "repos/$GITHUB_REPOSITORY/contents/.github/scripts/$f.sh?ref=$BASE" \
               > "$RUNNER_TEMP/pipeline-tools/$f.sh" 2> /dev/null || rm -f "$RUNNER_TEMP/pipeline-tools/$f.sh"
           done
@@ -73,6 +73,28 @@ jobs:
               > "$RUNNER_TEMP/pipeline-tools/$f" 2> /dev/null || rm -f "$RUNNER_TEMP/pipeline-tools/$f"
           done
           chmod +x "$RUNNER_TEMP/pipeline-tools/"*.sh 2> /dev/null || true
+      # 信頼できない人（オーナー・共同作業者・このパイプライン以外）の本文・コメント・行へのコメント・レビューの文があれば、AIを動かさない。
+      # AIのアクションは PR の本文とコメントを全部AIに渡すので、公開リポジトリでは他人の指示が修正AIに届く（企画AIの trusted-comments.sh と同じ決まり）。
+      # そのときは ai:stuck を付けて理由を書く（after-mention.sh は ai:stuck の PR を見ない）。読めなかったときは今までどおり続ける
+      - name: 信頼できない書き込みを数える
+        id: untrusted
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.issue.number || github.event.pull_request.number }}
+          PIPELINE_APP_ID: ${{ vars.PIPELINE_APP_ID }}
+        run: |
+          n=0
+          if [ -f "$RUNNER_TEMP/pipeline-tools/trusted-comments.sh" ]; then
+            n=$(bash "$RUNNER_TEMP/pipeline-tools/trusted-comments.sh" --count-untrusted "$PR") || { echo "::warning::#$PR の書き込みを数えられなかったので、今までどおり続けます"; n=0; }
+          else
+            echo "::warning::trusted-comments.sh を main から取れなかったので、数えずに続けます"
+          fi
+          echo "count=$n" >> "$GITHUB_OUTPUT"
+          if [ "$n" != 0 ]; then
+            echo "::warning::信頼できない人の書き込みが $n 件あるので、修正AIを動かしません"
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels" -f "labels[]=ai:stuck" > /dev/null || true
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="⏸ 自動で進めるのを止めました：オーナー・共同作業者・このパイプライン以外の人の書き込みが ${n} 件あるので、修正AIを動かしませんでした（AIは PR の本文とコメントを全部読むので、他人の指示がAIに届くのを防ぐため）。中身を確かめて、要らなければそのコメントを消してから \`ai:stuck\` を外してください（残したまま外すと、また止まります）。" > /dev/null || true
+          fi
       # 言語の実行環境と依存を入れる（pipeline.json に合わせる。無ければ今までの Node 22・npm ci）
       - name: 実行環境をそろえる
         id: stack
@@ -172,6 +194,7 @@ jobs:
           echo "text=$text" >> "$GITHUB_OUTPUT"
       - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: claude
+        if: steps.untrusted.outputs.count == '0'
         with:
           allowed_bots: ${{ steps.bots.outputs.list }}
           restrict_untrusted_prs: ${{ steps.trust.outputs.restrict != 'false' }}

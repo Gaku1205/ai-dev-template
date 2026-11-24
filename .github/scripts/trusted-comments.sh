@@ -12,6 +12,12 @@
 # タイトルと一緒に出さない（同じ人が書いた物なので）。
 #
 # 使い方：trusted-comments.sh <Issue または PR の番号>   → 標準出力に書く（ファイルにするなら > file）
+#         trusted-comments.sh --count-untrusted <番号>     → 信頼できない書き手の物の数だけを出す（下の「数える」）
+#
+# 数える（--count-untrusted）：実装AI（claude-implement.yml）と修正AI（claude-mention.yml）は、AIのアクションが自分で
+# Issue・PR の本文とコメントを全部集めてAIに渡す（このスクリプトのファイルを渡せない）。そこで、AIを動かす前に、
+# 信頼できない書き手の物（本文・コメント・PRなら行へのコメントとレビューの文も）が何件あるかを数え、1件でもあればAIを動かさずに
+# 人間に回す（中身を確かめて消してから、ai:stuck を外すと続く）。数は 0 以上の整数1つ。読めなかったときは何も出さず失敗（終了コード 1）
 # 環境変数：GH_TOKEN、GITHUB_REPOSITORY、PIPELINE_APP_ID（任意）
 # 読めなかったとき（gh の失敗・形が違う）は、何も出さず失敗（終了コード 1）で終わる。黙って全部は渡さない。
 #
@@ -40,7 +46,56 @@ trusted_render() {
   '
 }
 
+# 入力：{"issue": {...}, "comments": [...]}（標準入力。comments には行へのコメント・レビューも入れてよい）、引数 1：PIPELINE_APP_ID。
+# 出力：信頼できない書き手の物の数（本文の作者が信頼できなければ 1 を足す。中身の無いレビュー（承認だけ等）は数えない）
+untrusted_count() {
+  jq -r --arg app "${1:-}" '
+    def trusted:
+      ((.author_association // "") | IN("OWNER", "MEMBER", "COLLABORATOR"))
+      or ((.user.login // "") | IN("github-actions[bot]", "claude[bot]"))
+      or ($app != "" and ((.performed_via_github_app.id // "") | tostring) == $app);
+    (if (.issue | trusted) then 0 else 1 end)
+    + ([.comments[] | select((.body // "") != "") | select(trusted | not)] | length)
+  '
+}
+
+count_main() {
+  local n="${1:-}" repo="${GITHUB_REPOSITORY:-}" issue comments extra="[]" more result
+  case "$n" in '' | *[!0-9]*) echo "使い方：trusted-comments.sh --count-untrusted <番号>" >&2; return 1 ;; esac
+  [ -n "$repo" ] || { echo "GITHUB_REPOSITORY が無い" >&2; return 1; }
+  issue=$(gh api "repos/$repo/issues/$n") || { echo "#$n を読めなかった" >&2; return 1; }
+  comments=$(gh api --paginate --slurp "repos/$repo/issues/$n/comments?per_page=100") || { echo "#$n のコメントを読めなかった" >&2; return 1; }
+  # PR なら、行へのコメントとレビューの文も数える（AIのアクションはこれも読む）
+  if [ "$(jq -r '.pull_request != null' <<< "$issue")" = true ]; then
+    more=$(gh api --paginate --slurp "repos/$repo/pulls/$n/comments?per_page=100") || { echo "#$n の行へのコメントを読めなかった" >&2; return 1; }
+    extra=$(jq -s '[.[] | if (.[0] | type) == "array" then add else . end // [] | .[]]' <<< "$more") || return 1
+    more=$(gh api --paginate --slurp "repos/$repo/pulls/$n/reviews?per_page=100") || { echo "#$n のレビューを読めなかった" >&2; return 1; }
+    extra=$(jq -s '.[0] + [.[1] | if (.[0] | type) == "array" then add else . end // [] | .[]]' <(printf '%s\n' "$extra") <(printf '%s\n' "$more")) || return 1
+  fi
+  local all
+  all=$( { printf '%s\n' "$issue"; printf '%s\n' "$comments"; printf '%s\n' "$extra"; } \
+    | jq -s '{issue: .[0], comments: ((.[1] | if (.[0] | type) == "array" then add else . end // []) + .[2])}') || { echo "#$n を数えられなかった" >&2; return 1; }
+  # PR の本文・レビューなどには performed_via_github_app が付かない（App が作った PR でも null）。
+  # そこで、名前が「〜[bot]」で App の番号が無い書き手は、App の番号を公開の API（apps/<slug>）で引いて付ける（名前ではなく番号で見分ける決まりのまま）。
+  # 引けなければ付けない（信頼しない側に倒す）
+  local app="${PIPELINE_APP_ID:-}" login id
+  if [ -n "$app" ]; then
+    while IFS= read -r login; do
+      [ -n "$login" ] || continue
+      id=$(gh api "apps/${login%\[bot\]}" --jq .id 2> /dev/null) || continue
+      [[ "$id" =~ ^[0-9]+$ ]] || continue
+      all=$(jq --arg l "$login" --argjson id "$id" '
+        def fix: if (.user.login // "") == $l and .performed_via_github_app == null then .performed_via_github_app = {id: $id} else . end;
+        .issue |= fix | .comments |= map(fix)' <<< "$all") || return 1
+    done < <(jq -r '[.issue, .comments[]] | map(select(.performed_via_github_app == null) | .user.login // "" | select(endswith("[bot]")) | select(IN("github-actions[bot]", "claude[bot]") | not)) | unique | .[]' <<< "$all")
+  fi
+  result=$(untrusted_count "$app" <<< "$all") || { echo "#$n を数えられなかった" >&2; return 1; }
+  [[ "$result" =~ ^[0-9]+$ ]] || { echo "#$n の数が数字でない" >&2; return 1; }
+  printf '%s\n' "$result"
+}
+
 main() {
+  if [ "${1:-}" = "--count-untrusted" ]; then count_main "${2:-}"; return; fi
   local n="${1:-}" repo="${GITHUB_REPOSITORY:-}" issue comments
   case "$n" in '' | *[!0-9]*) echo "使い方：trusted-comments.sh <Issue または PR の番号>" >&2; return 1 ;; esac
   [ -n "$repo" ] || { echo "GITHUB_REPOSITORY が無い" >&2; return 1; }

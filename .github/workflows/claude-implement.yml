@@ -26,6 +26,7 @@ jobs:
     outputs:
       outcome: ${{ steps.claude.outcome }}
       model: ${{ env.MODEL }}
+      untrusted: ${{ steps.untrusted.outputs.count }}
     timeout-minutes: 75
     concurrency:
       group: claude-implement-${{ github.event.issue.number }}
@@ -48,6 +49,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      # 信頼できない人（オーナー・共同作業者・このパイプライン以外）の本文・コメントがあれば、AIを動かさない。
+      # AIのアクションは Issue の本文とコメントを全部AIに渡すので、公開リポジトリでは他人の指示が実装AIに届く（企画AIの trusted-comments.sh と同じ決まり）。
+      # 数だけを次のジョブ（open-pr）に渡し、そこで人間に回す（ai:stuck）。読めなかったときは今までどおり続ける（API の一時的な失敗で止めない）
+      - name: 信頼できない書き込みを数える
+        id: untrusted
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          PIPELINE_APP_ID: ${{ vars.PIPELINE_APP_ID }}
+        run: |
+          n=$(bash .github/scripts/trusted-comments.sh --count-untrusted "$ISSUE") || { echo "::warning::#$ISSUE の書き込みを数えられなかったので、今までどおり続けます"; n=0; }
+          echo "count=$n" >> "$GITHUB_OUTPUT"
+          if [ "$n" != 0 ]; then echo "::warning::信頼できない人の書き込みが $n 件あるので、実装AIを動かしません"; fi
       # 言語の実行環境と依存を入れる（pipeline.json に合わせる。無ければ今までの Node 22・npm ci）
       - name: 実行環境をそろえる
         id: stack
@@ -179,6 +193,7 @@ jobs:
         run: bash .github/scripts/step-log.sh --issue "$ISSUE" --step implement --model "$MODEL" --result running
       - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: claude
+        if: steps.untrusted.outputs.count == '0'
         continue-on-error: true
         with:
           allowed_bots: ${{ steps.bots.outputs.list }}
@@ -339,6 +354,7 @@ jobs:
           ISSUE: ${{ github.event.issue.number }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           AI_OUTCOME: ${{ needs.implement.outputs.outcome }}
+          UNTRUSTED_COUNT: ${{ needs.implement.outputs.untrusted }}
           EXECUTION_FILE: ${{ runner.temp }}/ai-result/execution.json
           CRITIQUE_FILE: ${{ runner.temp }}/ai-result/critique.md
         run: .github/scripts/open-pr.sh
