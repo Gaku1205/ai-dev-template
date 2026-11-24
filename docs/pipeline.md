@@ -208,6 +208,7 @@ Issue の `ai:stuck` を外したときは、付いているラベルで続き�
 | 部品 | 中身 | 入れるとき |
 |---|---|---|
 | `base.md` | コマンドは1つずつ・Read/Grep/Glob を使う・`.github/` は変えない | いつも |
+| `ponytail.md` | 作りすぎない決まり（いちばん少ない新しいコードで全部やり切る。頼まれていない機能・抽象化・依存を足さない。確かめ・セキュリティ・アクセシビリティ・受け入れ条件・`docs/design.md` の見た目は削らない）。[ponytail](https://github.com/DietrichGebert/ponytail)（MIT、ebd8654）を訳して足した物。権利の表示は `prompts/ponytail.LICENSE`。2026-11-24 から | いつも（企画・デザイン・工場の相談には入らない） |
 | `read-sections.md` | Issue の「読む所」の節だけ読む | `--docs`（`docs/spec.md` が200行以上） |
 | `merge-main.md` | push の前に main を取り込む・コンフリクトの解消 | いつも |
 | `visual-tests.md` | 基準画像の扱い・`visual:update` ラベル・`test:visual` の動かし方 | `--visual-tests` |

@@ -8,6 +8,7 @@
 #
 # 部品の選び方：
 #   base            常に入れる
+#   ponytail        常に入れる（作りすぎない決まり。実装と修正のAIだけがこの組み立てを使う。prompts/ponytail.LICENSE）
 #   read-sections   --docs のとき（長い仕様書があるとき）
 #   merge-main      常に入れる
 #   visual-tests    --visual-tests のとき
@@ -38,6 +39,7 @@ compose_has_long_docs() {
 compose_parts() {
   local mode="$1" visual="$2" docs="$3"
   echo base
+  echo ponytail
   [ "$docs" = 1 ] && echo read-sections
   echo merge-main
   [ "$visual" = 1 ] && echo visual-tests

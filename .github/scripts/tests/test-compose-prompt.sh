@@ -14,6 +14,7 @@ VIS="visual:update ラベルで基準の画像を撮り直して"
 RUN="npm run test:visual -- -g テスト名"
 DIFF=".visual-diff/ に画像があるとき"
 PRB=".pr-body.md"
+PONY="作りすぎない（ponytail の決まり"
 
 echo "== implement：全部入りでも pr-body と visual-diff は入らない"
 out=$(bash "$C" --mode implement --visual-tests --docs)
@@ -56,6 +57,15 @@ for m in implement mention; do
   assert_not_contains "$m：read-sections が入らない" "$out" "$READ"
   assert_contains "$m：merge-main は入る" "$out" "$MERGE"
 done
+
+echo "== 作りすぎない決まり（ponytail）は、implement にも mention にも、条件によらず入る"
+for m in implement mention; do
+  assert_contains "$m：ponytail が入る" "$(bash "$C" --mode "$m")" "$PONY"
+  assert_contains "$m（全部入り）：ponytail が入る" "$(bash "$C" --mode "$m" --visual-tests --docs)" "$PONY"
+done
+out=$(bash "$C" --mode implement)
+assert_contains "削らない物に design.md の見た目が入っている" "$out" "docs/design.md に書かれた見た目"
+assert_not_contains "ワークフローの引数を壊す二重引用符が無い" "$(cat "$SCRIPTS_DIR/prompts/ponytail.md")" '"'
 
 echo "== 引数の誤り"
 bash "$C" --mode other > /dev/null 2>&1

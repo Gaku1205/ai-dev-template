@@ -67,7 +67,7 @@ jobs:
               > "$RUNNER_TEMP/pipeline-tools/$f.sh" 2> /dev/null || rm -f "$RUNNER_TEMP/pipeline-tools/$f.sh"
           done
           # AIへの指示の部品（compose-prompt.sh と prompts/）も main の版を取る
-          for f in compose-prompt.sh prompts/base.md prompts/read-sections.md prompts/merge-main.md prompts/visual-tests.md prompts/visual-diff.md prompts/pr-body.md; do
+          for f in compose-prompt.sh prompts/base.md prompts/ponytail.md prompts/read-sections.md prompts/merge-main.md prompts/visual-tests.md prompts/visual-diff.md prompts/pr-body.md; do
             mkdir -p "$(dirname "$RUNNER_TEMP/pipeline-tools/$f")"
             gh api -H "Accept: application/vnd.github.raw" "repos/$GITHUB_REPOSITORY/contents/.github/scripts/$f?ref=$BASE" \
               > "$RUNNER_TEMP/pipeline-tools/$f" 2> /dev/null || rm -f "$RUNNER_TEMP/pipeline-tools/$f"
