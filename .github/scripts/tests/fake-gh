@@ -338,6 +338,11 @@ if base=='actions/runs':
             _runs.append({'id':9000,'name':'CI','event':'pull_request','created_at':'2026-01-01T00:00:00Z','status':'completed' if _done else 'in_progress','conclusion':('success' if _ok else 'failure') if _done else None})
     out({'workflow_runs':_runs}); sys.exit(0)
 # 比べる（compare/A...B）：st['compare'] = {'main...abc': {'files':[…]}} があれば、それも返す（基準の画像だけのコンフリクトの見分け）
+# compare_fail：比べるのに失敗する（HTTP 404）。compare_close_pr があれば、その番号のPRをこのとき閉じる（CIの途中で閉じられた、を表す）
+if base.startswith('compare/') and st.get('compare_fail'):
+    for _p in st.get('pulls',[]):
+        if _p.get('number')==st.get('compare_close_pr'): _p['state']='closed'
+    save(); sys.stderr.write('HTTP 404\n'); sys.exit(1)
 if base.startswith('compare/'): out({'ahead_by':st.get('ahead_by',0),**st.get('compare',{}).get(base[len('compare/'):],{})}); sys.exit(0)
 m=re.match(r'commits/([^/]+)$',base)
 if m and m.group(1) in st.get('commit_fail',[]): sys.stderr.write('HTTP 502\n'); sys.exit(1)

@@ -139,6 +139,8 @@ s = {'next_id': 0, 'comments': [], 'labels': {'70': []}, 'issue_updated': {}, 'p
 if os.environ.get('MERGE_FAIL'): s['merge_fail'] = os.environ['MERGE_FAIL']
 if os.environ.get('MERGE_FAIL_TIMES'): s['merge_fail_times'] = int(os.environ['MERGE_FAIL_TIMES'])
 if os.environ.get('UPDATE_BRANCH_FAIL'): s['update_branch_fail'] = True
+if os.environ.get('COMPARE_FAIL'): s['compare_fail'] = True
+if os.environ.get('COMPARE_CLOSE'): s['compare_close_pr'] = 70
 json.dump(s, open(os.environ['MOCK_STATE'], 'w'))
 PY
   RUN_ID=1 CONCLUSION="$1" HEAD_SHA=abc HEAD_BRANCH=pipeline-sync/123abcd run_script after-ci.sh > /dev/null
@@ -196,5 +198,23 @@ assert_contains "理由をコメントする" "$(comments_of 70)" "main の変�
 assert_not_contains "AIに直させない" "$(comments_of 70)" "auto-fix"
 assert_contains "通知する" "$(cat "$MOCK_DIR/curl.log")" "配られた更新に main を取り込めませんでした"
 assert_eq "マージしない" "" "$(merged_of)"
+
+echo "== パイプラインの更新のPR：CIの途中で閉じられて main と比べられない → 失敗にせず、何もしない（新しい配布に置き換わった）"
+rc=0; COMPARE_FAIL=1 COMPARE_CLOSE=1 RUN_ID=1 sync_case success 0 || rc=$?
+assert_eq "失敗にしない" "0" "$rc"
+assert_eq "マージしない" "" "$(merged_of)"
+assert_not_contains "ai:stuck を付けない" "$(labels_of 70)" "ai:stuck"
+assert_eq "コメントしない" "" "$(comments_of 70)"
+
+echo "== パイプラインの更新のPR：開いたままなのに main と比べられない → 今まで通り失敗にする（黙ってマージしない）"
+rc=0; COMPARE_FAIL=1 sync_case success 0 || rc=$?
+assert_eq "失敗にする" "1" "$rc"
+assert_eq "マージしない" "" "$(merged_of)"
+
+echo "== ふつうのPR：CIの途中で閉じられて main と比べられない → 失敗にせず、何もしない"
+state_py "s['pulls']=[{'number':58,'body':'Closes #1','state':'open','head':{'sha':'abc','ref':'claude/issue-54-x'},'updated_at':'2026-01-01T00:00:00Z'}]; s['labels']={'58':[]}; s['comments']=[]; s['compare_fail']=True; s['compare_close_pr']=58"
+rc=0; RUN_ID=1 CONCLUSION=success HEAD_SHA=abc HEAD_BRANCH=claude/issue-54-x run_script after-ci.sh > /dev/null || rc=$?
+assert_eq "失敗にしない" "0" "$rc"
+assert_not_contains "ai:stuck を付けない" "$(labels_of 58)" "ai:stuck"
 
 finish
