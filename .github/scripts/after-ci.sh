@@ -11,6 +11,23 @@ source "$(dirname "$0")/pipeline-lib.sh"
 set -e
 CI_CANCEL_MARK="<!-- auto-ci-cancel-rerun -->"
 
+# main がこのコミットより何コミット先か（behind に入れる）。比べられなかったときは、PRがまだ開いているか確かめる。
+# CIの途中で PR が閉じられた（新しい配布の PR に置き換わってブランチが消えた等）なら、何もせずに終える（失敗にしない。senpai-split の 2026-11-24 の配布 #109）。
+# 開いたままなら、今まで通り失敗にする（黙って進めない）。$( ) の中では exit が効かないので、変数に入れる形にしている
+read_behind() {
+  local state
+  if behind=$(gh api "repos/$REPO/compare/$HEAD_SHA...main" -q .ahead_by); then
+    return 0
+  fi
+  state=$(gh api "repos/$REPO/pulls/$1" -q .state 2> /dev/null || true)
+  if [ -n "$state" ] && [ "$state" != open ]; then
+    echo "PR #$1 はCIの途中で閉じられたので、何もしません"
+    exit 0
+  fi
+  echo "main と比べられませんでした（PR #$1）" >&2
+  exit 1
+}
+
 has_pipeline_token || { echo "PIPELINE_TOKEN が無いので何もしません"; exit 0; }
 
 read -r pr head < <(find_open_pr "$HEAD_BRANCH") || true
@@ -62,7 +79,7 @@ case "$sync_pr" in
     # 配布のPRはレビューを通さない決まりなので、必須の「AIレビュー」で止まらないよう、理由を書いた success を付ける（マージの判断の前に）
     review_status "$HEAD_SHA" success "配布のPRなのでAIレビューは通しません。CIで決めます"
     if [ "$CONCLUSION" = success ]; then
-      behind=$(gh api "repos/$REPO/compare/$HEAD_SHA...main" -q .ahead_by)
+      read_behind "$pr"
       if [ "${behind:-0}" -gt 0 ]; then
         if gh api -X PUT "repos/$REPO/pulls/$pr/update-branch" -f expected_head_sha="$HEAD_SHA" > /dev/null 2>&1; then
           echo "PR #$pr（パイプラインの更新）：main を取り込みました。CIが終わったらマージします"
@@ -108,7 +125,7 @@ case "$CONCLUSION" in
     fi
     # main が先に進んでいたら、先にPRのブランチへ取り込む（取り込むとCIがもう一度走り、通ったらここに戻ってくる）。
     # レビューAIのワークフローは、PRのブランチの版が main と同じでないと動かないので、これが要る
-    behind=$(gh api "repos/$REPO/compare/$HEAD_SHA...main" -q .ahead_by)
+    read_behind "$pr"
     if [ "${behind:-0}" -gt 0 ]; then
       if gh api -X PUT "repos/$REPO/pulls/$pr/update-branch" -f expected_head_sha="$HEAD_SHA" > /dev/null 2>&1; then
         echo "PR #$pr：main の変更（${behind} コミット）を取り込みました。CIが終わったらレビューに進みます"
