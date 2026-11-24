@@ -144,6 +144,10 @@ if m:
     if n in st.get('read_fail_comments',[]): sys.stderr.write('HTTP 502\n'); sys.exit(1)
     cs=[c for c in st['comments'] if c['issue']==n]
     paged(cs); sys.exit(0)
+# リポジトリ全体のコメントの一覧（新しい順）。recent_comments_fail：読めない（502）
+if base=='issues/comments' and method=='GET':
+    if st.get('recent_comments_fail'): sys.stderr.write('HTTP 502\n'); sys.exit(1)
+    out(list(reversed(st['comments']))[:100]); sys.exit(0)
 m=re.match(r'issues/comments/(\d+)$',base)
 if m and method=='GET':
     for c in st['comments']:

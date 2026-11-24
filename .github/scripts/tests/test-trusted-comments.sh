@@ -128,6 +128,27 @@ init_state '{"issues_meta":{"15":{"title":"t","body":"b"}},"authors":{"15":"depe
 APP=777 out=$(run_tc --count-untrusted 15)
 assert_eq "引けない（dependabot など）：1" "1" "$out"
 
+echo "== 数える：App が作った PR（apps/ で引けない非公開の App）は、番号の付いた App のコメントの名前で信頼する"
+init_state '{"issues_meta":{"16":{"title":"t","body":"b"}},"authors":{"16":"pipeline-app[bot]"},"issue_extra":{"16":{"author_association":"CONTRIBUTOR","pull_request":{}}},"review_comments":[{"id":1,"body":"行の指摘","user":{"login":"claude[bot]"},"author_association":"CONTRIBUTOR"}]}'
+add_comment 16 claude[bot] CONTRIBUTOR
+add_comment 16 pipeline-app[bot] CONTRIBUTOR 777
+add_comment 16 github-actions[bot] CONTRIBUTOR
+APP=777 out=$(run_tc --count-untrusted 16)
+assert_eq "この PR の App のコメントから：0" "0" "$out"
+init_state '{"issues_meta":{"17":{"title":"t","body":"b"}},"authors":{"17":"pipeline-app[bot]"},"issue_extra":{"17":{"author_association":"CONTRIBUTOR","pull_request":{}}}}'
+add_comment 99 pipeline-app[bot] CONTRIBUTOR 777
+APP=777 out=$(run_tc --count-untrusted 17)
+assert_eq "この PR にコメントが無い：リポジトリの最近のコメントから：0" "0" "$out"
+state_py "s['recent_comments_fail']=True"
+APP=777 out=$(run_tc --count-untrusted 17); rc=$?
+assert_eq "最近のコメントも読めない：信頼しない側（1）" "1" "$out"
+assert_eq "最近のコメントも読めない：失敗にはしない" "0" "$rc"
+init_state '{"issues_meta":{"18":{"title":"t","body":"b"}},"authors":{"18":"pipeline-app[bot]"},"issue_extra":{"18":{"author_association":"CONTRIBUTOR","pull_request":{}}}}'
+add_comment 18 pipeline-app[bot] CONTRIBUTOR 888
+add_comment 99 pipeline-app[bot] CONTRIBUTOR 888
+APP=777 out=$(run_tc --count-untrusted 18)
+assert_eq "同じ名前でも番号違いの App の書き込みしかない：本文とコメントで 2" "2" "$out"
+
 echo "== 数える：読めないときは何も出さず失敗"
 init_state '{"read_fail_comments":["13"],"issues_meta":{"13":{"title":"t","body":"b"}},"issue_extra":{"13":{"author_association":"OWNER"}}}'
 APP=777 out=$(run_tc --count-untrusted 13); rc=$?
