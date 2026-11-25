@@ -58,6 +58,7 @@ out.append('scrub=' + str(ai[0].get('env', {}).get('CLAUDE_CODE_SUBPROCESS_ENV_S
 args = ai[0]['with']['claude_args']
 out.append('tools=' + args.split('--allowedTools ')[1])
 out.append('persist=' + str(job['steps'][0]['with'].get('persist-credentials')))
+out.append('full_output=' + str(ai[0]['with'].get('show_full_output')))
 out.append('prompt_has_expr=' + str('${{' in ai[0]['with']['prompt']))
 print('\n'.join(out))
 PY
@@ -68,6 +69,7 @@ assert_contains "AIのステップは1つ" "$result" "ai=1"
 assert_contains "鍵消しを入れる" "$result" "scrub=1"
 assert_contains "動かせるのは撮影と名前の書き出しだけ" "$result" 'tools="Bash(node .github/scripts/shot.mjs scrub-page.html),Bash(./scrub-env.sh)"'
 assert_contains "git の鍵を残さない" "$result" "persist=False"
+assert_contains "コマンドの結果をログで見られる" "$result" "full_output=True"
 assert_contains "頼み文に外の値を入れない" "$result" "prompt_has_expr=False"
 
 rm -rf "$work"

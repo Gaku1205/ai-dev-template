@@ -45,6 +45,8 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
+          # 囲いの中でコマンドが何を返したかを見るため、AIの出力をログに出す（動かせるのは下の2つだけで、値は出さない）
+          show_full_output: true
           prompt: |
             次の2つのコマンドを、この順に1回ずつ、そのまま動かしてください。ほかのことはしないでください。説明は要りません。
             1. `node .github/scripts/shot.mjs scrub-page.html`
