@@ -1,0 +1,57 @@
+# 子プロセスの鍵消し（CLAUDE_CODE_SUBPROCESS_ENV_SCRUB）の自己テスト（テンプレート本体だけ・手で動かす）。
+# 工場のデザイン担当など「ウェブを読むAIが npm run build・撮影も動かす」ジョブに入れる前に、本物のランナーで確かめる：
+#   1. 鍵消しを入れても、AIから撮影（shot.mjs の Chrome）が動く（bubblewrap の囲いの中で Chrome が立つか）
+#   2. AIが動かすコマンドから、AIの鍵（CLAUDE_CODE_OAUTH_TOKEN など）が見えない
+# 頼み文はここに書いた決まった物だけ（外の文章は入らない）。安いモデルで、数回の往復で終わる。
+name: Scrub Selftest
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scrub-selftest
+  cancel-in-progress: false
+
+jobs:
+  scrub:
+    if: github.event.repository.is_template
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # 撮る見本の画面と、環境変数の「名前だけ」を書く道具（値は書かない）。AIはこの2つしか動かせない
+      - name: 見本を置く
+        run: |
+          printf '%s\n' '<!doctype html><html lang="ja"><meta charset="utf-8"><body style="margin:0;background:#1f6feb;color:#fff;font:48px sans-serif"><h1>scrub</h1></body></html>' > scrub-page.html
+          printf '%s\n' '#!/usr/bin/env bash' 'env | cut -d= -f1 | sort > scrub-env-names.txt' 'echo "書いた：scrub-env-names.txt（$(wc -l < scrub-env-names.txt) 個）"' > scrub-env.sh
+          chmod +x scrub-env.sh
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
+        id: ai
+        continue-on-error: true
+        env:
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: |
+            次の2つのコマンドを、この順に1回ずつ、そのまま動かしてください。ほかのことはしないでください。説明は要りません。
+            1. `node .github/scripts/shot.mjs scrub-page.html`
+            2. `./scrub-env.sh`
+          claude_args: '--model haiku --max-turns 6 --allowedTools "Bash(node .github/scripts/shot.mjs scrub-page.html),Bash(./scrub-env.sh)"'
+      - name: 確かめる
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.ai.outcome }}
+        run: .github/scripts/scrub-selftest-check.sh
