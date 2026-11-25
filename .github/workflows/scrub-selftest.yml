@@ -37,6 +37,13 @@ jobs:
           printf '%s\n' '<!doctype html><html lang="ja"><meta charset="utf-8"><body style="margin:0;background:#1f6feb;color:#fff;font:48px sans-serif"><h1>scrub</h1></body></html>' > scrub-page.html
           printf '%s\n' '#!/usr/bin/env bash' 'env | cut -d= -f1 | sort > scrub-env-names.txt' 'echo "書いた：scrub-env-names.txt（$(wc -l < scrub-env-names.txt) 個）"' > scrub-env.sh
           chmod +x scrub-env.sh
+      # 囲い（sandbox）には bubblewrap と socat が要る。ランナーには bubblewrap しか無く、アクションの自前の入れる手順は
+      # ステップの env では動かない（3回目の実行：「socat not installed」でコマンドが2つとも動かなかった）
+      - name: 囲いに要る道具を入れる
+        run: |
+          command -v socat > /dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends socat; }
+          command -v bwrap > /dev/null || sudo apt-get install -y -qq --no-install-recommends bubblewrap
+          echo "socat：$(command -v socat)　bwrap：$(command -v bwrap)"
       - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         id: ai
         continue-on-error: true
