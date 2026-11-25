@@ -3,10 +3,10 @@
 #   - AIが撮った画像（.shots/scrub-page-1440.png）がある → 囲いの中でも Chrome が動いた
 #   - AIが動かしたコマンドから見えた環境変数の名前（scrub-env-names.txt）に、鍵の名前が無い
 #   - ふつうの名前（GITHUB_WORKSPACE）はある → 名前の一覧がちゃんと取れている
-# 結果は GITHUB_STEP_SUMMARY（無ければ標準出力）に書き、どれかがだめなら 1 で終わる。
+# 結果はログと GITHUB_STEP_SUMMARY に書き、どれかがだめなら 1 で終わる。
 set -uo pipefail
 
-summary=${GITHUB_STEP_SUMMARY:-/dev/stdout}
+summary=${GITHUB_STEP_SUMMARY:-/dev/null}
 names=scrub-env-names.txt
 shot=.shots/scrub-page-1440.png
 # 鍵消しで消えるはずの名前（AIの鍵・Actions の鍵）
@@ -42,6 +42,11 @@ else
   fi
 fi
 
+# 実行のログにも出す（summary は REST で読めないので、ログで結果が分かるように）
+printf '%s\n' "${lines[@]}"
+[ -f "$names" ] && echo "見えた名前：$(wc -l < "$names") 個"
+ls -la .shots 2> /dev/null || echo ".shots が無い"
+echo "bwrap：$(command -v bwrap || echo 無い)"
 {
   echo "## 子プロセスの鍵消しの自己テスト"
   echo
