@@ -37,6 +37,12 @@ jobs:
           printf '%s\n' '<!doctype html><html lang="ja"><meta charset="utf-8"><body style="margin:0;background:#1f6feb;color:#fff;font:48px sans-serif"><h1>scrub</h1></body></html>' > scrub-page.html
           printf '%s\n' '#!/usr/bin/env bash' 'env | cut -d= -f1 | sort > scrub-env-names.txt' 'echo "書いた：scrub-env-names.txt（$(wc -l < scrub-env-names.txt) 個）"' > scrub-env.sh
           chmod +x scrub-env.sh
+          # 囲いの中では Chrome 自身の囲いが立たない（4回目：SUID sandbox helper … not configured correctly）。
+          # Chrome の囲いを外し（--no-sandbox）、外の囲い（鍵が無い・書ける所が限られる）に任せて撮れるかを見る。shot.mjs は CHROME_PATH の物を使う
+          chrome=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)
+          printf '%s\n' '#!/usr/bin/env bash' "exec '$chrome' --no-sandbox \"\$@\"" > scrub-chrome.sh
+          chmod +x scrub-chrome.sh
+          echo "Chrome：$chrome（--no-sandbox で包む）"
       # 囲い（sandbox）には bubblewrap と socat が要る。ランナーには bubblewrap しか無く、アクションの自前の入れる手順は
       # ステップの env では動かない（3回目の実行：「socat not installed」でコマンドが2つとも動かなかった）
       - name: 囲いに要る道具を入れる
@@ -49,6 +55,7 @@ jobs:
         continue-on-error: true
         env:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
+          CHROME_PATH: ${{ github.workspace }}/scrub-chrome.sh
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
