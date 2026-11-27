@@ -523,7 +523,7 @@ Vercel の Hobby は、30日の使用量が上限に届くとアカウントご�
 - 失敗しても見張り役を止めない（段は `continue-on-error: true`・1分の枠で、スクリプトの終了コードは常に 0）。鍵は curl の引数に出さず、標準入力のヘッダで渡す
 - CPU の予算（agent-desk#698）：答えの `budget` が `warn`（1日の予算の50%以上）か `over`（100%以上）なら、スマホに知らせる（`notify.sh` の種類 `usage`。warn は優先度4・over は5。本文に今日の量・予算の割合・7日平均）。`ok`・`unknown`・無いときは知らせない
   - 同じ日（日本時間）・同じ段では1回だけ。warn の後に over に上がったら、もう一度知らせる。記録は閉じた Issue（`SELFCHECK_LOG_ISSUE`、既定 212）のコメントで、1行目が `<!-- selfcheck-budget {"date":…,"budget":…} -->`。bot（ログイン名が `[bot]` で終わる）が書いた物だけを数える。先に記録を残してから知らせる
-  - 記録が読めないときは、知らせずに `::warning::` を出す（読めないまま30分ごとに鳴らさないため）。通知に使う `NTFY_TOPIC`・`NOTIFY_EVENTS` は、この段にだけ渡す
+  - 記録が読めないときは、知らせずに `::warning::` を出す（読めないまま鳴らし続けないため）。通知に使う `NTFY_TOPIC`・`NOTIFY_EVENTS` は、この段にだけ渡す
 
 ## 公開先の決め方：サーバーの要らないアプリは GitHub Pages（`pick-deploy.sh`・`move-to-pages.sh`）
 
@@ -533,7 +533,7 @@ Vercel の Hobby は CPU の上限で止まると、サーバーの要らない�
   - 言語が `nextjs` 以外（`saas`・`python`・`game`・`webgame`）は `vercel`（`game`・`python` は別の公開先が決まっている）
   - 課金・ログインが `yes`、または説明にサーバーで動く物を思わせる言葉（API・ログイン・会員・課金・AI・メール・共有・データベース・Supabase・Stripe など。「サーバー不要」は数えない）があれば `vercel`
   - 説明にサーバーの要らない印（データは端末・静的・ポートフォリオ・ゲーム・サーバー不要など）があるときだけ `github-pages`
-- **工場**（`factory.sh`）：`pick_deploy` が `github-pages` なら、`pipeline.json` の deploy を `[{"kind":"github-pages","build":"PAGES_BASE_PATH=/<リポジトリ名> npm run build"}]` にし、`next.config.ts` を `output: "export"`・`trailingSlash: true`・`images: { unoptimized: true }`・`basePath`（公開のビルドだけ `PAGES_BASE_PATH` から）にする。`vercel.json` は消し、Vercel のプロジェクト・鍵は作らず写さない。Pages は工場が有効にする。どちらにしたかと理由は、最初のコメントと、サービスの `docs/spec.md`（「公開先」の行）に1行書く。課金・ログインの有無は、環境変数 `APP_PAID`・`APP_LOGIN`（`yes`）で渡せる
+- **工場**（`factory.sh`）：`pick_deploy` が `github-pages` なら、`pipeline.json` の deploy を `[{"kind":"github-pages","build":"PAGES_BASE_PATH=/<リポジトリ名> npm run build"}]` にし、`next.config.ts` を `output: "export"`・`trailingSlash: true`・`images: { unoptimized: true }`・`basePath`（公開のビルドだけ `PAGES_BASE_PATH` から）にする。`vercel.json` は消し、Vercel のプロジェクト・鍵は作らず写さない。Pages は工場が有効にする。どちらにしたかと理由は、最初のコメントと、サービスの `docs/spec.md`（「公開先」の行）に1行書く。
 - **今あるアプリを移す**：`GH_TOKEN=… .github/scripts/move-to-pages.sh <owner/repo>`（マネージャーが手で使う）。サーバーで動くファイル（`app/api/`・`route.ts`・`middleware.ts`・`"use server"`・`supabase/migrations`）があれば、理由を出して止まる。無ければ、上と同じ `pipeline.json`・`next.config.ts` にする PR（ブランチ `move-to-pages`）を作り、Pages を有効にする（もう有効なら飛ばす）。素の `<a href="/…">`・`<img src="/…">`（`basePath` が付かない）を探し、PR の本文に一覧を書く。`next/link`・`next/image` は自動で付く
   - 静的な書き出しで壊れる物でも止まる（理由に一覧を出す。それぞれ5件まで）：`generateStaticParams` が無い `[id]` のページ（`/x/?id=…` にしてブラウザで読む）、`"use client"` の無いサーバーのページで `searchParams` を読んでいる物（ブラウザの `useSearchParams` にする）
   - 素の `<a>`・`<img>` のほかに、CSS の `url(/…)` と、コードの中の素材の道（`"/photos/a.jpg"` のように文字で書いた `.png`・`.jpg`・`.webp`・`.svg`・`.mp4`・`.glb`・`.woff2`・`.json` など。`next/image` に文字で渡すと `basePath` が付かない。`next.config` とテストは除く）も、PR の本文の一覧に入れる
